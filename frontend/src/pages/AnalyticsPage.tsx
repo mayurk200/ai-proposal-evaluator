@@ -1,0 +1,88 @@
+import { useQuery } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
+import { BarChart3, TrendingUp, PieChart as PieIcon } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Card, Skeleton } from '@/components/ui';
+import { aiApi } from '@/services/proposal.service';
+
+const COLORS = ['#2E7D32', '#66BB6A', '#C8E6C9', '#81C784', '#A5D6A7', '#E8F5E9'];
+
+export default function AnalyticsPage() {
+  const { data: stats, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: aiApi.getDashboard });
+  if (isLoading) return <AppLayout><div className="space-y-6">{[1,2,3].map(i => <Card key={i} hover={false}><Skeleton className="h-64 w-full" /></Card>)}</div></AppLayout>;
+  const history = stats?.scoreHistory?.map((s, i) => ({
+    name: `#${i + 1}`, overall: s.overallScore, innovation: s.innovationScore,
+    market: s.marketScore, financial: s.financialScore, sustainability: s.sustainabilityScore,
+  })) || [];
+  const catData = stats?.categoryStats?.map(c => ({ name: c.recommendation, value: c._count, avg: Math.round(c._avg.overallScore || 0) })) || [];
+  const scoreDistribution = [
+    { range: '0-20', count: stats?.scoreHistory?.filter(s => s.overallScore <= 20).length || 0 },
+    { range: '21-40', count: stats?.scoreHistory?.filter(s => s.overallScore > 20 && s.overallScore <= 40).length || 0 },
+    { range: '41-60', count: stats?.scoreHistory?.filter(s => s.overallScore > 40 && s.overallScore <= 60).length || 0 },
+    { range: '61-80', count: stats?.scoreHistory?.filter(s => s.overallScore > 60 && s.overallScore <= 80).length || 0 },
+    { range: '81-100', count: stats?.scoreHistory?.filter(s => s.overallScore > 80).length || 0 },
+  ];
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <h1 className="text-2xl font-bold text-text">Analytics</h1>
+          <p className="text-sm text-text-muted mt-1">Track evaluation performance and trends</p>
+        </motion.div>
+        <div className="grid md:grid-cols-3 gap-5">
+          {[{ icon: BarChart3, label: 'Total Evaluated', val: stats?.evaluatedProposals || 0 },
+            { icon: TrendingUp, label: 'Avg Score', val: stats?.averageScore || 0 },
+            { icon: PieIcon, label: 'Categories', val: catData.length }].map((s, i) => (
+            <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
+              <Card><div className="flex items-center gap-4"><div className="w-11 h-11 rounded-xl bg-accent/40 flex items-center justify-center"><s.icon className="w-5 h-5 text-primary" /></div><div><p className="text-xs text-text-muted">{s.label}</p><p className="text-2xl font-bold">{s.val}</p></div></div></Card>
+            </motion.div>
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6">
+          <Card hover={false}>
+            <h3 className="text-base font-semibold mb-4">Score Trends</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={history}>
+                <defs>
+                  <linearGradient id="aOverall" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} /><stop offset="100%" stopColor="#2E7D32" stopOpacity={0} /></linearGradient>
+                  <linearGradient id="aInnovation" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#66BB6A" stopOpacity={0.15} /><stop offset="100%" stopColor="#66BB6A" stopOpacity={0} /></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis dataKey="name" fontSize={11} stroke="#94A3B8" />
+                <YAxis domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
+                <Tooltip contentStyle={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(12px)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.4)' }} />
+                <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2} fill="url(#aOverall)" />
+                <Area type="monotone" dataKey="innovation" stroke="#66BB6A" strokeWidth={1.5} fill="url(#aInnovation)" />
+                <Legend />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card hover={false}>
+            <h3 className="text-base font-semibold mb-4">Recommendation Distribution</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={catData.length > 0 ? catData : [{ name: 'No data', value: 1 }]} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine={false}>
+                  {(catData.length > 0 ? catData : [{ name: 'No data' }]).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+        <Card hover={false}>
+          <h3 className="text-base font-semibold mb-4">Score Distribution</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={scoreDistribution}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <XAxis dataKey="range" fontSize={11} stroke="#94A3B8" />
+              <YAxis fontSize={11} stroke="#94A3B8" />
+              <Tooltip />
+              <Bar dataKey="count" fill="#2E7D32" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+    </AppLayout>
+  );
+}

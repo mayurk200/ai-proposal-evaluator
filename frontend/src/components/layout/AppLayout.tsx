@@ -1,0 +1,146 @@
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  LayoutDashboard, Upload, FileText, GitCompare,
+  BarChart3, Settings, LogOut, Leaf, Menu, X, ChevronRight
+} from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
+
+
+
+const navItems = [
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: Upload, label: 'Upload Proposal', path: '/upload' },
+  { icon: FileText, label: 'Proposals', path: '/proposals' },
+  { icon: GitCompare, label: 'Compare', path: '/compare' },
+  { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+  { icon: Settings, label: 'Settings', path: '/settings' },
+];
+
+export function Sidebar() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuthStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 76 : 260 }}
+      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+      className="h-screen sticky top-0 flex flex-col bg-white/70 backdrop-blur-xl border-r border-border"
+    >
+      {/* Logo */}
+      <Link to="/" className="flex items-center gap-3 px-5 py-5 border-b border-border/50 hover:bg-accent/10 transition-colors">
+        <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0">
+          <Leaf className="w-5 h-5 text-white" />
+        </div>
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              className="overflow-hidden"
+            >
+              <h1 className="text-lg font-bold text-gradient whitespace-nowrap">AgriEval</h1>
+              <p className="text-[10px] text-text-muted whitespace-nowrap">AI Proposal Platform</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Link>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Link key={item.path} to={item.path}>
+              <motion.div
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.98 }}
+                className={`sidebar-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-3' : ''}`}
+              >
+                <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
+                <AnimatePresence>
+                  {!collapsed && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="whitespace-nowrap"
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+                {isActive && !collapsed && (
+                  <ChevronRight className="w-4 h-4 ml-auto text-primary" />
+                )}
+              </motion.div>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* User & Collapse */}
+      <div className="px-3 py-4 border-t border-border/50 space-y-2">
+        {!collapsed && user && (
+          <div className="px-3 py-2">
+            <p className="text-sm font-medium text-text truncate">{user.name}</p>
+            <p className="text-xs text-text-muted truncate">{user.email}</p>
+          </div>
+        )}
+
+        {isAuthenticated ? (
+          <button
+            onClick={handleLogout}
+            className={`sidebar-link w-full text-red-500 hover:bg-red-50 hover:text-red-600 ${collapsed ? 'justify-center px-3' : ''}`}
+          >
+            <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            className={`sidebar-link w-full text-primary hover:bg-accent/10 ${collapsed ? 'justify-center px-3' : ''}`}
+          >
+            <LogOut className="w-[18px] h-[18px] flex-shrink-0 rotate-180" />
+            {!collapsed && <span>Login / Sign up</span>}
+          </Link>
+        )}
+
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={`sidebar-link w-full ${collapsed ? 'justify-center px-3' : ''}`}
+        >
+          {collapsed ? <Menu className="w-[18px] h-[18px]" /> : (
+            <>
+              <X className="w-[18px] h-[18px]" />
+              <span>Collapse</span>
+            </>
+          )}
+        </button>
+      </div>
+    </motion.aside>
+  );
+}
+
+export function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <main className="flex-1 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
