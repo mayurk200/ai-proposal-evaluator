@@ -43,6 +43,11 @@ export const proposalApi = {
     const res = await api.post<ApiResponse<{ message: string }>>(`/proposals/${id}/claim`);
     return res.data.data;
   },
+
+  reject: async (id: string) => {
+    const res = await api.patch<ApiResponse<{ message: string }>>(`/proposals/${id}/reject`);
+    return res.data.data;
+  },
 };
 
 export const aiApi = {

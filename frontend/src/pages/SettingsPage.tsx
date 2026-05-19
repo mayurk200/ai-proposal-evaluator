@@ -42,7 +42,7 @@ export default function SettingsPage() {
         <Card hover={false}>
           <div className="flex items-center gap-3 mb-4"><Shield className="w-5 h-5 text-primary" /><h3 className="text-base font-semibold">API Configuration</h3></div>
           <p className="text-sm text-text-muted mb-3">Groq API key is configured server-side for security.</p>
-          <div className="p-3 rounded-xl bg-accent-light/50 text-xs text-text-secondary">Model: llama-3.3-70b-versatile • 7 AI Agents Active</div>
+          <div className="p-3 rounded-xl bg-accent-light/50 text-xs text-text-secondary">Model: llama-3.1-8b-instant • 7 AI Agents Active</div>
         </Card>
       </div>
     </AppLayout>

@@ -15,7 +15,7 @@ export interface AuthResponse {
 }
 
 // ===== Proposal Types =====
-export type ProposalStatus = 'UPLOADED' | 'EXTRACTING' | 'EVALUATING' | 'EVALUATED' | 'FAILED';
+export type ProposalStatus = 'UPLOADED' | 'EXTRACTING' | 'EVALUATING' | 'EVALUATED' | 'FAILED' | 'REJECTED';
 
 export interface Proposal {
   id: string;

@@ -169,6 +169,22 @@ export class ProposalService {
 
     return { message: 'Proposal deleted successfully' };
   }
+
+  async reject(id: string, userId: string | null) {
+    const doc = await collections.proposals.doc(id).get();
+    
+    if (!doc.exists) {
+      throw new AppError('Proposal not found', 404);
+    }
+
+    const data = doc.data();
+    if (data?.userId && data.userId !== userId) {
+      throw new AppError('Access denied', 403);
+    }
+
+    await collections.proposals.doc(id).update({ status: 'REJECTED' });
+    return { message: 'Proposal rejected successfully' };
+  }
 }
 
 export const proposalService = new ProposalService();

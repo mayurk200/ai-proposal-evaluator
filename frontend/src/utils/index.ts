@@ -40,6 +40,7 @@ export function getStatusColor(status: string): string {
     case 'EXTRACTING': return 'bg-yellow-100 text-yellow-800';
     case 'UPLOADED': return 'bg-gray-100 text-gray-800';
     case 'FAILED': return 'bg-red-100 text-red-800';
+    case 'REJECTED': return 'bg-gray-200 text-gray-900 border border-gray-400';
     default: return 'bg-gray-100 text-gray-800';
   }
 }

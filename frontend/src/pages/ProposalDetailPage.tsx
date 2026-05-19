@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shield, Sprout, Lightbulb, DollarSign, Target, Bookmark } from 'lucide-react';
+import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shield, Sprout, Lightbulb, DollarSign, Target, Bookmark, XCircle } from 'lucide-react';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Badge, ScoreBadge, Progress, Skeleton } from '@/components/ui';
@@ -19,6 +19,10 @@ export default function ProposalDetailPage() {
   });
   const evalMut = useMutation({
     mutationFn: () => aiApi.evaluate(id!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
+  });
+  const rejectMut = useMutation({
+    mutationFn: () => proposalApi.reject(id!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
   });
   if (isLoading) return <AppLayout><div className="space-y-6">{[1,2,3].map(i => <Card key={i} hover={false}><Skeleton className="h-32 w-full" /></Card>)}</div></AppLayout>;
@@ -56,18 +60,26 @@ export default function ProposalDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {isAuthenticated && proposal.status !== 'REJECTED' && (
+              <Button variant="secondary" className="!bg-red-50 !text-red-600 hover:!bg-red-100 !border-red-200" onClick={() => rejectMut.mutate()} loading={rejectMut.isPending}>
+                <XCircle className="w-4 h-4 mr-2" /> Reject Proposal
+              </Button>
+            )}
             {!isAuthenticated && (
-              <Button variant="outline" onClick={() => navigate(`/login?claimId=${id}`)}>
+              <Button variant="secondary" onClick={() => navigate(`/login?claimId=${id}`)}>
                 <Bookmark className="w-4 h-4 mr-2" /> Save to Dashboard
               </Button>
             )}
-            {!ev && proposal.status !== 'EVALUATING' && proposal.status !== 'EXTRACTING' && (
+            {!ev && proposal.status !== 'EVALUATING' && proposal.status !== 'EXTRACTING' && proposal.status !== 'REJECTED' && (
               <Button onClick={() => evalMut.mutate()} loading={evalMut.isPending}>
                 <Brain className="w-4 h-4 mr-2" /> Run AI Evaluation
               </Button>
             )}
             {(proposal.status === 'EVALUATING' || proposal.status === 'EXTRACTING') && (
               <Badge variant="info"><Loader2 className="w-3 h-3 animate-spin mr-1" /> Processing...</Badge>
+            )}
+            {proposal.status === 'REJECTED' && (
+              <Badge className="bg-gray-200 text-gray-900"><XCircle className="w-3 h-3 mr-1" /> Rejected</Badge>
             )}
           </div>
         </motion.div>

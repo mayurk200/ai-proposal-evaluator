@@ -125,6 +125,15 @@ export class ProposalController {
       next(error);
     }
   }
+
+  async reject(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await proposalService.reject(req.params.id as string, req.userId || null);
+      res.json({ status: 'success', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const proposalController = new ProposalController();
