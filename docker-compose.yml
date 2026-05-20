@@ -29,11 +29,34 @@ services:
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - PYTHON_SERVICE_URL=http://python-service:8000
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/firebase-service-account.json:/app/firebase-service-account.json:ro
     depends_on:
       - minio
+    restart: unless-stopped
+    networks:
+      - agrieval-network
+
+  # Python AI Processing Service
+  python-service:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    container_name: agrieval-python-service
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - PORT=8000
+      - LLM_PROVIDER=groq
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_MODEL=llama-3.3-70b-versatile
+      - OCR_ENABLED=true
+      - MAX_FILE_SIZE_MB=50
+    volumes:
+      - ./backend/uploads:/app/uploads:ro
     restart: unless-stopped
     networks:
       - agrieval-network

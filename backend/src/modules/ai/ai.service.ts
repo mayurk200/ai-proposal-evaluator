@@ -5,6 +5,12 @@ import { extractTextFromFile } from '../../utils/textExtractor';
 import { AppError } from '../../middleware/errorHandler';
 import { COMPARISON_PROMPT } from './prompts';
 import { BaseAgent } from './agents/baseAgent';
+import {
+  evaluateWithPythonService,
+  mapPythonResponseToLegacy,
+  checkPythonServiceHealth,
+} from '../../utils/pythonProxy';
+import fs from 'fs';
 
 export class AIService {
   async evaluateProposal(proposalId: string) {
@@ -20,6 +26,60 @@ export class AIService {
     await collections.proposals.doc(proposalId).update({ status: 'EXTRACTING' });
 
     try {
+      // Try Python service first (supports OCR, chunking, multi-agent)
+      const pythonAvailable = await checkPythonServiceHealth();
+
+      if (pythonAvailable && proposal.filePath && fs.existsSync(proposal.filePath)) {
+        try {
+          console.log(`[AI] Using Python service for proposal: ${proposalId}`);
+          await collections.proposals.doc(proposalId).update({ status: 'EVALUATING' });
+
+          const fileBuffer = fs.readFileSync(proposal.filePath);
+          const pythonResponse = await evaluateWithPythonService(
+            fileBuffer,
+            proposal.fileName || 'document.pdf',
+            proposal.fileType || 'application/pdf',
+          );
+
+          const mapped = mapPythonResponseToLegacy(pythonResponse);
+
+          // Save evaluation to Firestore
+          const evalId = uuidv4();
+          const evaluation = {
+            id: evalId,
+            proposalId,
+            overallScore: mapped.finalScore.overall_score || 0,
+            innovationScore: mapped.finalScore.innovation_score || 0,
+            marketScore: mapped.finalScore.market_score || 0,
+            financialScore: mapped.finalScore.financial_score || 0,
+            sustainabilityScore: mapped.finalScore.sustainability_score || 0,
+            scalabilityScore: mapped.finalScore.scalability_score || 0,
+            agricultureScore: mapped.finalScore.agriculture_score || 0,
+            riskScore: mapped.finalScore.risk_score || 0,
+            recommendation: mapped.finalScore.recommendation || 'Under Review',
+            summary: mapped.finalScore.summary || '',
+            strengths: mapped.finalScore.strengths || [],
+            weaknesses: mapped.finalScore.weaknesses || [],
+            swotAnalysis: mapped.finalScore.swot_analysis || {
+              strengths: [], weaknesses: [], opportunities: [], threats: [],
+            },
+            agentResults: mapped.agentResults,
+            rawResponse: mapped.finalScore,
+            documentMetadata: pythonResponse.document_metadata,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          await collections.evaluations.doc(evalId).set(evaluation);
+          await collections.proposals.doc(proposalId).update({ status: 'EVALUATED' });
+
+          return evaluation;
+        } catch (pythonError: any) {
+          console.warn(`[AI] Python service failed, falling back to Node.js: ${pythonError.message}`);
+        }
+      }
+
+      // Fallback: Original Node.js pipeline
       // Extract text if not done
       let text = proposal.extractedText;
       if (!text) {

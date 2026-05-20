@@ -80,7 +80,7 @@ class LocalCollection {
     return new LocalQuery(this, [{ field, op, value }]);
   }
 
-  async count() {
+  count() {
     const all = this.readAll();
     return {
       get: async () => ({
@@ -91,6 +91,20 @@ class LocalCollection {
 
   orderBy(field: string, direction: 'asc' | 'desc' = 'asc') {
     return new LocalQuery(this, [], { field, direction });
+  }
+
+  async get() {
+    const all = this.readAll();
+    const docs = Object.values(all);
+    return {
+      empty: docs.length === 0,
+      docs: docs.map((d: any) => ({
+        id: d._id || d.id,
+        data: () => d,
+        ref: { id: d._id || d.id },
+      })),
+      size: docs.length,
+    };
   }
 
   // Expose readAll for queries
@@ -142,7 +156,7 @@ class LocalQuery {
     return this;
   }
 
-  async count() {
+  count() {
     const docs = this.filterDocs();
     return {
       get: async () => ({

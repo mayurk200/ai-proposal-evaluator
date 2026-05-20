@@ -3,10 +3,15 @@ import { AuthRequest } from '../../middleware/auth';
 import { proposalService } from './proposal.service';
 import { extractTextFromBuffer } from '../../utils/textExtractor';
 import { aiOrchestrator } from '../ai/orchestrator';
+import {
+  evaluateWithPythonService,
+  mapPythonResponseToLegacy,
+  checkPythonServiceHealth,
+} from '../../utils/pythonProxy';
 
 export class ProposalController {
   /**
-   * Instant evaluate: file → extract text in memory → AI evaluation → return results.
+   * Instant evaluate: file → Python service (preferred) → fallback to Node.js.
    * No file saved to disk.
    */
   async evaluateFile(req: AuthRequest, res: Response, next: NextFunction) {
@@ -18,7 +23,54 @@ export class ProposalController {
 
       const title = req.body.title || req.file.originalname.replace(/\.[^/.]+$/, '');
 
-      // 1. Extract text from buffer (no disk write)
+      // Try Python service first (better processing: OCR, chunking, multi-agent)
+      const pythonAvailable = await checkPythonServiceHealth();
+
+      if (pythonAvailable) {
+        try {
+          console.log(`[Evaluate] Using Python service for: ${req.file.originalname}`);
+
+          const pythonResponse = await evaluateWithPythonService(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+          );
+
+          const mapped = mapPythonResponseToLegacy(pythonResponse);
+
+          const evaluation = {
+            title,
+            fileName: req.file.originalname,
+            fileSize: req.file.size,
+            overallScore: mapped.finalScore.overall_score || 0,
+            innovationScore: mapped.finalScore.innovation_score || 0,
+            marketScore: mapped.finalScore.market_score || 0,
+            financialScore: mapped.finalScore.financial_score || 0,
+            sustainabilityScore: mapped.finalScore.sustainability_score || 0,
+            scalabilityScore: mapped.finalScore.scalability_score || 0,
+            agricultureScore: mapped.finalScore.agriculture_score || 0,
+            riskScore: mapped.finalScore.risk_score || 0,
+            recommendation: mapped.finalScore.recommendation || 'Under Review',
+            summary: mapped.finalScore.summary || '',
+            strengths: mapped.finalScore.strengths || [],
+            weaknesses: mapped.finalScore.weaknesses || [],
+            swotAnalysis: mapped.finalScore.swot_analysis || {
+              strengths: [], weaknesses: [], opportunities: [], threats: [],
+            },
+            agentResults: mapped.agentResults,
+            documentMetadata: pythonResponse.document_metadata,
+          };
+
+          res.json({ status: 'success', data: evaluation });
+          return;
+        } catch (pythonError: any) {
+          console.warn(`[Evaluate] Python service failed, falling back to Node.js: ${pythonError.message}`);
+        }
+      } else {
+        console.log(`[Evaluate] Python service unavailable, using Node.js fallback`);
+      }
+
+      // Fallback: Original Node.js evaluation pipeline
       const text = await extractTextFromBuffer(req.file.buffer, req.file.mimetype);
 
       if (!text || text.trim().length < 50) {
@@ -29,10 +81,8 @@ export class ProposalController {
         return;
       }
 
-      // 2. Run AI evaluation directly on extracted text
       const result = await aiOrchestrator.evaluate('instant', text);
 
-      // 3. Build evaluation response
       const evaluation = {
         title,
         fileName: req.file.originalname,
