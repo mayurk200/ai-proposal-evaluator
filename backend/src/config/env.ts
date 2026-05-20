@@ -18,6 +18,9 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
   
+  // Python Service
+  PYTHON_SERVICE_URL: z.string().default('http://localhost:8000'),
+  
   // Storage Provider
   STORAGE_PROVIDER: z.enum(['local', 's3', 'minio', 'cloudinary']).default('local'),
   UPLOAD_DIR: z.string().default('uploads'),
