@@ -72,9 +72,7 @@ export class ProposalController {
       const proposal = await proposalService.create({
         title: req.body.title || req.file.originalname.replace(/\.[^/.]+$/, ''),
         fileName: req.file.originalname,
-        filePath: req.file.path,
-        fileSize: req.file.size,
-        fileType: req.file.mimetype,
+        file: req.file,
         userId: req.userId || null,
       });
 

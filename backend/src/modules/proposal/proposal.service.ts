@@ -2,22 +2,31 @@ import { v4 as uuidv4 } from 'uuid';
 import { collections } from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
 import { extractTextFromFile } from '../../utils/textExtractor';
+import { createStorageProvider } from '../../providers/storage/factory';
+
+const storageProvider = createStorageProvider();
 
 export class ProposalService {
   async create(data: {
     title: string;
     fileName: string;
-    filePath: string;
-    fileSize: number;
-    fileType: string;
+    file: Express.Multer.File;
     userId: string | null;
   }) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
+    // Upload file using storage provider
+    const filePath = await storageProvider.upload(data.file);
+
     const proposal = {
       id,
-      ...data,
+      title: data.title,
+      fileName: data.fileName,
+      filePath,
+      fileSize: data.file.size,
+      fileType: data.file.mimetype,
+      userId: data.userId,
       extractedText: null as string | null,
       status: 'UPLOADED',
       createdAt: now,
@@ -28,7 +37,7 @@ export class ProposalService {
 
     // Extract text in background
     try {
-      const text = await extractTextFromFile(data.filePath, data.fileType);
+      const text = await extractTextFromFile(filePath, data.file.mimetype);
       await collections.proposals.doc(id).update({ extractedText: text });
       proposal.extractedText = text;
     } catch (error) {
