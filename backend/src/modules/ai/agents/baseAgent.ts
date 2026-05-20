@@ -1,7 +1,5 @@
-import Groq from 'groq-sdk';
-import { env } from '../../../config/env';
-
-const groq = new Groq({ apiKey: env.GROQ_API_KEY });
+import { createLLMProvider } from '../../../providers/llm/factory';
+import { LLMProvider } from '../../../providers/llm/types';
 
 export interface AgentConfig {
   name: string;
@@ -19,9 +17,11 @@ const DEFAULT_CONFIG: AgentConfig = {
 
 export class BaseAgent {
   protected config: AgentConfig;
+  private llmProvider: LLMProvider;
 
   constructor(config: Partial<AgentConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.llmProvider = createLLMProvider();
   }
 
   private async sleep(ms: number): Promise<void> {
@@ -29,53 +29,27 @@ export class BaseAgent {
   }
 
   async execute(prompt: string, data: string): Promise<{ result: any; tokens: number; duration: number }> {
-    const startTime = Date.now();
     const maxRetries = 5;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const completion = await groq.chat.completions.create({
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert AI analyst. Always respond with valid JSON only. No markdown, no code blocks, just pure JSON.',
-            },
-            {
-              role: 'user',
-              content: prompt + data,
-            },
-          ],
+        return await this.llmProvider.chat(prompt, data, {
           model: this.config.model,
           temperature: this.config.temperature,
-          max_tokens: this.config.maxTokens,
-          response_format: { type: 'json_object' },
+          maxTokens: this.config.maxTokens,
         });
-
-        const duration = Date.now() - startTime;
-        const responseText = completion.choices[0]?.message?.content || '{}';
-        const tokens = completion.usage?.total_tokens || 0;
-
-        let result;
-        try {
-          result = JSON.parse(responseText);
-        } catch {
-          result = { error: 'Failed to parse AI response', raw: responseText };
-        }
-
-        return { result, tokens, duration };
       } catch (error: any) {
         const isRateLimit = error?.status === 429 || error?.statusCode === 429 ||
           error?.error?.type === 'tokens' || error?.message?.includes('rate_limit');
 
         if (isRateLimit && attempt < maxRetries) {
-          // Parse retry delay from error message, or use exponential backoff
           const retryMatch = error.message?.match(/try again in (\d+(?:\.\d+)?)(ms|s)/i);
           let delayMs: number;
           if (retryMatch) {
             delayMs = parseFloat(retryMatch[1]) * (retryMatch[2] === 's' ? 1000 : 1);
-            delayMs = Math.max(delayMs, 1000); // At least 1 second
+            delayMs = Math.max(delayMs, 1000);
           } else {
-            delayMs = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff, max 30s
+            delayMs = Math.min(1000 * Math.pow(2, attempt), 30000);
           }
 
           console.warn(
