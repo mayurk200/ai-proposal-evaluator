@@ -7,7 +7,7 @@ import time
 from typing import Any, Optional
 
 from app.models.schemas import AgentResult
-from app.services.llm_client import get_llm_client
+from app.services.llm.llm_client import get_llm_client
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)

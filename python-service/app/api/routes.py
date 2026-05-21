@@ -17,7 +17,7 @@ from app.models.schemas import (
     ProcessDocumentResponse,
     SupportedFormatsResponse,
 )
-from app.services.document_processor import process_document
+from app.services.processing.document_processor import process_document
 from app.agents.orchestrator import AgentOrchestrator
 from app.api.dependencies import verify_llm_connection
 from app.utils.logging import get_logger
