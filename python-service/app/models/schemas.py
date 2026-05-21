@@ -169,7 +169,7 @@ class EvaluateChunksRequest(BaseModel):
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = "ok"
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(tz=__import__("datetime").timezone.utc).isoformat())
     version: str = "1.0.0"
     environment: str = "development"
     services: dict[str, str] = Field(default_factory=dict)
