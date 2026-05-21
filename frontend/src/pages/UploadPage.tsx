@@ -50,9 +50,16 @@ export default function UploadPage() {
     accept: {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'application/msword': ['.doc'],
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+      'application/vnd.ms-powerpoint': ['.ppt'],
       'text/plain': ['.txt'],
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/tiff': ['.tiff'],
+      'image/bmp': ['.bmp'],
     },
-    maxSize: 10485760,
+    maxSize: 52428800,
     multiple: false,
   });
 
@@ -119,7 +126,7 @@ export default function UploadPage() {
                   </div>
                   <p className="text-base font-medium text-text">{isDragActive ? 'Drop file here' : 'Drag & drop your proposal'}</p>
                   <p className="text-sm text-text-muted mt-1">or click to browse</p>
-                  <p className="text-xs text-text-muted mt-3">Supports PDF, DOCX, TXT • Max 10MB</p>
+                  <p className="text-xs text-text-muted mt-3">Supports PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP • Max 50MB</p>
                 </motion.div>
               </div>
 
