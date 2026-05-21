@@ -7,7 +7,7 @@ while preserving key information for evaluation agents.
 from typing import Optional
 
 from app.models.schemas import DocumentChunk
-from app.services.llm_client import get_llm_client
+from app.services.llm.llm_client import get_llm_client
 from app.utils.logging import get_logger
 from app.utils.text_cleaning import estimate_token_count
 

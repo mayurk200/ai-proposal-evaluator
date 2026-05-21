@@ -13,15 +13,15 @@ import json
 import time
 from typing import Any, Optional
 
-from app.agents.extraction_agent import ExtractionAgent
-from app.agents.technical_agent import TechnicalAgent
-from app.agents.financial_agent import FinancialAgent
-from app.agents.risk_agent import RiskAgent
-from app.agents.innovation_agent import InnovationAgent
-from app.agents.feasibility_agent import FeasibilityAgent
-from app.agents.compliance_agent import ComplianceAgent
-from app.agents.sustainability_agent import SustainabilityAgent
-from app.agents.scoring_agent import ScoringAgent
+from app.agents.extraction import ExtractionAgent
+from app.agents.technical import TechnicalAgent
+from app.agents.financial import FinancialAgent
+from app.agents.risk import RiskAgent
+from app.agents.innovation import InnovationAgent
+from app.agents.feasibility import FeasibilityAgent
+from app.agents.compliance import ComplianceAgent
+from app.agents.sustainability import SustainabilityAgent
+from app.agents.scoring import ScoringAgent
 from app.models.schemas import (
     AgentResult,
     DocumentChunk,

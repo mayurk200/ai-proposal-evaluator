@@ -139,7 +139,7 @@ npm run dev
 
 1. Navigate to the **Upload** page (from the sidebar or nav)
 2. **Drag & drop** or click to upload a proposal document
-   - Supported formats: **PDF, DOCX, PPTX, TXT, PNG, JPG**
+   - Supported formats: **PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP**
    - Try the included test doc: `AI_Proposal_Scrutiny_Use_Case_Document.docx`
 3. Optionally enter a **title** for the proposal
 4. Click **"Evaluate"**

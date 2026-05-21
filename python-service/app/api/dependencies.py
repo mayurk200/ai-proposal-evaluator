@@ -2,7 +2,7 @@
 Dependency injection for FastAPI endpoints.
 """
 
-from app.services.llm_client import get_llm_client
+from app.services.llm.llm_client import get_llm_client
 
 
 def verify_llm_connection() -> bool:

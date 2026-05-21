@@ -41,6 +41,21 @@ export async function extractTextFromBuffer(buffer: Buffer, fileType: string): P
     }
     case 'text/plain':
       return buffer.toString('utf-8');
+    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    case 'application/vnd.ms-powerpoint':
+      // PPT/PPTX extraction is handled by the Python service.
+      // If we reach this fallback, throw a descriptive error.
+      throw new Error(
+        'PPT/PPTX text extraction requires the Python service. Please ensure the Python service is running.',
+      );
+    case 'image/png':
+    case 'image/jpeg':
+    case 'image/tiff':
+    case 'image/bmp':
+      // Image OCR is handled by the Python service.
+      throw new Error(
+        'Image text extraction (OCR) requires the Python service. Please ensure the Python service is running.',
+      );
     default:
       throw new Error(`Unsupported file type: ${fileType}`);
   }

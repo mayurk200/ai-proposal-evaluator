@@ -10,7 +10,7 @@ from typing import Optional
 from PIL import Image
 
 from app.models.schemas import ExtractedImage
-from app.services.ocr_engine import ocr_image
+from app.services.ocr.ocr_engine import ocr_image
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)

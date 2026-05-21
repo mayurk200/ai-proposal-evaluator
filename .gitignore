@@ -57,3 +57,7 @@ env/
 
 reference-only/
 others
+
+
+coverage/
+.coverage

@@ -8,13 +8,19 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.ms-powerpoint',
     'text/plain',
+    'image/png',
+    'image/jpeg',
+    'image/tiff',
+    'image/bmp',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF, DOCX, DOC, and TXT files are allowed.'));
+    cb(new Error('Invalid file type. Supported: PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP.'));
   }
 };
 

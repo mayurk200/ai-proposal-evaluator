@@ -11,12 +11,12 @@ from app.models.schemas import (
     DocumentMetadata,
     ProcessedDocument,
 )
-from app.services.text_extractor import extract_text
-from app.services.ocr_engine import is_scanned_pdf, ocr_image, ocr_pdf_page
-from app.services.image_extractor import extract_images_from_file
-from app.services.table_extractor import extract_tables_from_file
-from app.services.chunker import chunk_document
-from app.services.summarizer import create_executive_summary
+from app.services.extraction.text_extractor import extract_text
+from app.services.ocr.ocr_engine import is_scanned_pdf, ocr_image, ocr_pdf_page
+from app.services.extraction.image_extractor import extract_images_from_file
+from app.services.extraction.table_extractor import extract_tables_from_file
+from app.services.processing.chunker import chunk_document
+from app.services.processing.summarizer import create_executive_summary
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)

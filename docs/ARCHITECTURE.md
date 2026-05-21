@@ -44,9 +44,9 @@ User clicks "Evaluate" on frontend
 │ 2. Node.js Backend receives the request                      │
 │                                                              │
 │    a. Multer middleware validates file type & size            │
-│       Currently allows: PDF, DOCX, DOC, TXT only             │
-│       ⚠️  PPT, PPTX, images are BLOCKED here                │
-│       Max size: 10MB                                         │
+│       Allows: PDF, DOCX, DOC, PPTX, PPT, TXT,               │
+│       PNG, JPG, TIFF, BMP                                    │
+│       Max size: 50MB                                         │
 │                                                              │
 │    b. ProposalController.evaluateFile() runs                 │
 └──────────────────────────────────────────────────────────────┘
@@ -165,35 +165,20 @@ The Node.js pipeline is simpler:
 
 ---
 
-## Current Known Issues
+## Known Considerations
 
-### 1. Multer File Filter is Too Restrictive
-
-**File:** `backend/src/modules/proposal/proposal.routes.ts` (lines 13-25)
-
-The multer middleware only allows 4 MIME types:
-```
-application/pdf
-application/vnd.openxmlformats-officedocument.wordprocessingml.document
-application/msword
-text/plain
-```
-
-This **blocks** PPT, PPTX, PNG, JPG, TIFF — formats the Python service fully supports.
-It also blocks files where `curl` or the browser sends `application/octet-stream` as MIME type.
-
-### 2. Groq Rate Limiting
+### 1. Groq Rate Limiting
 
 **File:** `python-service/app/agents/orchestrator.py`
 
 The free Groq tier has strict rate limits. Running 9 agents + summary = ~10-11 LLM calls in sequence.
-With only a 3-second gap between agents, the rate limiter kicks in and agents fail with `RateLimitError`.
+With only a 3-second gap between agents, the rate limiter may trigger `RateLimitError`.
 
-Each agent has retry logic (3 attempts with exponential backoff), but if the rate limit window hasn't reset, all retries also fail.
+Each agent has retry logic (3 attempts with exponential backoff) to handle transient rate limit errors.
 
-### 3. Firebase Service Account
+### 2. Firebase Service Account
 
-The backend tries to connect to Firebase Firestore but falls back to a local JSON file store when credentials are missing. The local store now works correctly for all operations (CRUD, count, pagination).
+The backend tries to connect to Firebase Firestore but falls back to a local JSON file store when credentials are missing. The local store works correctly for all operations (CRUD, count, pagination, queries).
 
 ---
 
@@ -240,34 +225,32 @@ ai-proposal-evaluator/
 │   │   ├── main.py                    # FastAPI entry point
 │   │   ├── config.py                  # Pydantic settings
 │   │   ├── api/
-│   │   │   └── routes.py             # REST endpoints
+│   │   │   ├── routes.py              # REST endpoints
+│   │   │   └── dependencies.py        # LLM connection check
 │   │   ├── services/
-│   │   │   ├── document_processor.py  # Full pipeline orchestrator
-│   │   │   ├── text_extractor.py      # PDF/DOCX/PPTX/TXT extraction
-│   │   │   ├── ocr_engine.py          # Tesseract + EasyOCR
-│   │   │   ├── image_extractor.py     # Image extraction from docs
-│   │   │   ├── table_extractor.py     # Table detection
-│   │   │   ├── chunker.py            # Section-aware chunking
-│   │   │   ├── summarizer.py         # LLM-powered summaries
-│   │   │   └── llm_client.py         # Groq client with retries
+│   │   │   ├── extraction/            # Text, image, table extractors
+│   │   │   ├── ocr/                   # Tesseract + EasyOCR engine
+│   │   │   ├── processing/            # Chunker, summarizer, doc processor
+│   │   │   └── llm/                   # Groq client with retries
 │   │   ├── agents/
 │   │   │   ├── base_agent.py          # Base class (retry, JSON parsing)
-│   │   │   ├── extraction_agent.py
-│   │   │   ├── technical_agent.py
-│   │   │   ├── financial_agent.py
-│   │   │   ├── risk_agent.py
-│   │   │   ├── innovation_agent.py
-│   │   │   ├── feasibility_agent.py
-│   │   │   ├── compliance_agent.py
-│   │   │   ├── sustainability_agent.py
-│   │   │   ├── scoring_agent.py
-│   │   │   └── orchestrator.py        # 9-agent sequential pipeline
+│   │   │   ├── orchestrator.py        # 9-agent sequential pipeline
+│   │   │   ├── extraction/            # Extraction agent
+│   │   │   ├── technical/             # Technical agent
+│   │   │   ├── financial/             # Financial agent
+│   │   │   ├── risk/                  # Risk agent
+│   │   │   ├── innovation/            # Innovation agent
+│   │   │   ├── feasibility/           # Feasibility agent
+│   │   │   ├── compliance/            # Compliance agent
+│   │   │   ├── sustainability/        # Sustainability agent
+│   │   │   └── scoring/               # Final scoring agent
 │   │   ├── models/
 │   │   │   ├── enums.py
-│   │   │   └── schemas.py            # Pydantic request/response models
+│   │   │   └── schemas.py             # Pydantic request/response models
 │   │   └── utils/
 │   │       ├── text_cleaning.py
 │   │       └── logging.py
+│   ├── tests/                         # 259 tests (pytest)
 │   ├── .env
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -353,11 +336,11 @@ sequenceDiagram
 
 ---
 
-## What Needs Fixing Next
+## Future Improvements
 
-| Priority | Issue | Impact |
-|----------|-------|--------|
-| 🔴 High | Multer MIME filter blocks PPT/images | Users can't upload supported formats |
-| 🔴 High | Groq rate limits cause agent failures | Evaluation scores come back as 0 |
-| 🟡 Medium | Agent delay too short (3s) | Rate limits hit on free tier |
-| 🟢 Low | Firebase credentials missing | Using local JSON (works fine for dev) |
+| Priority | Improvement | Impact |
+|----------|-------------|--------|
+| 🟡 Medium | Increase agent delay or add queuing | Better rate limit handling on free Groq tier |
+| 🟡 Medium | Add RAG with vector database | Improved context retrieval for large docs |
+| 🟢 Low | Multi-language proposal support | Broader user base |
+| 🟢 Low | BullMQ + Redis job queue | Async evaluation for large documents |
