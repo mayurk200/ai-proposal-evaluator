@@ -4,9 +4,9 @@
 
 | Service | Framework | Tests | Coverage |
 |---|---|---|---|
-| Python AI Service | pytest + pytest-cov | 259 | 83% |
+| Python AI Service | pytest + pytest-cov | 271 | 92% |
 | Node.js Backend | Vitest | 49 | — |
-| **Total** | | **308** | |
+| **Total** | | **320** | |
 
 ---
 
@@ -16,7 +16,7 @@
 
 ```bash
 cd python-service
-source venv/bin/activate
+source venv/bin/activate  # Windows: .\venv\Scripts\activate
 
 # Run all tests
 pytest tests/
@@ -46,7 +46,10 @@ pytest tests/ -k "test_routes_pptx"
 | `test_api_routes.py` | `api/routes.py` | 10 | 82% |
 | `test_text_extractor.py` | `services/extraction/text_extractor.py` | 15 | 95% |
 | `test_ocr_engine.py` | `services/ocr/ocr_engine.py` | 17 | 87% |
-| `test_extractors.py` | `extraction/image_extractor.py` + `table_extractor.py` | 12 | 47%/32% |
+| `test_extractors.py` | `extraction/image_extractor.py` + `table_extractor.py` | 12 | — |
+| `test_image_extractor.py` | `extraction/image_extractor.py` | 4 | 87% |
+| `test_table_extractor.py` | `extraction/table_extractor.py` | 5 | 89% |
+| `test_http_client.py` | `utils/http_client.py` | 3 | 100% |
 | `test_document_processor.py` | `processing/document_processor.py` | 6 | 91% |
 | `test_format_support.py` | All format routing (PPT/PPTX/images) | 16 | — |
 
@@ -59,11 +62,7 @@ pytest tests/ -k "test_routes_pptx"
 
 ### What's Not Covered
 
-| Module | Coverage | Why |
-|---|---|---|
-| `image_extractor.py` (DOCX/PPTX paths) | 47% | Requires real Office files with embedded images |
-| `table_extractor.py` (DOCX/PPTX paths) | 32% | Requires real Office files with tables |
-| `http_client.py` | 0% | Unused utility module |
+Most modules are now well-covered (>85%). Edge cases in extraction (corrupted files, malformed tables) and untested external network boundaries may still lack full coverage.
 
 ---
 
