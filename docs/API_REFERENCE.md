@@ -9,7 +9,7 @@ Base URL: `http://localhost:8000/api/v1`
 | `GET` | `/health` | Service health check (LLM, Tesseract status) |
 | `GET` | `/supported-formats` | List supported file formats and max size |
 | `POST` | `/process-document` | Upload & process a document (extraction + chunking) |
-| `POST` | `/evaluate` | Full evaluation pipeline (process + 9 agents) |
+| `POST` | `/evaluate` | Full evaluation pipeline (process + 7 agents) |
 | `POST` | `/evaluate-chunks` | Evaluate pre-processed chunks (no file upload) |
 
 ### POST /evaluate
@@ -36,13 +36,13 @@ Base URL: `http://localhost:8000/api/v1`
   },
   "evaluation": {
     "overall_score": 72,
-    "innovation_score": 80,
+    "problem_relevance_score": 80,
     "technical_score": 75,
     "financial_score": 55,
-    "risk_score": 45,
-    "feasibility_score": 68,
-    "compliance_score": 62,
-    "sustainability_score": 50,
+    "team_capability_score": 45,
+    "pilot_design_score": 68,
+    "market_potential_score": 62,
+    "financial_sustainability_score": 50,
     "recommendation": "Conditionally Recommended",
     "summary": "...",
     "strengths": ["..."],
@@ -98,7 +98,7 @@ Base URL: `http://localhost:3001/api`
 
 ## Scoring Weights
 
-The Python 9-agent pipeline uses the following weights for the final score:
+The Python 7-agent pipeline uses the following weights for the final score:
 
 | Agent | Weight |
 |---|---|

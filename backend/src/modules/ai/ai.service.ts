@@ -49,13 +49,13 @@ export class AIService {
             id: evalId,
             proposalId,
             overallScore: mapped.finalScore.overall_score || 0,
-            innovationScore: mapped.finalScore.innovation_score || 0,
-            marketScore: mapped.finalScore.market_score || 0,
-            financialScore: mapped.finalScore.financial_score || 0,
-            sustainabilityScore: mapped.finalScore.sustainability_score || 0,
-            scalabilityScore: mapped.finalScore.scalability_score || 0,
-            agricultureScore: mapped.finalScore.agriculture_score || 0,
-            riskScore: mapped.finalScore.risk_score || 0,
+            problemRelevanceScore: mapped.finalScore.problem_relevance_score || 0,
+            technicalSoundnessScore: mapped.finalScore.technical_soundness_score || 0,
+            pilotDesignScore: mapped.finalScore.pilot_design_score || 0,
+            teamCapabilityScore: mapped.finalScore.team_capability_score || 0,
+            marketPotentialScore: mapped.finalScore.market_potential_score || 0,
+            financialSustainabilityScore: mapped.finalScore.financial_sustainability_score || 0,
+            strategicImpactScore: mapped.finalScore.strategic_impact_score || 0,
             recommendation: mapped.finalScore.recommendation || 'Under Review',
             summary: mapped.finalScore.summary || '',
             strengths: mapped.finalScore.strengths || [],
@@ -92,8 +92,14 @@ export class AIService {
         await collections.proposals.doc(proposalId).update({ status: 'EVALUATING' });
       }
 
+      // Truncate to avoid Groq TPM limits in the fallback pipeline
+      const MAX_CHARS = 10000; // ~2500 tokens
+      const truncatedText = text.length > MAX_CHARS 
+        ? text.substring(0, MAX_CHARS) + '\n...[Text truncated to fit AI limits]'
+        : text;
+
       // Run AI orchestration
-      const result = await aiOrchestrator.evaluate(proposalId, text);
+      const result = await aiOrchestrator.evaluate(proposalId, truncatedText);
 
       // Save evaluation to Firestore
       const evalId = uuidv4();
@@ -101,13 +107,13 @@ export class AIService {
         id: evalId,
         proposalId,
         overallScore: result.finalScore.overall_score || 0,
-        innovationScore: result.finalScore.innovation_score || 0,
-        marketScore: result.finalScore.market_score || 0,
-        financialScore: result.finalScore.financial_score || 0,
-        sustainabilityScore: result.finalScore.sustainability_score || 0,
-        scalabilityScore: result.finalScore.scalability_score || 0,
-        agricultureScore: result.finalScore.agriculture_score || 0,
-        riskScore: result.finalScore.risk_score || 0,
+        problemRelevanceScore: result.finalScore.problem_relevance_score || 0,
+        technicalSoundnessScore: result.finalScore.technical_soundness_score || 0,
+        pilotDesignScore: result.finalScore.pilot_design_score || 0,
+        teamCapabilityScore: result.finalScore.team_capability_score || 0,
+        marketPotentialScore: result.finalScore.market_potential_score || 0,
+        financialSustainabilityScore: result.finalScore.financial_sustainability_score || 0,
+        strategicImpactScore: result.finalScore.strategic_impact_score || 0,
         recommendation: result.finalScore.recommendation || 'Under Review',
         summary: result.finalScore.summary || '',
         strengths: result.finalScore.strengths || [],
@@ -305,11 +311,13 @@ export class AIService {
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .map((e) => ({
         overallScore: e.overallScore,
-        innovationScore: e.innovationScore,
-        marketScore: e.marketScore,
-        financialScore: e.financialScore,
-        sustainabilityScore: e.sustainabilityScore,
-        riskScore: e.riskScore,
+        problemRelevanceScore: e.problemRelevanceScore || 0,
+        technicalSoundnessScore: e.technicalSoundnessScore || 0,
+        pilotDesignScore: e.pilotDesignScore || 0,
+        teamCapabilityScore: e.teamCapabilityScore || 0,
+        marketPotentialScore: e.marketPotentialScore || 0,
+        financialSustainabilityScore: e.financialSustainabilityScore || 0,
+        strategicImpactScore: e.strategicImpactScore || 0,
         createdAt: e.createdAt,
       }));
 

@@ -22,16 +22,13 @@ interface PythonEvaluationResponse {
   };
   evaluation: {
     overall_score: number;
-    innovation_score: number;
-    market_score: number;
-    agriculture_score: number;
-    financial_score: number;
-    scalability_score: number;
-    sustainability_score: number;
-    risk_score: number;
-    technical_score: number;
-    feasibility_score: number;
-    compliance_score: number;
+    problem_relevance_score: number;
+    technical_soundness_score: number;
+    pilot_design_score: number;
+    team_capability_score: number;
+    market_potential_score: number;
+    financial_sustainability_score: number;
+    strategic_impact_score: number;
     recommendation: string;
     summary: string;
     strengths: string[];
@@ -105,13 +102,13 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
   return {
     finalScore: {
       overall_score: evaluation.overall_score,
-      innovation_score: evaluation.innovation_score,
-      market_score: evaluation.market_score,
-      agriculture_score: evaluation.agriculture_score,
-      financial_score: evaluation.financial_score,
-      scalability_score: evaluation.scalability_score,
-      sustainability_score: evaluation.sustainability_score,
-      risk_score: evaluation.risk_score,
+      problem_relevance_score: evaluation.problem_relevance_score,
+      technical_soundness_score: evaluation.technical_soundness_score,
+      pilot_design_score: evaluation.pilot_design_score,
+      team_capability_score: evaluation.team_capability_score,
+      market_potential_score: evaluation.market_potential_score,
+      financial_sustainability_score: evaluation.financial_sustainability_score,
+      strategic_impact_score: evaluation.strategic_impact_score,
       recommendation: evaluation.recommendation,
       summary: evaluation.summary,
       strengths: evaluation.strengths,

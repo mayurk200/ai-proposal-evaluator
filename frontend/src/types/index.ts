@@ -45,13 +45,13 @@ export interface Evaluation {
   id: string;
   proposalId: string;
   overallScore: number;
-  innovationScore: number;
-  marketScore: number;
-  financialScore: number;
-  sustainabilityScore: number;
-  scalabilityScore: number;
-  agricultureScore: number;
-  riskScore: number;
+  problemRelevanceScore: number;
+  technicalSoundnessScore: number;
+  pilotDesignScore: number;
+  teamCapabilityScore: number;
+  marketPotentialScore: number;
+  financialSustainabilityScore: number;
+  strategicImpactScore: number;
   recommendation: string;
   summary: string;
   strengths: string[];
@@ -101,11 +101,13 @@ export interface DashboardStats {
   categoryStats: { recommendation: string; _count: number; _avg: { overallScore: number } }[];
   scoreHistory: {
     overallScore: number;
-    innovationScore: number;
-    marketScore: number;
-    financialScore: number;
-    sustainabilityScore: number;
-    riskScore: number;
+    problemRelevanceScore: number;
+    technicalSoundnessScore: number;
+    pilotDesignScore: number;
+    teamCapabilityScore: number;
+    marketPotentialScore: number;
+    financialSustainabilityScore: number;
+    strategicImpactScore: number;
     createdAt: string;
   }[];
 }

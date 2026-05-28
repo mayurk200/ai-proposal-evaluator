@@ -224,27 +224,32 @@ export const FINAL_SCORING_PROMPT = `You are a senior agriculture venture capita
 Based on the following agent analyses, provide a final comprehensive evaluation.
 
 Scoring weights:
-- Innovation: 20%
-- Market Potential: 20%
-- Agriculture Impact: 20%
-- Financial Viability: 15%
-- Scalability: 10%
-- Sustainability: 10%
-- Risk (inverted): 5%
+- Problem Relevance: 20%
+- Technical Soundness: 20%
+- Pilot Design: 15%
+- Team Capability: 15%
+- Market Potential: 10%
+- Financial Sustainability: 10%
+- Strategic Impact: 10%
 
-Generate a final comprehensive report.
+CRITICAL RULES:
+- Weight red flags HEAVILY.
+- If the project is not absolutely perfect and highly outstanding across all parameters, you MUST reject it. Only select projects that are truly exceptional.
+- Recommendation must be exactly "Select" or "Reject".
+- Score based on evidence.
+- Make sure overall_score EXACTLY matches the weighted sum of the 7 parameters based on the weights above.
 
 Return your response as a valid JSON object:
 {
   "overall_score": 0,
-  "innovation_score": 0,
-  "market_score": 0,
-  "agriculture_score": 0,
-  "financial_score": 0,
-  "scalability_score": 0,
-  "sustainability_score": 0,
-  "risk_score": 0,
-  "recommendation": "Highly Recommended|Recommended|Conditionally Recommended|Not Recommended",
+  "problem_relevance_score": 0,
+  "technical_soundness_score": 0,
+  "pilot_design_score": 0,
+  "team_capability_score": 0,
+  "market_potential_score": 0,
+  "financial_sustainability_score": 0,
+  "strategic_impact_score": 0,
+  "recommendation": "Select|Reject",
   "strengths": [],
   "weaknesses": [],
   "swot_analysis": {

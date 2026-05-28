@@ -95,7 +95,7 @@ python-service/
 | `/api/v1/health` | GET | Health check (LLM, OCR status) |
 | `/api/v1/supported-formats` | GET | List supported file formats |
 | `/api/v1/process-document` | POST | Extract text, images, tables, chunk |
-| `/api/v1/evaluate` | POST | Full pipeline: process + 9-agent evaluation |
+| `/api/v1/evaluate` | POST | Full pipeline: process + 7-agent evaluation |
 | `/api/v1/evaluate-chunks` | POST | Evaluate pre-processed chunks |
 | `/docs` | GET | Interactive Swagger documentation |
 

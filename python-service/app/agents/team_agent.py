@@ -1,12 +1,12 @@
 """
-Financial Evaluation Agent — Evaluate financial planning quality.
+Team Evaluation Agent — Evaluates whether founders/team can execute the project.
 """
 
 from app.agents.base_agent import BaseAgent
 
 
-class FinancialAgent(BaseAgent):
-    name = "FinancialAgent"
+class TeamAgent(BaseAgent):
+    name = "TeamAgent"
     temperature = 0.3
     max_tokens = 4096
 
@@ -15,29 +15,29 @@ class FinancialAgent(BaseAgent):
 Evaluate the following proposal section using the specified criteria.
 
 Parameter:
-Financial Sustainability
+Team & Execution Capability
 
 Sub-Parameters:
-Evaluate financial planning quality.
+Evaluate whether founders and the team can execute the project.
 
 Relevant Proposal Fields to consider:
-- Burn rate
-- Revenue projections
-- Funding strategy
-- Cost structure
+- Team member profiles
+- Past experience
+- Role definitions
+- Advisory board
 
 Evaluation Criteria:
-- burn_rate
-- revenue_projections
-- grant_dependency
-- unit_economics
-- funding_strategy
-- sustainability_timeline
+- founder_experience
+- technical_strength
+- domain_expertise
+- team_completeness
+- advisory_support
 
 CRITICAL EVALUATION RULES:
-- Flag unrealistic revenue growth or lack of monetization clarity.
-- Flag if there are no runway calculations or weak cost structure.
-- Assess unit economics and dependency on grants.
+- Assess startup or industry background.
+- Evaluate engineering capability and agriculture understanding.
+- Identify missing critical roles.
+- Consider mentors and industry advisors.
 
 Return your response as a valid JSON object:
 {
@@ -47,7 +47,7 @@ Return your response as a valid JSON object:
     "weaknesses": [],
     "risk_factors": [],
     "improvement_suggestions": [],
-    "analysis": "Detailed analysis of financial sustainability",
+    "analysis": "Detailed analysis of team capability",
     "key_findings": [],
     "red_flags": [],
     "recommendations": []

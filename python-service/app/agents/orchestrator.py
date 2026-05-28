@@ -3,10 +3,10 @@ Agent Orchestrator — Coordinates the multi-agent evaluation pipeline.
 
 Pipeline:
 1. Extraction Agent (structured data from proposal)
-2. Parallel Analysis Agents (technical, financial, risk, innovation, feasibility, compliance, sustainability)
+2. Parallel Analysis Agents (Problem Relevance, Technical, Pilot Design, Team, Market, Financial, Strategic Impact)
 3. Final Scoring Agent (synthesizes all analyses)
 
-Agents run sequentially to respect Groq rate limits.
+Agents run sequentially to respect rate limits.
 """
 
 import json
@@ -14,14 +14,14 @@ import time
 from typing import Any, Optional
 
 from app.agents.extraction import ExtractionAgent
-from app.agents.technical import TechnicalAgent
-from app.agents.financial import FinancialAgent
-from app.agents.risk import RiskAgent
-from app.agents.innovation import InnovationAgent
-from app.agents.feasibility import FeasibilityAgent
-from app.agents.compliance import ComplianceAgent
-from app.agents.sustainability import SustainabilityAgent
-from app.agents.scoring import ScoringAgent
+from app.agents.technical.technical_agent import TechnicalAgent
+from app.agents.financial.financial_agent import FinancialAgent
+from app.agents.problem_relevance_agent import ProblemRelevanceAgent
+from app.agents.pilot_design_agent import PilotDesignAgent
+from app.agents.team_agent import TeamAgent
+from app.agents.market_agent import MarketAgent
+from app.agents.strategic_impact_agent import StrategicImpactAgent
+from app.agents.scoring.scoring_agent import ScoringAgent
 from app.models.schemas import (
     AgentResult,
     DocumentChunk,
@@ -44,13 +44,13 @@ class AgentOrchestrator:
 
     def __init__(self):
         self.extraction_agent = ExtractionAgent()
+        self.problem_relevance_agent = ProblemRelevanceAgent()
         self.technical_agent = TechnicalAgent()
+        self.pilot_design_agent = PilotDesignAgent()
+        self.team_agent = TeamAgent()
+        self.market_agent = MarketAgent()
         self.financial_agent = FinancialAgent()
-        self.risk_agent = RiskAgent()
-        self.innovation_agent = InnovationAgent()
-        self.feasibility_agent = FeasibilityAgent()
-        self.compliance_agent = ComplianceAgent()
-        self.sustainability_agent = SustainabilityAgent()
+        self.strategic_impact_agent = StrategicImpactAgent()
         self.scoring_agent = ScoringAgent()
 
     async def evaluate(
@@ -104,13 +104,13 @@ class AgentOrchestrator:
         # Step 2: Analysis Agents (sequential for rate limit safety)
         # =====================================================================
         analysis_agents = [
+            ("problem_relevance", self.problem_relevance_agent, enriched_content),
             ("technical", self.technical_agent, enriched_technical),
+            ("pilot_design", self.pilot_design_agent, enriched_content),
+            ("team", self.team_agent, enriched_content),
+            ("market", self.market_agent, enriched_content),
             ("financial", self.financial_agent, enriched_financial),
-            ("risk", self.risk_agent, enriched_content),
-            ("innovation", self.innovation_agent, enriched_content),
-            ("feasibility", self.feasibility_agent, enriched_content),
-            ("compliance", self.compliance_agent, enriched_content),
-            ("sustainability", self.sustainability_agent, enriched_content),
+            ("strategic_impact", self.strategic_impact_agent, enriched_content),
         ]
 
         for agent_key, agent, content in analysis_agents:
@@ -201,19 +201,40 @@ class AgentOrchestrator:
             threats=swot_data.get("threats", []),
         )
 
+        pr = raw.get("problem_relevance_score", agent_results.get("problem_relevance", AgentResult(agent_name="")).score)
+        ts = raw.get("technical_soundness_score", agent_results.get("technical", AgentResult(agent_name="")).score)
+        pd = raw.get("pilot_design_score", agent_results.get("pilot_design", AgentResult(agent_name="")).score)
+        tc = raw.get("team_capability_score", agent_results.get("team", AgentResult(agent_name="")).score)
+        mp = raw.get("market_potential_score", agent_results.get("market", AgentResult(agent_name="")).score)
+        fs = raw.get("financial_sustainability_score", agent_results.get("financial", AgentResult(agent_name="")).score)
+        si = raw.get("strategic_impact_score", agent_results.get("strategic_impact", AgentResult(agent_name="")).score)
+
+        calculated_overall = (
+            pr * 0.20 +
+            ts * 0.20 +
+            pd * 0.15 +
+            tc * 0.15 +
+            mp * 0.10 +
+            fs * 0.10 +
+            si * 0.10
+        )
+
+        # Force strict recommendation
+        recommendation = raw.get("recommendation", "Reject")
+        if recommendation not in ["Select", "Reject"]:
+            recommendation = "Reject"
+
+        # Use scoring agent's raw scores or fallback to individual agent scores
         return FinalEvaluation(
-            overall_score=raw.get("overall_score", scoring_result.score),
-            innovation_score=raw.get("innovation_score", agent_results.get("innovation", AgentResult(agent_name="")).score),
-            market_score=raw.get("market_score", 0),
-            agriculture_score=raw.get("agriculture_score", 0),
-            financial_score=raw.get("financial_score", agent_results.get("financial", AgentResult(agent_name="")).score),
-            scalability_score=raw.get("scalability_score", 0),
-            sustainability_score=raw.get("sustainability_score", agent_results.get("sustainability", AgentResult(agent_name="")).score),
-            risk_score=raw.get("risk_score", agent_results.get("risk", AgentResult(agent_name="")).score),
-            technical_score=raw.get("technical_score", agent_results.get("technical", AgentResult(agent_name="")).score),
-            feasibility_score=raw.get("feasibility_score", agent_results.get("feasibility", AgentResult(agent_name="")).score),
-            compliance_score=raw.get("compliance_score", agent_results.get("compliance", AgentResult(agent_name="")).score),
-            recommendation=raw.get("recommendation", "Not Recommended"),
+            overall_score=round(calculated_overall, 2),
+            problem_relevance_score=pr,
+            technical_soundness_score=ts,
+            pilot_design_score=pd,
+            team_capability_score=tc,
+            market_potential_score=mp,
+            financial_sustainability_score=fs,
+            strategic_impact_score=si,
+            recommendation=recommendation,
             summary=raw.get("summary", scoring_result.analysis),
             strengths=raw.get("strengths", []),
             weaknesses=raw.get("weaknesses", []),

@@ -11,17 +11,45 @@ import {
 
 export class ExtractionAgent extends BaseAgent {
   constructor() {
-    super({ name: 'ExtractionAgent', temperature: 0.1, maxTokens: 4096 });
+    // Reduce maxTokens to 2000 to avoid 413 Payload Too Large (6000 TPM limit)
+    super({ name: 'ExtractionAgent', temperature: 0.1, maxTokens: 2000 });
   }
 
   async analyze(text: string) {
-    return this.execute(EXTRACTION_PROMPT, text);
+    const MAX_CHUNK_LENGTH = 10000; // ~2500 tokens
+    if (text.length <= MAX_CHUNK_LENGTH) {
+      return this.execute(EXTRACTION_PROMPT, text);
+    }
+
+    console.log(`[ExtractionAgent] Document too large, processing in chunks...`);
+    let combinedResult = {};
+    let totalTokens = 0;
+    let totalDuration = 0;
+
+    for (let i = 0; i < text.length; i += MAX_CHUNK_LENGTH) {
+      const chunk = text.substring(i, i + MAX_CHUNK_LENGTH);
+      console.log(`[ExtractionAgent] Processing chunk ${Math.floor(i / MAX_CHUNK_LENGTH) + 1}...`);
+      
+      try {
+        const res = await this.execute(EXTRACTION_PROMPT, chunk);
+        combinedResult = { ...combinedResult, ...(res.result || {}) };
+        totalTokens += res.tokens || 0;
+        totalDuration += res.duration || 0;
+      } catch (error) {
+        console.warn(`[ExtractionAgent] Chunk failed, continuing...`, error);
+      }
+      
+      // Delay to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    return { result: combinedResult, tokens: totalTokens, duration: totalDuration };
   }
 }
 
 export class AgricultureAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'AgricultureAnalysisAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'AgricultureAnalysisAgent', temperature: 0.3, maxTokens: 1500 });
   }
 
   async analyze(data: string) {
@@ -31,7 +59,7 @@ export class AgricultureAnalysisAgent extends BaseAgent {
 
 export class FinancialAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'FinancialAnalysisAgent', temperature: 0.2, maxTokens: 3000 });
+    super({ name: 'FinancialAnalysisAgent', temperature: 0.2, maxTokens: 1500 });
   }
 
   async analyze(data: string) {
@@ -41,7 +69,7 @@ export class FinancialAnalysisAgent extends BaseAgent {
 
 export class SustainabilityAgent extends BaseAgent {
   constructor() {
-    super({ name: 'SustainabilityAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'SustainabilityAgent', temperature: 0.3, maxTokens: 1500 });
   }
 
   async analyze(data: string) {
@@ -51,7 +79,7 @@ export class SustainabilityAgent extends BaseAgent {
 
 export class RiskAssessmentAgent extends BaseAgent {
   constructor() {
-    super({ name: 'RiskAssessmentAgent', temperature: 0.2, maxTokens: 3000 });
+    super({ name: 'RiskAssessmentAgent', temperature: 0.2, maxTokens: 1500 });
   }
 
   async analyze(data: string) {
@@ -61,7 +89,7 @@ export class RiskAssessmentAgent extends BaseAgent {
 
 export class InnovationAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'InnovationAnalysisAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'InnovationAnalysisAgent', temperature: 0.3, maxTokens: 1500 });
   }
 
   async analyze(data: string) {
@@ -71,7 +99,7 @@ export class InnovationAnalysisAgent extends BaseAgent {
 
 export class FinalScoringAgent extends BaseAgent {
   constructor() {
-    super({ name: 'FinalScoringAgent', temperature: 0.2, maxTokens: 4096 });
+    super({ name: 'FinalScoringAgent', temperature: 0.2, maxTokens: 1500 });
   }
 
   async analyze(data: string) {

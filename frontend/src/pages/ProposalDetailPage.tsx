@@ -29,21 +29,22 @@ export default function ProposalDetailPage() {
   if (!proposal) return <AppLayout><Card hover={false} className="text-center py-16"><p>Proposal not found</p></Card></AppLayout>;
   const ev = proposal.evaluation;
   const radarData = ev ? [
-    { metric: 'Innovation', value: ev.innovationScore, fullMark: 100 },
-    { metric: 'Market', value: ev.marketScore, fullMark: 100 },
-    { metric: 'Financial', value: ev.financialScore, fullMark: 100 },
-    { metric: 'Sustainability', value: ev.sustainabilityScore, fullMark: 100 },
-    { metric: 'Agriculture', value: ev.agricultureScore, fullMark: 100 },
-    { metric: 'Risk', value: ev.riskScore, fullMark: 100 },
+    { metric: 'Problem', value: ev.problemRelevanceScore || 0, fullMark: 100 },
+    { metric: 'Tech', value: ev.technicalSoundnessScore || 0, fullMark: 100 },
+    { metric: 'Design', value: ev.pilotDesignScore || 0, fullMark: 100 },
+    { metric: 'Team', value: ev.teamCapabilityScore || 0, fullMark: 100 },
+    { metric: 'Market', value: ev.marketPotentialScore || 0, fullMark: 100 },
+    { metric: 'Financials', value: ev.financialSustainabilityScore || 0, fullMark: 100 },
+    { metric: 'Impact', value: ev.strategicImpactScore || 0, fullMark: 100 },
   ] : [];
   const barData = ev ? [
-    { name: 'Innovation', score: ev.innovationScore, weight: '20%' },
-    { name: 'Market', score: ev.marketScore, weight: '20%' },
-    { name: 'Agriculture', score: ev.agricultureScore, weight: '20%' },
-    { name: 'Financial', score: ev.financialScore, weight: '15%' },
-    { name: 'Scalability', score: ev.scalabilityScore, weight: '10%' },
-    { name: 'Sustainability', score: ev.sustainabilityScore, weight: '10%' },
-    { name: 'Risk', score: ev.riskScore, weight: '5%' },
+    { name: 'Problem', score: ev.problemRelevanceScore || 0, weight: '20%' },
+    { name: 'Tech', score: ev.technicalSoundnessScore || 0, weight: '20%' },
+    { name: 'Design', score: ev.pilotDesignScore || 0, weight: '15%' },
+    { name: 'Team', score: ev.teamCapabilityScore || 0, weight: '15%' },
+    { name: 'Market', score: ev.marketPotentialScore || 0, weight: '10%' },
+    { name: 'Financials', score: ev.financialSustainabilityScore || 0, weight: '10%' },
+    { name: 'Impact', score: ev.strategicImpactScore || 0, weight: '10%' },
   ] : [];
   return (
     <AppLayout>
@@ -89,26 +90,34 @@ export default function ProposalDetailPage() {
           <>
             {/* Score Overview */}
             <div className="grid md:grid-cols-4 gap-4">
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                <Card hover={false} className="text-center">
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="h-full">
+                <Card hover={false} className="text-center h-full flex flex-col justify-center">
                   <p className="text-sm text-text-muted mb-2">Overall Score</p>
                   <div className="text-5xl font-bold text-gradient">{Math.round(ev.overallScore)}</div>
-                  <span className={`inline-block mt-2 text-xs font-medium px-3 py-1 rounded-lg border ${getRecommendationColor(ev.recommendation)}`}>{ev.recommendation}</span>
+                  <div>
+                    <span className={`inline-block mt-2 text-xs font-medium px-3 py-1 rounded-lg border ${getRecommendationColor(ev.recommendation)}`}>{ev.recommendation}</span>
+                  </div>
                 </Card>
               </motion.div>
               {[
-                { icon: Lightbulb, label: 'Innovation', score: ev.innovationScore, color: 'text-blue-600' },
-                { icon: Target, label: 'Market', score: ev.marketScore, color: 'text-purple-600' },
-                { icon: DollarSign, label: 'Financial', score: ev.financialScore, color: 'text-emerald-600' },
+                { icon: Lightbulb, label: 'Problem Relevance', score: ev.problemRelevanceScore || 0, color: 'text-blue-600' },
+                { icon: Target, label: 'Tech Soundness', score: ev.technicalSoundnessScore || 0, color: 'text-purple-600' },
+                { icon: CheckCircle, label: 'Pilot Design', score: ev.pilotDesignScore || 0, color: 'text-emerald-600' },
+                { icon: Shield, label: 'Team Capability', score: ev.teamCapabilityScore || 0, color: 'text-indigo-600' },
+                { icon: TrendingUp, label: 'Market Potential', score: ev.marketPotentialScore || 0, color: 'text-pink-600' },
+                { icon: DollarSign, label: 'Financial Sust.', score: ev.financialSustainabilityScore || 0, color: 'text-green-600' },
+                { icon: Sprout, label: 'Strategic Impact', score: ev.strategicImpactScore || 0, color: 'text-amber-600' },
               ].map((item, i) => (
-                <motion.div key={item.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }}>
-                  <Card hover={false}>
+                <motion.div key={item.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }} className="h-full">
+                  <Card hover={false} className="h-full flex flex-col justify-between">
                     <div className="flex items-center gap-2 mb-3">
                       <item.icon className={`w-4 h-4 ${item.color}`} />
                       <p className="text-sm text-text-muted">{item.label}</p>
                     </div>
-                    <p className={`text-2xl font-bold ${getScoreColor(item.score)}`}>{Math.round(item.score)}</p>
-                    <Progress value={item.score} className="mt-2" />
+                    <div>
+                      <p className={`text-2xl font-bold ${getScoreColor(item.score)}`}>{Math.round(item.score)}</p>
+                      <Progress value={item.score} className="mt-2" />
+                    </div>
                   </Card>
                 </motion.div>
               ))}

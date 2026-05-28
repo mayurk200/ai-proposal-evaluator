@@ -22,17 +22,16 @@ export default function ComparePage() {
   const evaluated = data?.proposals?.filter((p: Proposal) => p.status === 'EVALUATED' && p.evaluation) || [];
   const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : p.length < 5 ? [...p, id] : p);
   const selectedProposals = evaluated.filter((p: Proposal) => selected.includes(p.id));
-  const radarData = selectedProposals.length > 0 ? ['Innovation', 'Market', 'Financial', 'Sustainability', 'Risk'].map(metric => {
+  const radarData = selectedProposals.length > 0 ? ['Problem', 'Tech', 'Design', 'Team', 'Market', 'Financials', 'Impact'].map(metric => {
     const d: any = { metric };
     selectedProposals.forEach((p: Proposal, i: number) => { if (p.evaluation) {
-      const key = metric.toLowerCase();
-      d[`p${i}`] = key === 'innovation' ? p.evaluation.innovationScore : key === 'market' ? p.evaluation.marketScore : key === 'financial' ? p.evaluation.financialScore : key === 'sustainability' ? p.evaluation.sustainabilityScore : p.evaluation.riskScore;
+      d[`p${i}`] = metric === 'Problem' ? p.evaluation.problemRelevanceScore : metric === 'Tech' ? p.evaluation.technicalSoundnessScore : metric === 'Design' ? p.evaluation.pilotDesignScore : metric === 'Team' ? p.evaluation.teamCapabilityScore : metric === 'Market' ? p.evaluation.marketPotentialScore : metric === 'Financials' ? p.evaluation.financialSustainabilityScore : p.evaluation.strategicImpactScore;
     }});
     return d;
   }) : [];
   const barData = selectedProposals.map((p: Proposal) => ({
     name: p.title.slice(0, 20), overall: p.evaluation?.overallScore || 0,
-    innovation: p.evaluation?.innovationScore || 0, market: p.evaluation?.marketScore || 0,
+    problem: p.evaluation?.problemRelevanceScore || 0, tech: p.evaluation?.technicalSoundnessScore || 0,
   }));
   return (
     <AppLayout>
@@ -94,8 +93,8 @@ export default function ComparePage() {
                       <YAxis domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
                       <Tooltip />
                       <Bar dataKey="overall" fill="#2E7D32" radius={[6, 6, 0, 0]} name="Overall" />
-                      <Bar dataKey="innovation" fill="#66BB6A" radius={[6, 6, 0, 0]} name="Innovation" />
-                      <Bar dataKey="market" fill="#C8E6C9" radius={[6, 6, 0, 0]} name="Market" />
+                      <Bar dataKey="problem" fill="#66BB6A" radius={[6, 6, 0, 0]} name="Problem" />
+                      <Bar dataKey="tech" fill="#C8E6C9" radius={[6, 6, 0, 0]} name="Tech" />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>

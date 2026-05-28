@@ -42,10 +42,13 @@ export default function AnalyticsPage() {
   const history = stats?.scoreHistory?.map((s: any, i: number) => ({
     name: `#${i + 1}`,
     overall: s.overallScore ?? 0,
-    innovation: s.innovationScore ?? 0,
-    market: s.marketScore ?? 0,
-    financial: s.financialScore ?? 0,
-    sustainability: s.sustainabilityScore ?? 0,
+    problem: s.problemRelevanceScore ?? 0,
+    technical: s.technicalSoundnessScore ?? 0,
+    design: s.pilotDesignScore ?? 0,
+    team: s.teamCapabilityScore ?? 0,
+    market: s.marketPotentialScore ?? 0,
+    financial: s.financialSustainabilityScore ?? 0,
+    impact: s.strategicImpactScore ?? 0,
   })) || [];
 
   const catData = stats?.categoryStats?.map((c: any) => ({
@@ -108,7 +111,7 @@ export default function AnalyticsPage() {
                       <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
                       <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="aInnovation" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="aTechnical" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#66BB6A" stopOpacity={0.15} />
                       <stop offset="100%" stopColor="#66BB6A" stopOpacity={0} />
                     </linearGradient>
@@ -125,7 +128,7 @@ export default function AnalyticsPage() {
                     }}
                   />
                   <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2} fill="url(#aOverall)" />
-                  <Area type="monotone" dataKey="innovation" stroke="#66BB6A" strokeWidth={1.5} fill="url(#aInnovation)" />
+                  <Area type="monotone" dataKey="technical" stroke="#66BB6A" strokeWidth={1.5} fill="url(#aTechnical)" />
                   <Legend />
                 </AreaChart>
               </ResponsiveContainer>

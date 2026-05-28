@@ -92,10 +92,13 @@ export default function DashboardPage() {
   const scoreHistoryData = stats?.scoreHistory?.map((s, i) => ({
     name: `#${i + 1}`,
     overall: s.overallScore,
-    innovation: s.innovationScore,
-    market: s.marketScore,
-    financial: s.financialScore,
-    sustainability: s.sustainabilityScore,
+    problem: s.problemRelevanceScore,
+    technical: s.technicalSoundnessScore,
+    design: s.pilotDesignScore,
+    team: s.teamCapabilityScore,
+    market: s.marketPotentialScore,
+    financial: s.financialSustainabilityScore,
+    impact: s.strategicImpactScore,
   })) || [];
 
   const categoryData = stats?.categoryStats?.map((c) => ({
@@ -104,11 +107,13 @@ export default function DashboardPage() {
   })) || [];
 
   const radarData = stats?.topProposals?.[0] ? [
-    { metric: 'Innovation', value: stats.topProposals[0].innovationScore },
-    { metric: 'Market', value: stats.topProposals[0].marketScore },
-    { metric: 'Financial', value: stats.topProposals[0].financialScore },
-    { metric: 'Sustainability', value: stats.topProposals[0].sustainabilityScore },
-    { metric: 'Risk', value: stats.topProposals[0].riskScore },
+    { metric: 'Problem', value: stats.topProposals[0].problemRelevanceScore },
+    { metric: 'Tech', value: stats.topProposals[0].technicalSoundnessScore },
+    { metric: 'Design', value: stats.topProposals[0].pilotDesignScore },
+    { metric: 'Team', value: stats.topProposals[0].teamCapabilityScore },
+    { metric: 'Market', value: stats.topProposals[0].marketPotentialScore },
+    { metric: 'Financials', value: stats.topProposals[0].financialSustainabilityScore },
+    { metric: 'Impact', value: stats.topProposals[0].strategicImpactScore },
   ] : [];
 
   return (
@@ -142,7 +147,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-text-muted">
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Overall</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-secondary" /> Innovation</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-secondary" /> Technical</span>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={280}>
@@ -152,7 +157,7 @@ export default function DashboardPage() {
                       <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
                       <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="colorInnovation" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="colorTechnical" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#66BB6A" stopOpacity={0.15} />
                       <stop offset="100%" stopColor="#66BB6A" stopOpacity={0} />
                     </linearGradient>
@@ -170,7 +175,7 @@ export default function DashboardPage() {
                     }}
                   />
                   <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2.5} fill="url(#colorOverall)" />
-                  <Area type="monotone" dataKey="innovation" stroke="#66BB6A" strokeWidth={2} fill="url(#colorInnovation)" />
+                  <Area type="monotone" dataKey="technical" stroke="#66BB6A" strokeWidth={2} fill="url(#colorTechnical)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
@@ -281,11 +286,13 @@ export default function DashboardPage() {
                     <div className="space-y-3">
                       <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Score Breakdown</p>
                       {[
-                        { label: 'Innovation', value: stats.topProposals[0]?.innovationScore },
-                        { label: 'Market', value: stats.topProposals[0]?.marketScore },
-                        { label: 'Financial', value: stats.topProposals[0]?.financialScore },
-                        { label: 'Sustainability', value: stats.topProposals[0]?.sustainabilityScore },
-                        { label: 'Risk', value: stats.topProposals[0]?.riskScore },
+                        { label: 'Problem Relevance', value: stats.topProposals[0]?.problemRelevanceScore },
+                        { label: 'Tech Soundness', value: stats.topProposals[0]?.technicalSoundnessScore },
+                        { label: 'Pilot Design', value: stats.topProposals[0]?.pilotDesignScore },
+                        { label: 'Team Capability', value: stats.topProposals[0]?.teamCapabilityScore },
+                        { label: 'Market Potential', value: stats.topProposals[0]?.marketPotentialScore },
+                        { label: 'Financial Sust.', value: stats.topProposals[0]?.financialSustainabilityScore },
+                        { label: 'Strategic Impact', value: stats.topProposals[0]?.strategicImpactScore },
                       ].map((item) => (
                         <div key={item.label}>
                           <div className="flex justify-between text-xs mb-1">

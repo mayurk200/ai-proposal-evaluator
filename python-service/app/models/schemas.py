@@ -115,16 +115,13 @@ class SWOTAnalysis(BaseModel):
 class FinalEvaluation(BaseModel):
     """Final evaluation result combining all agent analyses."""
     overall_score: float = 0.0
-    innovation_score: float = 0.0
-    market_score: float = 0.0
-    agriculture_score: float = 0.0
-    financial_score: float = 0.0
-    scalability_score: float = 0.0
-    sustainability_score: float = 0.0
-    risk_score: float = 0.0
-    technical_score: float = 0.0
-    feasibility_score: float = 0.0
-    compliance_score: float = 0.0
+    problem_relevance_score: float = 0.0
+    technical_soundness_score: float = 0.0
+    pilot_design_score: float = 0.0
+    team_capability_score: float = 0.0
+    market_potential_score: float = 0.0
+    financial_sustainability_score: float = 0.0
+    strategic_impact_score: float = 0.0
     recommendation: str = RecommendationLevel.NOT_RECOMMENDED.value
     summary: str = ""
     strengths: list[str] = Field(default_factory=list)

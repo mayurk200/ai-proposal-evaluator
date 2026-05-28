@@ -20,7 +20,7 @@ The platform evaluates startup/agriculture proposals using AI. It has **three se
 |---------|-------|------|------|
 | **Frontend** | React 19, Vite, TailwindCSS v4 | 5173 | Upload UI, dashboards, score visualizations |
 | **Backend** | Node.js, Express, TypeScript | 3001 | Auth (JWT), file upload, API gateway, Firestore/local JSON persistence |
-| **Python Service** | FastAPI, Python 3.11 | 8000 | Document processing (OCR, extraction, chunking) + 9-agent AI evaluation |
+| **Python Service** | FastAPI, Python 3.11 | 8000 | Document processing (OCR, extraction, chunking) + 7-agent AI evaluation |
 
 ---
 
@@ -90,7 +90,7 @@ User clicks "Evaluate" on frontend
 │                                                              │
 │    PHASE B: Multi-Agent AI Evaluation                        │
 │    ┌────────────────────────────────────────────────────┐    │
-│    │ 9 agents run SEQUENTIALLY (to avoid rate limits):   │    │
+│    │ 7 agents run SEQUENTIALLY (to avoid rate limits):   │    │
 │    │                                                      │    │
 │    │ Agent 1: ExtractionAgent                             │    │
 │    │   → Pulls structured data: team, funding, timeline  │    │
@@ -171,7 +171,7 @@ The Node.js pipeline is simpler:
 
 **File:** `python-service/app/agents/orchestrator.py`
 
-The free Groq tier has strict rate limits. Running 9 agents + summary = ~10-11 LLM calls in sequence.
+The free Groq tier has strict rate limits. Running 7 agents + summary = ~10-11 LLM calls in sequence.
 With only a 3-second gap between agents, the rate limiter may trigger `RateLimitError`.
 
 Each agent has retry logic (3 attempts with exponential backoff) to handle transient rate limit errors.
@@ -234,7 +234,7 @@ ai-proposal-evaluator/
 │   │   │   └── llm/                   # Groq client with retries
 │   │   ├── agents/
 │   │   │   ├── base_agent.py          # Base class (retry, JSON parsing)
-│   │   │   ├── orchestrator.py        # 9-agent sequential pipeline
+│   │   │   ├── orchestrator.py        # 7-agent sequential pipeline
 │   │   │   ├── extraction/            # Extraction agent
 │   │   │   ├── technical/             # Technical agent
 │   │   │   ├── financial/             # Financial agent
@@ -322,7 +322,7 @@ sequenceDiagram
     P->>P: Strategic chunking (section-aware)
     P->>G: Summarize chunks
     G-->>P: Executive summary
-    loop 9 Agents (sequential)
+    loop 7 Agents (sequential)
         P->>G: Agent prompt + chunks + prior results
         G-->>P: Agent evaluation JSON
         P->>P: Wait 3s (rate limit buffer)

@@ -12,7 +12,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   name: 'BaseAgent',
   model: 'llama-3.1-8b-instant',
   temperature: 0.3,
-  maxTokens: 4096,
+  maxTokens: 2000,
 };
 
 export class BaseAgent {

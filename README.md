@@ -18,7 +18,7 @@
 
 ---
 
-A production-grade platform that evaluates agriculture startup proposals using **9 specialized AI agents** powered by Groq (LLaMA 3.3 70B). Upload a PDF, PPTX, DOCX, or image — the system extracts text (with OCR for scanned documents), chunks it intelligently, and runs a multi-agent evaluation pipeline that scores the proposal across innovation, financials, risk, sustainability, and more.
+A production-grade platform that evaluates agriculture startup proposals using **7 specialized AI agents** powered by Groq (LLaMA 3.3 70B). Upload a PDF, PPTX, DOCX, or image — the system extracts text (with OCR for scanned documents), chunks it intelligently, and runs a multi-agent evaluation pipeline that scores the proposal across problem relevance, technical soundness, team capability, market potential, and more.
 
 ## How It Works
 
@@ -32,7 +32,7 @@ User uploads file → Node.js Backend → Python AI Service
           3. Table & image extraction
           4. Section-aware strategic chunking
           5. Executive summary generation (LLM)
-          6. 9 AI agents evaluate sequentially
+          6. 7 AI agents evaluate sequentially
           7. Weighted final score + SWOT analysis
                     │
                     ▼
@@ -43,7 +43,7 @@ User uploads file → Node.js Backend → Python AI Service
 
 - **Multi-format support** — PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, JPEG, TIFF, BMP
 - **Intelligent OCR** — Detects scanned PDFs and images, applies Tesseract with EasyOCR fallback
-- **9-agent AI pipeline** — Extraction, Technical, Financial, Risk, Innovation, Feasibility, Compliance, Sustainability, Final Scoring
+- **7-agent AI pipeline** — Problem Relevance, Technical Soundness, Pilot Design, Team Capability, Market Potential, Financial Sustainability, Strategic Impact
 - **Section-aware chunking** — Splits on headings, not arbitrary token counts
 - **SWOT analysis** — Auto-generated strengths, weaknesses, opportunities, threats
 - **Radar & bar charts** — Visual score breakdowns with Recharts
@@ -176,15 +176,13 @@ npm test
 
 | # | Agent | What It Evaluates |
 |---|---|---|
-| 1 | **Extraction** | Structured data: team, funding, timeline, market |
-| 2 | **Technical** | Architecture, tech stack, scalability |
-| 3 | **Financial** | Revenue model, unit economics, ROI |
-| 4 | **Risk** | 9-dimensional risk assessment |
-| 5 | **Innovation** | Novelty, IP potential, disruption score |
-| 6 | **Feasibility** | Team capability, timeline realism, market fit |
-| 7 | **Compliance** | Governance, data privacy, regulatory readiness |
-| 8 | **Sustainability** | Environmental, social, economic sustainability |
-| 9 | **Final Scoring** | Cross-agent synthesis, weighted score, SWOT |
+| 1 | **Problem Relevance** | Understanding of agricultural challenges and problem validation |
+| 2 | **Technical Soundness** | Architecture, methodology, tech stack, and scalability |
+| 3 | **Pilot Design** | Validation strategy, implementation plan, and timeline realism |
+| 4 | **Team Capability** | Skills, relevant experience, and execution readiness |
+| 5 | **Market Potential** | Target market size, competitive landscape, and distribution |
+| 6 | **Financial Sustainability** | Business model, revenue streams, and unit economics |
+| 7 | **Strategic Impact** | Long-term vision, ecosystem benefits, and alignment |
 
 ## API Endpoints
 
@@ -221,7 +219,7 @@ docker-compose up --build
 ai-proposal-evaluator/
 ├── frontend/              React + Vite + TailwindCSS v4
 ├── backend/               Node.js + Express + TypeScript
-├── python-service/        FastAPI + 9 AI agents + OCR
+├── python-service/        FastAPI + 7 AI agents + OCR
 ├── docs/                  Architecture & quickstart guides
 ├── scripts/               Utility scripts
 └── docker-compose.yml     Full-stack containerization

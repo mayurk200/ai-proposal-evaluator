@@ -16,26 +16,25 @@ class ScoringAgent(BaseAgent):
 
 You will receive the analyses from ALL specialized agents. Your job is to:
 1. Synthesize all findings into a coherent final assessment
-2. Check for CONSISTENCY between agents (e.g., if financial agent says strong revenue but feasibility agent says untested market — that's a contradiction)
+2. Check for CONSISTENCY between agents
 3. Generate weighted overall scores
 4. Identify the MOST critical factors for this specific proposal
 5. Make a clear recommendation
 
 SCORING WEIGHTS:
-- Innovation: 15%
-- Market Potential: 15%
-- Technical Quality: 15%
-- Financial Viability: 15%
-- Feasibility & Execution: 15%
-- Risk (inverted): 10%
-- Sustainability: 5%
-- Compliance: 5%
-- Agriculture/Industry Impact: 5%
+- Problem Relevance: 20%
+- Technical Soundness: 20%
+- Pilot Design: 15%
+- Team Capability: 15%
+- Market Potential: 10%
+- Financial Sustainability: 10%
+- Strategic Impact: 10%
 
 CRITICAL RULES:
 - Cross-reference agent findings — flag any contradictions
 - Weight red flags HEAVILY — a single critical red flag can override high scores
-- Be specific in your recommendation — not just "Recommended" but WHY and with WHAT conditions
+- If the project is not absolutely perfect and highly outstanding across all parameters, you MUST reject it. Only select projects that are truly exceptional.
+- Your recommendation must be EXACTLY "Select" or "Reject".
 - Identify the TOP 3 things that would make or break this proposal
 - Assess if the overall narrative is internally consistent
 - Score based on EVIDENCE, not aspirations
@@ -44,18 +43,15 @@ CRITICAL RULES:
 Return your response as a valid JSON object:
 {
     "overall_score": 0,
-    "innovation_score": 0,
-    "market_score": 0,
-    "agriculture_score": 0,
-    "financial_score": 0,
-    "scalability_score": 0,
-    "sustainability_score": 0,
-    "risk_score": 0,
-    "technical_score": 0,
-    "feasibility_score": 0,
-    "compliance_score": 0,
+    "problem_relevance_score": 0,
+    "technical_soundness_score": 0,
+    "pilot_design_score": 0,
+    "team_capability_score": 0,
+    "market_potential_score": 0,
+    "financial_sustainability_score": 0,
+    "strategic_impact_score": 0,
     "confidence": 0.0,
-    "recommendation": "Highly Recommended|Recommended|Conditionally Recommended|Not Recommended",
+    "recommendation": "Select|Reject",
     "recommendation_reasoning": "",
     "summary": "Comprehensive executive summary of the evaluation",
     "strengths": [],

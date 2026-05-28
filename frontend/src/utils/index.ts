@@ -46,8 +46,7 @@ export function getStatusColor(status: string): string {
 }
 
 export function getRecommendationColor(rec: string): string {
-  if (rec.includes('Highly')) return 'bg-green-100 text-green-800 border-green-200';
-  if (rec.includes('Recommended')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (rec === 'Select' || rec.includes('Highly') || rec === 'Recommended') return 'bg-green-100 text-green-800 border-green-200';
   if (rec.includes('Conditionally')) return 'bg-yellow-50 text-yellow-700 border-yellow-200';
   return 'bg-red-50 text-red-700 border-red-200';
 }

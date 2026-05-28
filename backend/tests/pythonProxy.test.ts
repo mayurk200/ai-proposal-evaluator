@@ -23,17 +23,14 @@ function mockPythonResponse(): any {
     },
     evaluation: {
       overall_score: 72,
-      innovation_score: 80,
-      market_score: 65,
-      agriculture_score: 70,
-      financial_score: 55,
-      scalability_score: 60,
-      sustainability_score: 50,
-      risk_score: 45,
-      technical_score: 75,
-      feasibility_score: 68,
-      compliance_score: 62,
-      recommendation: 'Conditionally Recommended',
+      problem_relevance_score: 80,
+      technical_soundness_score: 75,
+      pilot_design_score: 65,
+      team_capability_score: 70,
+      market_potential_score: 55,
+      financial_sustainability_score: 60,
+      strategic_impact_score: 50,
+      recommendation: 'Reject',
       summary: 'A promising proposal with some gaps.',
       strengths: ['Strong team', 'Innovative approach'],
       weaknesses: ['Weak financials'],
@@ -63,9 +60,9 @@ describe('mapPythonResponseToLegacy', () => {
     const result = mapPythonResponseToLegacy(response);
 
     expect(result.finalScore.overall_score).toBe(72);
-    expect(result.finalScore.innovation_score).toBe(80);
-    expect(result.finalScore.financial_score).toBe(55);
-    expect(result.finalScore.recommendation).toBe('Conditionally Recommended');
+    expect(result.finalScore.problem_relevance_score).toBe(80);
+    expect(result.finalScore.financial_sustainability_score).toBe(60);
+    expect(result.finalScore.recommendation).toBe('Reject');
   });
 
   it('maps SWOT analysis', () => {
