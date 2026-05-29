@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, FileText, X, Loader2, Brain,
   CheckCircle, AlertTriangle, TrendingUp, Shield,
-  Lightbulb, DollarSign, Target, Sprout, RotateCcw
+  Lightbulb, DollarSign, Target, Sprout, RotateCcw,
+  Users, Compass, Zap
 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -80,22 +81,23 @@ export default function UploadPage() {
 
   const ev = evaluation;
   const radarData = ev ? [
-    { metric: 'Innovation', value: ev.innovationScore, fullMark: 100 },
-    { metric: 'Market', value: ev.marketScore, fullMark: 100 },
-    { metric: 'Financial', value: ev.financialScore, fullMark: 100 },
-    { metric: 'Sustainability', value: ev.sustainabilityScore, fullMark: 100 },
-    { metric: 'Agriculture', value: ev.agricultureScore, fullMark: 100 },
-    { metric: 'Risk', value: ev.riskScore, fullMark: 100 },
+    { metric: 'Problem Relevance', value: ev.problemRelevanceScore, fullMark: 100 },
+    { metric: 'Tech Soundness', value: ev.technicalSoundnessScore, fullMark: 100 },
+    { metric: 'Pilot Design', value: ev.pilotDesignScore, fullMark: 100 },
+    { metric: 'Team Capability', value: ev.teamCapabilityScore, fullMark: 100 },
+    { metric: 'Market Potential', value: ev.marketPotentialScore, fullMark: 100 },
+    { metric: 'Financial Sust.', value: ev.financialSustainabilityScore, fullMark: 100 },
+    { metric: 'Strategic Impact', value: ev.strategicImpactScore, fullMark: 100 },
   ] : [];
 
   const barData = ev ? [
-    { name: 'Innovation', score: ev.innovationScore },
-    { name: 'Market', score: ev.marketScore },
-    { name: 'Agriculture', score: ev.agricultureScore },
-    { name: 'Financial', score: ev.financialScore },
-    { name: 'Scalability', score: ev.scalabilityScore },
-    { name: 'Sustainability', score: ev.sustainabilityScore },
-    { name: 'Risk', score: ev.riskScore },
+    { name: 'Problem Relevance', score: ev.problemRelevanceScore },
+    { name: 'Tech Soundness', score: ev.technicalSoundnessScore },
+    { name: 'Pilot Design', score: ev.pilotDesignScore },
+    { name: 'Team Capability', score: ev.teamCapabilityScore },
+    { name: 'Market Potential', score: ev.marketPotentialScore },
+    { name: 'Financial Sust.', score: ev.financialSustainabilityScore },
+    { name: 'Strategic Impact', score: ev.strategicImpactScore },
   ] : [];
 
   return (
@@ -251,9 +253,9 @@ export default function UploadPage() {
                   </Card>
                 </motion.div>
                 {[
-                  { icon: Lightbulb, label: 'Innovation', score: ev.innovationScore, color: 'text-blue-600' },
-                  { icon: Target, label: 'Market', score: ev.marketScore, color: 'text-purple-600' },
-                  { icon: DollarSign, label: 'Financial', score: ev.financialScore, color: 'text-emerald-600' },
+                  { icon: Compass, label: 'Problem Relevance', score: ev.problemRelevanceScore, color: 'text-blue-600' },
+                  { icon: Zap, label: 'Tech Soundness', score: ev.technicalSoundnessScore, color: 'text-purple-600' },
+                  { icon: Target, label: 'Market Potential', score: ev.marketPotentialScore, color: 'text-emerald-600' },
                 ].map((item, i) => (
                   <motion.div key={item.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }}>
                     <Card hover={false}>
