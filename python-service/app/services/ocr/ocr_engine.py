@@ -11,7 +11,7 @@ from PIL import Image
 
 from app.config import settings
 from app.utils.logging import get_logger
-from app.utils.text_cleaning import clean_text
+from app.utils.text_cleaning import clean_text, assess_text_quality
 
 logger = get_logger(__name__)
 
@@ -105,7 +105,7 @@ def ocr_image(
     image_bytes: Optional[bytes] = None,
     image_path: Optional[str] = None,
     language: str = "eng",
-) -> str:
+) -> tuple[str, float]:
     """
     Run OCR on an image using available engines.
 
@@ -118,10 +118,11 @@ def ocr_image(
         language: OCR language code.
 
     Returns:
-        Extracted text from the image.
+        Tuple of (extracted_text, confidence_score).
+        Confidence is 0.0–1.0 based on text quality assessment.
     """
     if not settings.OCR_ENABLED:
-        return ""
+        return "", 0.0
 
     # Load image if not provided directly
     if image is None:
@@ -141,8 +142,9 @@ def ocr_image(
         try:
             text = ocr_image_tesseract(image, language=language)
             if text.strip():
-                logger.info("ocr_success", engine="tesseract", text_length=len(text))
-                return text
+                confidence = assess_text_quality(text)
+                logger.info("ocr_success", engine="tesseract", text_length=len(text), confidence=confidence)
+                return text, confidence
         except Exception as e:
             logger.warning("tesseract_failed", error=str(e))
 
@@ -151,13 +153,14 @@ def ocr_image(
         try:
             text = ocr_image_easyocr(image)
             if text.strip():
-                logger.info("ocr_success", engine="easyocr", text_length=len(text))
-                return text
+                confidence = assess_text_quality(text)
+                logger.info("ocr_success", engine="easyocr", text_length=len(text), confidence=confidence)
+                return text, confidence
         except Exception as e:
             logger.warning("easyocr_failed", error=str(e))
 
     logger.warning("ocr_no_text_found")
-    return ""
+    return "", 0.0
 
 
 def ocr_pdf_page(
@@ -197,7 +200,8 @@ def ocr_pdf_page(
         pix = page.get_pixmap(matrix=mat)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
-        return ocr_image(image=img)
+        text, confidence = ocr_image(image=img)
+        return text, confidence
     finally:
         doc.close()
 

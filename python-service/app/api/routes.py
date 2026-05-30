@@ -1,8 +1,11 @@
 """
 FastAPI API routes for document processing and evaluation.
+Hardened with global timeouts, request ID tracking, and structured error responses.
 """
 
+import asyncio
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -70,6 +73,8 @@ async def process_document_endpoint(
 
     Supports: PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, JPEG, TIFF, BMP
     """
+    request_id = str(uuid.uuid4())[:8]
+
     # Validate file
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -94,6 +99,8 @@ async def process_document_endpoint(
         raise HTTPException(status_code=400, detail="Empty file")
 
     try:
+        logger.info("process_document_started", request_id=request_id, filename=file.filename)
+
         result = await process_document(
             file_bytes=file_bytes,
             filename=file.filename,
@@ -102,13 +109,15 @@ async def process_document_endpoint(
             generate_summary=generate_summary,
         )
 
+        logger.info("process_document_completed", request_id=request_id)
+
         return ProcessDocumentResponse(
             status="success",
             document=result,
         )
     except Exception as e:
-        logger.error("document_processing_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+        logger.error("document_processing_failed", request_id=request_id, error=str(e)[:300])
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)[:200]}")
 
 
 @router.post("/evaluate", response_model=EvaluationResponse)
@@ -120,7 +129,10 @@ async def evaluate_document(
     Full evaluation pipeline: process document → run all agents → return evaluation.
 
     This is the main endpoint for complete proposal evaluation.
+    Includes global timeout protection.
     """
+    request_id = str(uuid.uuid4())[:8]
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
@@ -145,8 +157,9 @@ async def evaluate_document(
     start_time = time.time()
 
     try:
+        logger.info("evaluation_started", request_id=request_id, filename=file.filename)
+
         # Step 1: Process document
-        logger.info("evaluation_started", filename=file.filename)
         processed = await process_document(
             file_bytes=file_bytes,
             filename=file.filename,
@@ -161,15 +174,38 @@ async def evaluate_document(
                 detail="Could not extract sufficient text from the file. Ensure it contains readable content.",
             )
 
-        # Step 2: Run agent evaluation
+        # Step 2: Run agent evaluation with global timeout
         orchestrator = AgentOrchestrator()
-        eval_result = await orchestrator.evaluate(
-            chunks=processed.chunks,
-            metadata=processed.metadata,
-            summary=processed.summary,
-        )
+        try:
+            eval_result = await asyncio.wait_for(
+                orchestrator.evaluate(
+                    chunks=processed.chunks,
+                    metadata=processed.metadata,
+                    summary=processed.summary,
+                ),
+                timeout=settings.EVALUATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "evaluation_timeout",
+                request_id=request_id,
+                filename=file.filename,
+                timeout=settings.EVALUATION_TIMEOUT_SECONDS,
+            )
+            raise HTTPException(
+                status_code=504,
+                detail=f"Evaluation timed out after {settings.EVALUATION_TIMEOUT_SECONDS}s. "
+                       "The document may be too large or the service is under heavy load.",
+            )
 
         total_time = time.time() - start_time
+
+        logger.info(
+            "evaluation_completed",
+            request_id=request_id,
+            filename=file.filename,
+            total_time=round(total_time, 2),
+        )
 
         return EvaluationResponse(
             status="success",
@@ -182,8 +218,13 @@ async def evaluate_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("evaluation_failed", error=str(e), filename=file.filename)
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+        logger.error(
+            "evaluation_failed",
+            request_id=request_id,
+            error=str(e)[:300],
+            filename=file.filename,
+        )
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)[:200]}")
 
 
 @router.post("/evaluate-chunks", response_model=EvaluationResponse)
@@ -192,20 +233,36 @@ async def evaluate_chunks(request: EvaluateChunksRequest):
     Evaluate pre-processed document chunks.
     Use this when document processing is done separately.
     """
+    request_id = str(uuid.uuid4())[:8]
+
     if not request.chunks:
         raise HTTPException(status_code=400, detail="No chunks provided")
 
     start_time = time.time()
 
     try:
+        logger.info("chunk_evaluation_started", request_id=request_id)
+
         orchestrator = AgentOrchestrator()
-        eval_result = await orchestrator.evaluate(
-            chunks=request.chunks,
-            metadata=request.metadata,
-            summary=request.summary,
-        )
+        try:
+            eval_result = await asyncio.wait_for(
+                orchestrator.evaluate(
+                    chunks=request.chunks,
+                    metadata=request.metadata,
+                    summary=request.summary,
+                ),
+                timeout=settings.EVALUATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.error("chunk_evaluation_timeout", request_id=request_id)
+            raise HTTPException(
+                status_code=504,
+                detail=f"Evaluation timed out after {settings.EVALUATION_TIMEOUT_SECONDS}s.",
+            )
 
         total_time = time.time() - start_time
+
+        logger.info("chunk_evaluation_completed", request_id=request_id, total_time=round(total_time, 2))
 
         return EvaluationResponse(
             status="success",
@@ -214,6 +271,8 @@ async def evaluate_chunks(request: EvaluateChunksRequest):
             agent_results=eval_result["agent_results"],
             processing_time_seconds=round(total_time, 2),
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("chunk_evaluation_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+        logger.error("chunk_evaluation_failed", request_id=request_id, error=str(e)[:300])
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)[:200]}")

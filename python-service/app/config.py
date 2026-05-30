@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     EVALUATION_TIMEOUT_SECONDS: int = 300
     MAX_RETRIES: int = 3
 
+    # Production Hardening
+    AGENT_TIMEOUT_SECONDS: int = 60
+    LLM_CALL_TIMEOUT_SECONDS: int = 45
+    AGENT_MAX_RETRIES: int = 1
+    MIN_CONFIDENCE_THRESHOLD: float = 0.3
+    SELECT_THRESHOLD: float = 75.0
+    MIN_AGENT_SCORE_THRESHOLD: float = 40.0
+
     @property
     def supported_formats_list(self) -> list[str]:
         return [fmt.strip().lower() for fmt in self.SUPPORTED_FORMATS.split(",")]

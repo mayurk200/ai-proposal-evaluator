@@ -12,6 +12,7 @@ from app.models.schemas import (
     AgentResult,
     DocumentChunk,
     DocumentMetadata,
+    EvidenceItem,
     ExtractedImage,
     ExtractedTable,
     FinalEvaluation,
@@ -121,6 +122,9 @@ def make_agent_result(
         tokens_used=500,
         duration_ms=1000,
         status=status,
+        evidence=[],
+        warnings=[],
+        missing_information=[],
     )
 
 

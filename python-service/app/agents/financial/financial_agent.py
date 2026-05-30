@@ -1,5 +1,8 @@
 """
 Financial Evaluation Agent — Evaluate financial planning quality.
+
+EXCLUSIVE dimensions: burn_rate, unit_economics, grant_dependency, funding_strategy, runway.
+Does NOT evaluate: market sizing, team evaluation, technology depth.
 """
 
 from app.agents.base_agent import BaseAgent
@@ -34,10 +37,18 @@ Evaluation Criteria:
 - funding_strategy
 - sustainability_timeline
 
+DO NOT EVALUATE (owned by other agents):
+- Market sizing or TAM/SAM/SOM (Market Agent)
+- Team qualifications (Team Agent)
+- Technology architecture (Technical Agent)
+- Implementation timeline details (Pilot Design Agent)
+
 CRITICAL EVALUATION RULES:
 - Flag unrealistic revenue growth or lack of monetization clarity.
 - Flag if there are no runway calculations or weak cost structure.
 - Assess unit economics and dependency on grants.
+- For every major claim, provide evidence with source section and extracted quote.
+- Explicitly list any information that is missing from the proposal.
 
 Return your response as a valid JSON object:
 {
@@ -50,5 +61,9 @@ Return your response as a valid JSON object:
     "analysis": "Detailed analysis of financial sustainability",
     "key_findings": [],
     "red_flags": [],
-    "recommendations": []
+    "recommendations": [],
+    "evidence": [
+        {"claim": "...", "source": "Section/Page", "text": "extracted quote"}
+    ],
+    "missing_information": []
 }"""

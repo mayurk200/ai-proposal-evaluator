@@ -206,3 +206,117 @@ def detect_technical_content(text: str) -> bool:
     ]
     text_lower = text.lower()
     return sum(1 for kw in technical_keywords if re.search(kw, text_lower)) >= 2
+
+
+def merge_broken_paragraphs(text: str) -> str:
+    """
+    Merge lines that appear to be broken mid-sentence.
+    Detects short lines followed by continuation lines (common in OCR/PDF extraction).
+    """
+    lines = text.split("\n")
+    if len(lines) < 3:
+        return text
+
+    merged: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if not stripped:
+            merged.append("")
+            i += 1
+            continue
+
+        # Check if this line looks broken: short, doesn't end with sentence-ending
+        # punctuation, and the next line starts with a lowercase letter
+        if (
+            i + 1 < len(lines)
+            and 10 < len(stripped) < 80
+            and stripped[-1] not in ".!?:;\"')"
+            and not stripped.startswith(("-", "•", "*", "–", "—"))
+            and not re.match(r"^\d+[.)]", stripped)
+            and lines[i + 1].strip()
+            and lines[i + 1].strip()[0:1].islower()
+        ):
+            merged.append(stripped + " " + lines[i + 1].strip())
+            i += 2
+        else:
+            merged.append(stripped)
+            i += 1
+
+    return "\n".join(merged)
+
+
+def remove_excessive_symbols(text: str) -> str:
+    """Remove lines with >50% non-alphabetic characters (likely OCR artifacts)."""
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            cleaned.append("")
+            continue
+        alpha_count = sum(1 for c in stripped if c.isalpha())
+        if len(stripped) > 5 and alpha_count / len(stripped) < 0.3:
+            continue  # Skip artifact lines
+        cleaned.append(stripped)
+    return "\n".join(cleaned)
+
+
+def assess_text_quality(text: str) -> float:
+    """
+    Assess OCR/extraction text quality on a 0.0-1.0 scale.
+
+    Factors:
+    - Ratio of alphabetic chars vs symbols
+    - Average word length (too short = OCR noise)
+    - Presence of common structural words
+    - Line length variance
+
+    Returns:
+        Float between 0.0 (garbage) and 1.0 (clean text).
+    """
+    if not text or not text.strip():
+        return 0.0
+
+    words = text.split()
+    if len(words) < 5:
+        return 0.1
+
+    score = 0.0
+
+    # Factor 1: Alpha ratio (weight 0.3)
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    total_chars = len(text.replace(" ", "").replace("\n", ""))
+    if total_chars > 0:
+        alpha_ratio = alpha_chars / total_chars
+        score += min(alpha_ratio / 0.7, 1.0) * 0.3
+
+    # Factor 2: Average word length (weight 0.2)
+    avg_word_len = sum(len(w) for w in words) / len(words)
+    if 3.0 <= avg_word_len <= 10.0:
+        score += 0.2
+    elif 2.0 <= avg_word_len < 3.0 or 10.0 < avg_word_len <= 15.0:
+        score += 0.1
+
+    # Factor 3: Common structural words present (weight 0.3)
+    structural_words = {
+        "the", "and", "for", "with", "that", "this", "from",
+        "have", "will", "are", "our", "can", "not", "but",
+        "project", "team", "solution", "problem", "market",
+    }
+    text_lower = text.lower()
+    structural_count = sum(1 for w in structural_words if f" {w} " in text_lower)
+    score += min(structural_count / 8, 1.0) * 0.3
+
+    # Factor 4: Reasonable line lengths (weight 0.2)
+    lines = [l for l in text.split("\n") if l.strip()]
+    if lines:
+        avg_line_len = sum(len(l) for l in lines) / len(lines)
+        if 20 <= avg_line_len <= 200:
+            score += 0.2
+        elif 10 <= avg_line_len < 20 or 200 < avg_line_len <= 500:
+            score += 0.1
+
+    return round(min(1.0, max(0.0, score)), 2)

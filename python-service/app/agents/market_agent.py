@@ -1,5 +1,8 @@
 """
 Market Evaluation Agent — Assess commercial viability and growth potential.
+
+EXCLUSIVE dimensions: revenue_realism, TAM/SAM/SOM, competitive_moat, distribution, pricing.
+Does NOT evaluate: technology depth, team evaluation, financial sustainability beyond revenue.
 """
 
 from app.agents.base_agent import BaseAgent
@@ -33,10 +36,18 @@ Evaluation Criteria:
 - distribution_feasibility
 - pricing_viability
 
+DO NOT EVALUATE (owned by other agents):
+- Technology depth or architecture (Technical Agent)
+- Team qualifications (Team Agent)
+- Burn rate or unit economics details (Financial Agent)
+- Implementation timeline or KPIs (Pilot Design Agent)
+
 CRITICAL EVALUATION RULES:
 - Check TAM/SAM/SOM realism and market demand.
 - Assess farmer adoption probability.
 - Evaluate the scalability of the revenue model and unit economics.
+- For every major claim, provide evidence with source section and extracted quote.
+- Explicitly list any information that is missing from the proposal.
 
 Return your response as a valid JSON object:
 {
@@ -49,5 +60,9 @@ Return your response as a valid JSON object:
     "analysis": "Detailed analysis of market potential",
     "key_findings": [],
     "red_flags": [],
-    "recommendations": []
+    "recommendations": [],
+    "evidence": [
+        {"claim": "...", "source": "Section/Page", "text": "extracted quote"}
+    ],
+    "missing_information": []
 }"""

@@ -4,12 +4,14 @@ Identifies key fields: startup name, team, problem, solution, market, financials
 """
 
 from app.agents.base_agent import BaseAgent
+from app.agents.validation import ExtractionOutputSchema
 
 
 class ExtractionAgent(BaseAgent):
     name = "ExtractionAgent"
     temperature = 0.1
     max_tokens = 4096
+    validation_schema = ExtractionOutputSchema
 
     system_prompt = """You are an expert document analysis agent specializing in startup and vendor proposal extraction.
 

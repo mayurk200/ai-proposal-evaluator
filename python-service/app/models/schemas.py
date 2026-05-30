@@ -71,6 +71,7 @@ class DocumentMetadata(BaseModel):
     has_scanned_content: bool = False
     detected_sections: list[str] = Field(default_factory=list)
     processing_time_seconds: float = 0.0
+    ocr_confidence: float = 1.0
 
 
 class ProcessedDocument(BaseModel):
@@ -84,8 +85,15 @@ class ProcessedDocument(BaseModel):
 
 
 # =============================================================================
-# Agent Result Models
+# Evidence & Agent Result Models
 # =============================================================================
+
+
+class EvidenceItem(BaseModel):
+    """A traceable piece of evidence supporting a score or claim."""
+    claim: str = ""
+    source: str = ""   # e.g. "Page 4", "Section: Team"
+    text: str = ""     # extracted quote from the document
 
 
 class AgentResult(BaseModel):
@@ -102,6 +110,9 @@ class AgentResult(BaseModel):
     duration_ms: int = 0
     status: str = "success"
     error: Optional[str] = None
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
 
 
 class SWOTAnalysis(BaseModel):

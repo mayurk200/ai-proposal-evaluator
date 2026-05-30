@@ -1,5 +1,8 @@
 """
 Pilot Design Evaluation Agent — Evaluates implementation realism, cost efficiency, deliverables, and risk.
+
+EXCLUSIVE dimensions: timeline_realism, cost_justification, KPI_quality, operational_risk.
+Does NOT evaluate: team background, market sizing, technology depth.
 """
 
 from app.agents.base_agent import BaseAgent
@@ -46,11 +49,19 @@ Evaluation Criteria:
 - operational_risks
 - climate_dependency
 
+DO NOT EVALUATE (owned by other agents):
+- Team qualifications or background (Team Agent)
+- Market sizing or TAM/SAM/SOM (Market Agent)
+- Technology depth or AI evaluation (Technical Agent)
+- Long-term strategic impact (Strategic Impact Agent)
+
 CRITICAL EVALUATION RULES:
 - Check timeline realism, team execution capacity, and geographic scalability.
 - Flag excessive cloud cost, large consulting fees, and hardware inflation.
 - Verify KPI existence, quantifiable targets, and evaluation methodology.
 - Evaluate risks like farmer adoption, climate dependency, data quality, and scaling bottlenecks.
+- For every major claim, provide evidence with source section and extracted quote.
+- Explicitly list any information that is missing from the proposal.
 
 Return your response as a valid JSON object:
 {
@@ -63,5 +74,9 @@ Return your response as a valid JSON object:
     "analysis": "Detailed analysis of pilot design and implementation plan",
     "key_findings": [],
     "red_flags": [],
-    "recommendations": []
+    "recommendations": [],
+    "evidence": [
+        {"claim": "...", "source": "Section/Page", "text": "extracted quote"}
+    ],
+    "missing_information": []
 }"""

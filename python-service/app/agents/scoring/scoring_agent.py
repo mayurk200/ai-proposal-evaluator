@@ -1,7 +1,10 @@
 """
-Final Scoring Agent — Generates the comprehensive final evaluation by combining
-all agent analyses with configurable weights. Performs cross-agent reasoning
-to check consistency and generates SWOT analysis + recommendation.
+Final Scoring Agent — DEPRECATED.
+
+This agent is no longer called by the orchestrator. All scoring is now
+deterministic Python (see orchestrator._compute_deterministic_evaluation).
+
+Kept for backward compatibility of imports. Do not instantiate.
 """
 
 from app.agents.base_agent import BaseAgent

@@ -1,6 +1,6 @@
 """
 Tests for app.agents.orchestrator — Pipeline flow, content building, final evaluation.
-All agent calls are mocked.
+All agent calls are mocked. Scoring is now deterministic (no scoring agent).
 """
 
 import pytest
@@ -22,57 +22,22 @@ from tests.conftest import make_chunk, make_metadata, make_agent_result
 # ---------------------------------------------------------------------------
 
 def _make_mock_orchestrator() -> AgentOrchestrator:
-    """Create orchestrator with all agents mocked."""
+    """Create orchestrator with all agents mocked (no scoring agent)."""
     orch = AgentOrchestrator.__new__(AgentOrchestrator)
 
     agents = [
         "extraction_agent", "problem_relevance_agent", "technical_agent",
         "pilot_design_agent", "team_agent", "market_agent",
-        "financial_agent", "strategic_impact_agent", "scoring_agent",
+        "financial_agent", "strategic_impact_agent",
     ]
 
     for attr in agents:
         mock_agent = MagicMock()
         mock_agent.name = attr.replace("_agent", "").title() + "Agent"
-
-        # The scoring agent returns special keys
-        if attr == "scoring_agent":
-            mock_agent.analyze = AsyncMock(return_value=make_agent_result(
-                name="FinalScoringAgent",
-                score=65.0,
-            ))
-            mock_agent.analyze.return_value.raw_output = {
-                "overall_score": 65,
-                "problem_relevance_score": 70,
-                "technical_soundness_score": 75,
-                "pilot_design_score": 65,
-                "team_capability_score": 80,
-                "market_potential_score": 60,
-                "financial_sustainability_score": 50,
-                "strategic_impact_score": 60,
-                "recommendation": "Conditionally Recommended",
-                "summary": "The proposal shows promise but has gaps.",
-                "strengths": ["Strong tech team"],
-                "weaknesses": ["Weak financials"],
-                "swot_analysis": {
-                    "strengths": ["Tech"],
-                    "weaknesses": ["Financials"],
-                    "opportunities": ["Market growth"],
-                    "threats": ["Competition"],
-                },
-                "key_points": ["Key point 1"],
-                "invalid_claims": [],
-                "investment_readiness": "Needs Work",
-                "key_action_items": ["Improve unit economics"],
-                "risk_level": "Medium",
-                "confidence": 0.85,
-            }
-        else:
-            mock_agent.analyze = AsyncMock(return_value=make_agent_result(
-                name=mock_agent.name,
-                score=70.0,
-            ))
-
+        mock_agent.analyze = AsyncMock(return_value=make_agent_result(
+            name=mock_agent.name,
+            score=70.0,
+        ))
         setattr(orch, attr, mock_agent)
 
     return orch
@@ -112,15 +77,37 @@ class TestBuildContent:
 
 
 # ============================================================================
-# _build_final_evaluation
+# _build_agent_context
 # ============================================================================
 
-class TestBuildFinalEvaluation:
-    def test_maps_scoring_output(self):
-        orch = _make_mock_orchestrator()
-        scoring_result = orch.scoring_agent.analyze.return_value
+class TestBuildAgentContext:
+    def test_targeted_context(self):
+        orch = AgentOrchestrator.__new__(AgentOrchestrator)
+        extracted = {
+            "problem_statement": "Food waste in supply chains",
+            "technology_used": ["IoT", "ML"],
+            "founders": [{"name": "Test"}],
+        }
+        content = orch._build_agent_context("problem_relevance", extracted, "base text")
+        assert "problem_statement" in content
+        assert "base text" in content
+        # Should NOT include team-only fields
+        assert "founders" not in content
 
-        agent_results = {
+    def test_empty_extraction(self):
+        orch = AgentOrchestrator.__new__(AgentOrchestrator)
+        content = orch._build_agent_context("technical", {}, "base text")
+        assert content == "base text"
+
+
+# ============================================================================
+# Deterministic evaluation
+# ============================================================================
+
+class TestDeterministicEvaluation:
+    def test_maps_scores(self):
+        orch = _make_mock_orchestrator()
+        results = {
             "extraction": make_agent_result("ExtractionAgent", 75),
             "problem_relevance": make_agent_result("ProblemRelevanceAgent", 70),
             "technical": make_agent_result("TechnicalAgent", 75),
@@ -129,33 +116,35 @@ class TestBuildFinalEvaluation:
             "market": make_agent_result("MarketAgent", 60),
             "financial": make_agent_result("FinancialAgent", 50),
             "strategic_impact": make_agent_result("StrategicImpactAgent", 60),
-            "scoring": scoring_result,
         }
+        metadata = make_metadata()
 
-        final = orch._build_final_evaluation(scoring_result, agent_results)
+        final = orch._compute_deterministic_evaluation(results, metadata)
 
         assert isinstance(final, FinalEvaluation)
         assert final.overall_score == 67.75
-        assert final.recommendation == "Reject"
-        assert final.risk_level == "Medium"
-        assert "Tech" in final.swot_analysis.strengths
-        assert "Competition" in final.swot_analysis.threats
+        assert final.recommendation == "Reject"  # Below 75
+        assert final.risk_level in ("Low", "Medium", "High", "Critical")
 
-    def test_fallback_to_agent_scores(self):
+    def test_recommendation_is_deterministic(self):
+        """Same input always produces same recommendation."""
         orch = _make_mock_orchestrator()
-        scoring_result = make_agent_result("FinalScoringAgent", 60)
-        scoring_result.raw_output = {}  # Empty raw output
-
-        agent_results = {
-            "problem_relevance": make_agent_result("ProblemRelevanceAgent", 70),
-            "financial": make_agent_result("FinancialAgent", 50),
-            "scoring": scoring_result,
+        results = {
+            "extraction": make_agent_result("ExtractionAgent", 80),
+            "problem_relevance": make_agent_result("ProblemRelevanceAgent", 80),
+            "technical": make_agent_result("TechnicalAgent", 80),
+            "pilot_design": make_agent_result("PilotDesignAgent", 80),
+            "team": make_agent_result("TeamAgent", 80),
+            "market": make_agent_result("MarketAgent", 80),
+            "financial": make_agent_result("FinancialAgent", 80),
+            "strategic_impact": make_agent_result("StrategicImpactAgent", 80),
         }
+        metadata = make_metadata()
 
-        final = orch._build_final_evaluation(scoring_result, agent_results)
-        # Should fall back to individual agent scores
-        assert final.problem_relevance_score == 70.0
-        assert final.financial_sustainability_score == 50.0
+        final1 = orch._compute_deterministic_evaluation(results, metadata)
+        final2 = orch._compute_deterministic_evaluation(results, metadata)
+        assert final1.recommendation == final2.recommendation
+        assert final1.overall_score == final2.overall_score
 
 
 # ============================================================================
@@ -181,7 +170,7 @@ class TestEvaluate:
         assert "total_tokens" in result
         assert "total_time_seconds" in result
 
-        # All 9 agents should have been called
+        # 8 analysis agents should have been called (no scoring agent)
         assert orch.extraction_agent.analyze.called
         assert orch.problem_relevance_agent.analyze.called
         assert orch.technical_agent.analyze.called
@@ -190,7 +179,6 @@ class TestEvaluate:
         assert orch.market_agent.analyze.called
         assert orch.financial_agent.analyze.called
         assert orch.strategic_impact_agent.analyze.called
-        assert orch.scoring_agent.analyze.called
 
     @pytest.mark.asyncio
     async def test_pipeline_collects_all_results(self):
@@ -208,6 +196,21 @@ class TestEvaluate:
         assert agent_keys == expected_keys
 
     @pytest.mark.asyncio
+    async def test_scoring_key_is_deterministic(self):
+        """The 'scoring' key should exist for backward compat and be deterministic."""
+        orch = _make_mock_orchestrator()
+        chunks = [make_chunk()]
+        metadata = make_metadata()
+
+        result = await orch.evaluate(chunks, metadata)
+
+        scoring = result["agent_results"]["scoring"]
+        assert scoring["agent_name"] == "DeterministicScoringEngine"
+        assert scoring["status"] == "success"
+        assert "overall_score" in scoring["raw_output"]
+        assert "recommendation" in scoring["raw_output"]
+
+    @pytest.mark.asyncio
     async def test_total_tokens_summed(self):
         orch = _make_mock_orchestrator()
         chunks = [make_chunk()]
@@ -215,5 +218,27 @@ class TestEvaluate:
 
         result = await orch.evaluate(chunks, metadata)
 
-        # Each mock agent returns 500 tokens, 9 agents = 4500
-        assert result["total_tokens"] == 500 * 9
+        # Each mock agent returns 500 tokens, 8 agents + 0 for scoring = 4000
+        assert result["total_tokens"] == 500 * 8
+
+    @pytest.mark.asyncio
+    async def test_single_agent_failure_doesnt_crash(self):
+        """If one agent fails, pipeline should continue."""
+        orch = _make_mock_orchestrator()
+        # Make financial agent fail
+        orch.financial_agent.analyze = AsyncMock(return_value=AgentResult(
+            agent_name="FinancialAgent",
+            score=0.0,
+            status="failed",
+            error="Test failure",
+        ))
+        chunks = [make_chunk()]
+        metadata = make_metadata()
+
+        result = await orch.evaluate(chunks, metadata)
+
+        assert "final_evaluation" in result
+        # Financial should show as failed
+        assert result["agent_results"]["financial"]["status"] == "failed"
+        # Other agents should still have results
+        assert result["agent_results"]["technical"]["status"] == "success"
