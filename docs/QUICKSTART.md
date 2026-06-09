@@ -140,7 +140,7 @@ npm run dev
 1. Navigate to the **Upload** page (from the sidebar or nav)
 2. **Drag & drop** or click to upload a proposal document
    - Supported formats: **PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP**
-   - Try the included test doc: `AI_Proposal_Scrutiny_Use_Case_Document.docx`
+   - Try the included test docs: `documents/Startup Proposal-1-AIAIC.pdf` or `documents/Startup Proposal-2-AIAIC.pdf`
 3. Optionally enter a **title** for the proposal
 4. Click **"Evaluate"**
 
@@ -151,20 +151,20 @@ Frontend → Node.js Backend → Python Service
                                   ↓
                          1. Text Extraction (PyMuPDF / python-docx)
                          2. OCR on scanned pages & images (Tesseract)
-                         3. Table Detection & Extraction
+                         3. Layout & Form Field Extraction (form_field_extractor)
                          4. Strategic Section-Aware Chunking
                          5. Executive Summary Generation (Groq LLM)
-                         6. 9 AI Agents run sequentially:
-                            • Extraction Agent
-                            • Technical Agent
-                            • Financial Agent
-                            • Risk Agent
-                            • Innovation Agent
-                            • Feasibility Agent
+                         6. 7 Parameter Agents + Debate + Scoring run sequentially:
+                            • Problem Relevance Agent
+                            • Solution Readiness Agent
+                            • Pilot Design Agent
+                            • Farmer Adoption Agent
+                            • Scale-up Agent
+                            • Team Capacity Agent
                             • Compliance Agent
-                            • Sustainability Agent
-                            • Final Scoring Agent
-                         7. Weighted Score Calculation
+                            • Debate Agent (Conditional dispute resolution)
+                            • Scoring Agent (SWOT & Final Consolidator)
+                         7. Flat Average Score & Adjustments Integration
                                   ↓
                     Results returned to Frontend ← Node.js ← Python
 ```
@@ -176,10 +176,11 @@ Frontend → Node.js Backend → Python Service
 After evaluation completes, you'll see:
 
 - **Overall Score** (0–100)
-- **Category Scores**: Innovation, Technical, Financial, Risk, Feasibility, Compliance, Sustainability, Scalability
+- **7 AIAIC Parameter Scores**: Problem Relevance, Solution Readiness, Pilot Design, Farmer Adoption, Scale-up Potential, Team Capacity, Compliance
+- **Debate Insights**: Highlights of any scoring disagreements resolved by the Debate Agent, with score adjustment logs
 - **Recommendation**: Highly Recommended / Recommended / Conditionally Recommended / Not Recommended
 - **SWOT Analysis**: Strengths, Weaknesses, Opportunities, Threats
-- **Detailed agent findings** with red flags and recommendations
+- **Detailed Parameter Rubrics**: Expandable accordions detailing sub-question scores, explanations, and literal quotes (source evidence) extracted from the document
 
 ---
 

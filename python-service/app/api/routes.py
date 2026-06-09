@@ -10,11 +10,13 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, Form
 
 from app.config import settings
 from app.models.schemas import (
+    DocumentMetadata,
     ErrorResponse,
     EvaluateChunksRequest,
     EvaluationResponse,
     HealthResponse,
     ProcessDocumentResponse,
+    ProcessedDocument,
     SupportedFormatsResponse,
 )
 from app.services.processing.document_processor import process_document
@@ -163,21 +165,12 @@ async def evaluate_document(
 
         # Step 2: Run agent evaluation
         orchestrator = AgentOrchestrator()
-        eval_result = await orchestrator.evaluate(
-            chunks=processed.chunks,
-            metadata=processed.metadata,
-            summary=processed.summary,
-        )
+        eval_response = await orchestrator.evaluate(document=processed)
 
         total_time = time.time() - start_time
+        eval_response.processing_time_seconds = round(total_time, 2)
 
-        return EvaluationResponse(
-            status="success",
-            document_metadata=processed.metadata,
-            evaluation=eval_result["final_evaluation"],
-            agent_results=eval_result["agent_results"],
-            processing_time_seconds=round(total_time, 2),
-        )
+        return eval_response
 
     except HTTPException:
         raise
@@ -198,22 +191,21 @@ async def evaluate_chunks(request: EvaluateChunksRequest):
     start_time = time.time()
 
     try:
-        orchestrator = AgentOrchestrator()
-        eval_result = await orchestrator.evaluate(
-            chunks=request.chunks,
+        # Build a ProcessedDocument from the chunks request
+        doc = ProcessedDocument(
             metadata=request.metadata,
+            full_text="\n\n".join(c.text for c in request.chunks),
+            chunks=request.chunks,
             summary=request.summary,
         )
 
-        total_time = time.time() - start_time
+        orchestrator = AgentOrchestrator()
+        eval_response = await orchestrator.evaluate(document=doc)
 
-        return EvaluationResponse(
-            status="success",
-            document_metadata=request.metadata,
-            evaluation=eval_result["final_evaluation"],
-            agent_results=eval_result["agent_results"],
-            processing_time_seconds=round(total_time, 2),
-        )
+        total_time = time.time() - start_time
+        eval_response.processing_time_seconds = round(total_time, 2)
+
+        return eval_response
     except Exception as e:
         logger.error("chunk_evaluation_failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")

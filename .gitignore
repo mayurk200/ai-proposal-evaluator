@@ -55,9 +55,13 @@ env/
 .env
 *.log
 
+evaluation_runs
+
 reference-only/
 others
 
 
 coverage/
 .coverage
+
+documents

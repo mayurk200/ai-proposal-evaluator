@@ -1,5 +1,5 @@
 """
-Tests for app.agents.orchestrator — Pipeline flow, content building, final evaluation.
+Tests for app.agents.orchestrator — Pipeline flow, content preparation, metadata mapping, final evaluation.
 All agent calls are mocked.
 """
 
@@ -12,211 +12,241 @@ from app.models.schemas import (
     DocumentChunk,
     DocumentMetadata,
     FinalEvaluation,
+    ProcessedDocument,
+    EvaluationResponse,
 )
 from app.models.enums import ChunkPosition, ChunkType
 from tests.conftest import make_chunk, make_metadata, make_agent_result
 
 
-# ---------------------------------------------------------------------------
-# Helper: create an orchestrator where every agent.analyze is an AsyncMock
-# ---------------------------------------------------------------------------
-
 def _make_mock_orchestrator() -> AgentOrchestrator:
     """Create orchestrator with all agents mocked."""
     orch = AgentOrchestrator.__new__(AgentOrchestrator)
 
-    agents = [
-        "extraction_agent", "technical_agent", "financial_agent",
-        "risk_agent", "innovation_agent", "feasibility_agent",
-        "compliance_agent", "sustainability_agent", "scoring_agent",
+    # 1. Extraction agent
+    orch.extraction_agent = MagicMock()
+    orch.extraction_agent.name = "ExtractionAgent"
+    orch.extraction_agent.analyze = AsyncMock(return_value=make_agent_result(
+        name="ExtractionAgent",
+        score=90.0,
+    ))
+    orch.extraction_agent.analyze.return_value.raw_output = {
+        "extracted_data": {
+            "company_name": "AgriTech",
+            "trl_level": "TRL 6",
+        }
+    }
+
+    # 2. 7 Parameter agents
+    param_agent_names = [
+        "ProblemRelevanceAgent",
+        "SolutionReadinessAgent",
+        "PilotDesignAgent",
+        "FarmerAdoptionAgent",
+        "ScaleUpAgent",
+        "TeamCapacityAgent",
+        "ComplianceAgent",
     ]
-
-    for attr in agents:
+    orch.parameter_agents = []
+    for name in param_agent_names:
         mock_agent = MagicMock()
-        mock_agent.name = attr.replace("_agent", "").title() + "Agent"
+        mock_agent.name = name
+        mock_agent.analyze = AsyncMock(return_value=make_agent_result(
+            name=name,
+            score=80.0,
+        ))
+        mock_agent.analyze.return_value.sub_questions = []
+        orch.parameter_agents.append(mock_agent)
 
-        # The scoring agent returns special keys
-        if attr == "scoring_agent":
-            mock_agent.analyze = AsyncMock(return_value=make_agent_result(
-                name="FinalScoringAgent",
-                score=65.0,
-            ))
-            mock_agent.analyze.return_value.raw_output = {
-                "overall_score": 65,
-                "innovation_score": 70,
-                "market_score": 60,
-                "agriculture_score": 55,
-                "financial_score": 50,
-                "scalability_score": 60,
-                "sustainability_score": 45,
-                "risk_score": 55,
-                "technical_score": 75,
-                "feasibility_score": 65,
-                "compliance_score": 60,
-                "recommendation": "Conditionally Recommended",
-                "summary": "The proposal shows promise but has gaps.",
-                "strengths": ["Strong tech team"],
-                "weaknesses": ["Weak financials"],
-                "swot_analysis": {
-                    "strengths": ["Tech"],
-                    "weaknesses": ["Financials"],
-                    "opportunities": ["Market growth"],
-                    "threats": ["Competition"],
-                },
-                "key_points": ["Key point 1"],
-                "invalid_claims": [],
-                "investment_readiness": "Needs Work",
-                "key_action_items": ["Improve unit economics"],
-                "risk_level": "Medium",
-                "confidence": 0.85,
-            }
-        else:
-            mock_agent.analyze = AsyncMock(return_value=make_agent_result(
-                name=mock_agent.name,
-                score=70.0,
-            ))
+    # 3. Debate Agent
+    orch.debate_agent = MagicMock()
+    orch.debate_agent.name = "DebateAgent"
+    orch.debate_agent.should_trigger = MagicMock(return_value=True)
+    orch.debate_agent.analyze = AsyncMock(return_value=make_agent_result(
+        name="DebateAgent",
+        score=0.0,
+    ))
+    orch.debate_agent.analyze.return_value.raw_output = {
+        "conflicts_found": [{"conflict_id": "c1", "severity": "high"}],
+        "debates": [],
+        "adjusted_scores": {},
+        "high_ambiguity_areas": [],
+        "confidence": 0.9,
+    }
 
-        setattr(orch, attr, mock_agent)
+    # 4. Scoring Agent
+    orch.scoring_agent = MagicMock()
+    orch.scoring_agent.name = "FinalScoringAgent"
+    
+    mock_eval = FinalEvaluation(
+        overall_score=80.0,
+        problem_relevance_score=80.0,
+        solution_readiness_score=80.0,
+        pilot_design_score=80.0,
+        farmer_adoption_score=80.0,
+        scaleup_score=80.0,
+        team_capacity_score=80.0,
+        compliance_score=80.0,
+        innovation_score=80.0,
+        market_score=80.0,
+        agriculture_score=80.0,
+        financial_score=80.0,
+        scalability_score=80.0,
+        sustainability_score=80.0,
+        risk_score=80.0,
+        technical_score=80.0,
+        feasibility_score=80.0,
+        recommendation="Recommended",
+        summary="A solid proposal.",
+        strengths=["Tech"],
+        weaknesses=["Gaps"],
+        swot_analysis={"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+        key_points=[],
+        investment_readiness="Ready",
+        key_action_items=[],
+        risk_level="Low",
+        parameter_breakdown={},
+        debate_summary=None,
+    )
+    orch.scoring_agent.synthesize = AsyncMock(return_value=mock_eval)
 
     return orch
 
 
-# ============================================================================
-# _build_content
-# ============================================================================
-
-class TestBuildContent:
-    def test_includes_summary(self):
-        orch = AgentOrchestrator.__new__(AgentOrchestrator)
-        chunks = [make_chunk(text="chunk text", section_title="Intro")]
-        content = orch._build_content(chunks, summary="Executive summary here.")
+class TestPrepareContent:
+    def test_prepare_content_includes_summary(self):
+        orch = AgentOrchestrator()
+        metadata = make_metadata()
+        chunks = [make_chunk(text="Chunk content here", section_title="Introduction")]
+        doc = ProcessedDocument(
+            metadata=metadata,
+            full_text="Full text content",
+            chunks=chunks,
+            summary="Executive summary content",
+        )
+        content = orch._prepare_content(doc)
         assert "EXECUTIVE SUMMARY" in content
-        assert "Executive summary here." in content
-        assert "chunk text" in content
+        assert "Executive summary content" in content
+        assert "Chunk content here" in content
+        assert "Section: Introduction" in content
 
-    def test_no_summary(self):
-        orch = AgentOrchestrator.__new__(AgentOrchestrator)
-        chunks = [make_chunk(text="chunk text")]
-        content = orch._build_content(chunks, summary="")
-        assert "EXECUTIVE SUMMARY" not in content
-        assert "chunk text" in content
-
-    def test_section_headers_included(self):
-        orch = AgentOrchestrator.__new__(AgentOrchestrator)
-        chunks = [make_chunk(section_title="Financial Data", page_numbers=[3, 4])]
-        content = orch._build_content(chunks)
-        assert "Financial Data" in content
-        assert "3, 4" in content
-
-    def test_empty_chunks(self):
-        orch = AgentOrchestrator.__new__(AgentOrchestrator)
-        content = orch._build_content([], summary="summary")
-        assert "summary" in content
+    def test_prepare_content_no_chunks_fallback_to_full_text(self):
+        orch = AgentOrchestrator()
+        metadata = make_metadata()
+        doc = ProcessedDocument(
+            metadata=metadata,
+            full_text="Only full text is here",
+            chunks=[],
+            summary="",
+        )
+        content = orch._prepare_content(doc)
+        assert "FULL TEXT" in content
+        assert "Only full text is here" in content
 
 
-# ============================================================================
-# _build_final_evaluation
-# ============================================================================
+class TestMetadataToDict:
+    def test_metadata_to_dict_mapping(self):
+        orch = AgentOrchestrator()
+        metadata = make_metadata()
+        m_dict = orch._metadata_to_dict(metadata)
+        assert m_dict["filename"] == "test_proposal.pdf"
+        assert m_dict["format"] == "pdf"
+        assert m_dict["total_pages"] == 5
+        assert "detected_sections" in m_dict
 
-class TestBuildFinalEvaluation:
-    def test_maps_scoring_output(self):
-        orch = _make_mock_orchestrator()
-        scoring_result = orch.scoring_agent.analyze.return_value
-
-        agent_results = {
-            "extraction": make_agent_result("ExtractionAgent", 75),
-            "technical": make_agent_result("TechnicalAgent", 80),
-            "financial": make_agent_result("FinancialAgent", 50),
-            "risk": make_agent_result("RiskAgent", 60),
-            "innovation": make_agent_result("InnovationAgent", 70),
-            "feasibility": make_agent_result("FeasibilityAgent", 65),
-            "compliance": make_agent_result("ComplianceAgent", 55),
-            "sustainability": make_agent_result("SustainabilityAgent", 45),
-            "scoring": scoring_result,
-        }
-
-        final = orch._build_final_evaluation(scoring_result, agent_results)
-
-        assert isinstance(final, FinalEvaluation)
-        assert final.overall_score == 65
-        assert final.recommendation == "Conditionally Recommended"
-        assert final.risk_level == "Medium"
-        assert "Tech" in final.swot_analysis.strengths
-        assert "Competition" in final.swot_analysis.threats
-
-    def test_fallback_to_agent_scores(self):
-        orch = _make_mock_orchestrator()
-        scoring_result = make_agent_result("FinalScoringAgent", 60)
-        scoring_result.raw_output = {}  # Empty raw output
-
-        agent_results = {
-            "innovation": make_agent_result("InnovationAgent", 70),
-            "financial": make_agent_result("FinancialAgent", 50),
-            "scoring": scoring_result,
-        }
-
-        final = orch._build_final_evaluation(scoring_result, agent_results)
-        # Should fall back to individual agent scores
-        assert final.innovation_score == 70.0
-        assert final.financial_score == 50.0
-
-
-# ============================================================================
-# evaluate (full pipeline)
-# ============================================================================
 
 class TestEvaluate:
     @pytest.mark.asyncio
-    async def test_full_pipeline(self):
+    async def test_evaluate_full_pipeline(self):
         orch = _make_mock_orchestrator()
-
-        chunks = [
-            make_chunk("Problem statement text.", "Problem", [1], position=ChunkPosition.START),
-            make_chunk("Financial projections.", "Financials", [2], has_financial=True),
-            make_chunk("Technical details.", "Technical", [3], has_technical=True, position=ChunkPosition.END),
-        ]
-        metadata = make_metadata()
-
-        result = await orch.evaluate(chunks, metadata, summary="Summary text.")
-
-        assert "agent_results" in result
-        assert "final_evaluation" in result
-        assert "total_tokens" in result
-        assert "total_time_seconds" in result
-
-        # All 9 agents should have been called
-        assert orch.extraction_agent.analyze.called
-        assert orch.technical_agent.analyze.called
-        assert orch.financial_agent.analyze.called
-        assert orch.risk_agent.analyze.called
-        assert orch.innovation_agent.analyze.called
-        assert orch.feasibility_agent.analyze.called
-        assert orch.compliance_agent.analyze.called
-        assert orch.sustainability_agent.analyze.called
-        assert orch.scoring_agent.analyze.called
+        doc = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text="Test proposal content",
+            chunks=[make_chunk()],
+            summary="Test summary",
+        )
+        
+        response = await orch.evaluate(doc)
+        
+        assert isinstance(response, EvaluationResponse)
+        assert response.status == "success"
+        assert response.evaluation.overall_score == 80.0
+        assert response.evaluation.recommendation == "Recommended"
+        
+        # Verify all agent calls
+        orch.extraction_agent.analyze.assert_called_once()
+        assert len(orch.parameter_agents) == 7
+        for agent in orch.parameter_agents:
+            agent.analyze.assert_called_once()
+        orch.debate_agent.analyze.assert_called_once()
+        orch.scoring_agent.synthesize.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_pipeline_collects_all_results(self):
+    async def test_evaluate_debate_skipped(self):
         orch = _make_mock_orchestrator()
-        chunks = [make_chunk()]
-        metadata = make_metadata()
-
-        result = await orch.evaluate(chunks, metadata)
-
-        agent_keys = set(result["agent_results"].keys())
-        expected_keys = {
-            "extraction", "technical", "financial", "risk",
-            "innovation", "feasibility", "compliance", "sustainability", "scoring",
-        }
-        assert agent_keys == expected_keys
+        orch.debate_agent.should_trigger.return_value = False
+        doc = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text="Test proposal content",
+            chunks=[make_chunk()],
+            summary="Test summary",
+        )
+        
+        response = await orch.evaluate(doc)
+        
+        # Verify debate was NOT called
+        orch.debate_agent.analyze.assert_not_called()
+        from unittest.mock import ANY
+        orch.scoring_agent.synthesize.assert_called_once_with(
+            agent_results=ANY,
+            debate_result=None,
+            proposal_summary="Test summary"
+        )
 
     @pytest.mark.asyncio
-    async def test_total_tokens_summed(self):
+    async def test_evaluate_parameter_agent_exception(self):
         orch = _make_mock_orchestrator()
-        chunks = [make_chunk()]
-        metadata = make_metadata()
+        orch.parameter_agents[0].analyze.side_effect = Exception("Agent failed to run")
+        
+        doc = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text="Test proposal content",
+            chunks=[make_chunk()],
+            summary="Test summary",
+        )
+        response = await orch.evaluate(doc)
+        assert response.status == "success"
+        assert response.agent_results["ProblemRelevanceAgent"].status == "failed"
+        assert response.agent_results["ProblemRelevanceAgent"].score == 0.0
 
-        result = await orch.evaluate(chunks, metadata)
+    @pytest.mark.asyncio
+    async def test_evaluate_debate_agent_exception(self):
+        orch = _make_mock_orchestrator()
+        orch.debate_agent.should_trigger.return_value = True
+        orch.debate_agent.analyze.side_effect = Exception("Debate model timeout")
+        
+        doc = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text="Test proposal content",
+            chunks=[make_chunk()],
+            summary="Test summary",
+        )
+        response = await orch.evaluate(doc)
+        assert response.status == "success"
+        assert response.evaluation.overall_score == 80.0
 
-        # Each mock agent returns 500 tokens, 9 agents = 4500
-        assert result["total_tokens"] == 500 * 9
+    @pytest.mark.asyncio
+    async def test_evaluate_scoring_agent_exception(self):
+        orch = _make_mock_orchestrator()
+        orch.scoring_agent.synthesize.side_effect = Exception("Critical scoring database error")
+        
+        doc = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text="Test proposal content",
+            chunks=[make_chunk()],
+            summary="Test summary",
+        )
+        response = await orch.evaluate(doc)
+        assert response.status == "success"
+        assert response.evaluation.overall_score == 0.0
+        assert "Scoring failed" in response.evaluation.summary

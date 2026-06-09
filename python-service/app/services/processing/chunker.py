@@ -42,6 +42,25 @@ SECTION_KEYWORDS = [
     "compliance", "regulatory", "governance", "legal",
     "conclusion", "summary", "appendix", "references",
     "innovation", "intellectual property", "ip",
+    # AIAIC-specific section keywords
+    "solution synopsis", "unique value proposition",
+    "farmer-centric benefits", "farmer\u2011centric benefits",
+    "pricing strategy", "go-to-market strategy",
+    "risk assessment & mitigation", "risk assessment",
+    "training & capacity-building", "training & capacity\u2011building",
+    "workplan & milestones", "workplan",
+    "output expected", "expected outputs",
+    "gender and social inclusion", "social inclusion plan",
+    "strategic impact on maharashtra",
+    "prior govt. collaboration", "prior govt",
+    "core team and leadership", "founders background",
+    "data sources used", "trl level",
+    "current customers/pilots", "current customers",
+    "proposed project duration", "total project cost",
+    "baseline values", "proposed project districts",
+    "application track", "problem statements",
+    "dpdp act", "data governance", "model safety",
+    "open-source technologies",
 ]
 
 

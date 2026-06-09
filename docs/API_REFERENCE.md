@@ -32,24 +32,76 @@ Base URL: `http://localhost:8000/api/v1`
     "total_words": 5400,
     "total_chunks": 6,
     "has_scanned_content": false,
-    "detected_sections": ["Executive Summary", "Technical Architecture", ...]
+    "detected_sections": ["Executive Summary", "Problem Statement", "Pilot Implementation"]
   },
   "evaluation": {
     "overall_score": 72,
-    "innovation_score": 80,
-    "technical_score": 75,
-    "financial_score": 55,
-    "risk_score": 45,
-    "feasibility_score": 68,
-    "compliance_score": 62,
-    "sustainability_score": 50,
-    "recommendation": "Conditionally Recommended",
+    "problem_relevance_score": 80,
+    "solution_readiness_score": 75,
+    "pilot_design_score": 68,
+    "farmer_adoption_score": 70,
+    "scale_up_score": 65,
+    "team_capacity_score": 78,
+    "compliance_score": 68,
+    "recommendation": "Recommended",
     "summary": "...",
     "strengths": ["..."],
     "weaknesses": ["..."],
-    "swot_analysis": { ... }
+    "swot_analysis": {
+      "strengths": ["..."],
+      "weaknesses": ["..."],
+      "opportunities": ["..."],
+      "threats": ["..."]
+    },
+    "parameter_breakdown": {
+      "problem_relevance": {
+        "parameter_name": "Problem Relevance",
+        "parameter_score": 80.0,
+        "sub_questions": [
+          {
+            "question_id": "pr_1",
+            "question": "...",
+            "score": 8,
+            "justification": "...",
+            "evidence": "..."
+          }
+        ],
+        "key_findings": ["..."],
+        "red_flags": [],
+        "recommendations": ["..."]
+      }
+    },
+    "debate_summary": {
+      "confidence": 0.9,
+      "conflicts": [
+        {
+          "conflict_id": "c1",
+          "parameter": "Problem Relevance",
+          "severity": "medium",
+          "description": "..."
+        }
+      ],
+      "debates": [
+        {
+          "conflict_id": "c1",
+          "topic": "...",
+          "position_a": {
+            "agent": "...",
+            "argument": "...",
+            "evidence": "..."
+          },
+          "position_b": {
+            "agent": "...",
+            "argument": "...",
+            "evidence": "..."
+          },
+          "resolution": "...",
+          "score_adjustments": []
+        }
+      ],
+      "high_ambiguity_areas": ["..."]
+    }
   },
-  "agent_results": { ... },
   "processing_time_seconds": 42.5
 }
 ```
@@ -96,21 +148,21 @@ Base URL: `http://localhost:3001/api`
 
 ---
 
-## Scoring Weights
+## Scoring & Rubric System
 
-The Python 9-agent pipeline uses the following weights for the final score:
+The Python service evaluates proposals against the 7 AIAIC parameters. The final overall score is a flat average of the 7 parameter scores:
 
-| Agent | Weight |
-|---|---|
-| Innovation | 15% |
-| Market Potential | 15% |
-| Technical | 15% |
-| Financial | 15% |
-| Feasibility | 15% |
-| Risk | 10% |
-| Sustainability | 5% |
-| Compliance | 5% |
-| Agriculture | 5% |
+| Parameter | Weight | Description |
+|---|---|---|
+| Problem Relevance | 14.28% | Farming challenges, direct farmer pain points |
+| Solution Readiness | 14.28% | Technology Readiness Level (TRL 5-9) and innovativeness |
+| Pilot Design | 14.28% | Schedule, milestones, and testing scope viability |
+| Farmer Adoption | 14.28% | Incentives, usability, and youth/gender parity |
+| Scale-up Potential | 14.28% | Revenue streams and market scale strategy |
+| Team Capacity | 14.28% | Technical, agronomic, and business experience |
+| Compliance | 14.28% | Regulations, environmental certifications, standards |
+
+Each parameter is calculated as the average score of its sub-questions (on a 1 to 10 scale) multiplied by 10. High-severity scoring conflicts trigger the Debate Agent, which applies score adjustments.
 
 ---
 

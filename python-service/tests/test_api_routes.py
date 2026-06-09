@@ -13,6 +13,8 @@ from app.models.schemas import (
     DocumentChunk,
     DocumentMetadata,
     ProcessedDocument,
+    FinalEvaluation,
+    EvaluationResponse,
 )
 from tests.conftest import make_chunk, make_metadata
 
@@ -102,6 +104,29 @@ class TestProcessDocument:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
+    @pytest.mark.asyncio
+    @patch("app.api.routes.process_document")
+    async def test_processing_exception(self, mock_process):
+        mock_process.side_effect = Exception("Some parser error")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/process-document",
+                files={"file": ("test.txt", b"Test content here.", "text/plain")},
+            )
+        assert resp.status_code == 500
+        assert "parser error" in resp.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_no_filename(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/process-document",
+                files={"file": ("", b"Test content here.", "text/plain")},
+            )
+        assert resp.status_code == 422
+
 
 # ============================================================================
 # Evaluate endpoint
@@ -127,6 +152,43 @@ class TestEvaluateEndpoint:
                 files={"file": ("test.txt", b"", "text/plain")},
             )
         assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_rejects_no_filename(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/evaluate",
+                files={"file": ("", b"Some content", "text/plain")},
+            )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    @patch("app.api.routes.settings")
+    async def test_rejects_file_too_large(self, mock_settings):
+        mock_settings.max_file_size_bytes = 5
+        mock_settings.supported_formats_list = ["txt"]
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/evaluate",
+                files={"file": ("test.txt", b"Too long content", "text/plain")},
+            )
+        assert resp.status_code == 400
+        assert "File too large" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    @patch("app.api.routes.process_document")
+    async def test_evaluate_exception(self, mock_process):
+        mock_process.side_effect = Exception("Some evaluation error")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/evaluate",
+                files={"file": ("test.txt", b"Some valid content here.", "text/plain")},
+            )
+        assert resp.status_code == 500
+        assert "evaluation failed" in resp.json()["detail"].lower()
 
     @pytest.mark.asyncio
     @patch("app.api.routes.process_document")
@@ -158,16 +220,24 @@ class TestEvaluateEndpoint:
             summary="Test summary.",
         )
 
+        # Build final evaluation pydantic model
+        final_eval = FinalEvaluation(
+            overall_score=70,
+            recommendation="Recommended",
+            summary="Good proposal",
+            risk_level="Low",
+            swot_analysis={"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+            parameter_breakdown={},
+        )
+
         mock_orch = MagicMock()
-        mock_orch.evaluate = AsyncMock(return_value={
-            "agent_results": {},
-            "final_evaluation": {
-                "overall_score": 70,
-                "recommendation": "Recommended",
-                "summary": "Good proposal",
-                "risk_level": "Low",
-            },
-        })
+        mock_orch.evaluate = AsyncMock(return_value=EvaluationResponse(
+            status="success",
+            document_metadata=make_metadata(),
+            evaluation=final_eval,
+            agent_results={},
+            processing_time_seconds=2.5,
+        ))
         mock_orch_cls.return_value = mock_orch
 
         transport = ASGITransport(app=app)
@@ -204,14 +274,20 @@ class TestEvaluateChunksEndpoint:
     @pytest.mark.asyncio
     @patch("app.api.routes.AgentOrchestrator")
     async def test_successful_chunk_evaluation(self, mock_orch_cls):
+        final_eval = FinalEvaluation(
+            overall_score=60,
+            recommendation="Conditionally Recommended",
+            swot_analysis={"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+            parameter_breakdown={},
+        )
         mock_orch = MagicMock()
-        mock_orch.evaluate = AsyncMock(return_value={
-            "agent_results": {},
-            "final_evaluation": {
-                "overall_score": 60,
-                "recommendation": "Conditionally Recommended",
-            },
-        })
+        mock_orch.evaluate = AsyncMock(return_value=EvaluationResponse(
+            status="success",
+            document_metadata=make_metadata(),
+            evaluation=final_eval,
+            agent_results={},
+            processing_time_seconds=2.0,
+        ))
         mock_orch_cls.return_value = mock_orch
 
         transport = ASGITransport(app=app)

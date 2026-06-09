@@ -22,6 +22,13 @@ interface PythonEvaluationResponse {
   };
   evaluation: {
     overall_score: number;
+    problem_relevance_score: number;
+    solution_readiness_score: number;
+    pilot_design_score: number;
+    farmer_adoption_score: number;
+    scaleup_score: number;
+    team_capacity_score: number;
+    compliance_score: number;
     innovation_score: number;
     market_score: number;
     agriculture_score: number;
@@ -31,7 +38,6 @@ interface PythonEvaluationResponse {
     risk_score: number;
     technical_score: number;
     feasibility_score: number;
-    compliance_score: number;
     recommendation: string;
     summary: string;
     strengths: string[];
@@ -47,6 +53,8 @@ interface PythonEvaluationResponse {
     investment_readiness: string;
     key_action_items: string[];
     risk_level: string;
+    parameter_breakdown?: Record<string, any>;
+    debate_summary?: any;
   };
   agent_results: Record<string, any>;
   processing_time_seconds: number;
@@ -105,6 +113,13 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
   return {
     finalScore: {
       overall_score: evaluation.overall_score,
+      problem_relevance_score: evaluation.problem_relevance_score,
+      solution_readiness_score: evaluation.solution_readiness_score,
+      pilot_design_score: evaluation.pilot_design_score,
+      farmer_adoption_score: evaluation.farmer_adoption_score,
+      scaleup_score: evaluation.scaleup_score,
+      team_capacity_score: evaluation.team_capacity_score,
+      compliance_score: evaluation.compliance_score,
       innovation_score: evaluation.innovation_score,
       market_score: evaluation.market_score,
       agriculture_score: evaluation.agriculture_score,
@@ -119,6 +134,8 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
       swot_analysis: evaluation.swot_analysis,
       investment_readiness: evaluation.investment_readiness,
       key_action_items: evaluation.key_action_items,
+      parameter_breakdown: evaluation.parameter_breakdown,
+      debate_summary: evaluation.debate_summary,
     },
     agentResults: response.agent_results,
   };

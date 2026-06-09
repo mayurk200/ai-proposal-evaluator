@@ -73,6 +73,16 @@ class DocumentMetadata(BaseModel):
     processing_time_seconds: float = 0.0
 
 
+class ExtractedFormFields(BaseModel):
+    """Structured fields extracted from AIAIC form-based proposals."""
+    fields: dict[str, str] = Field(default_factory=dict)
+    tables_found: list[dict] = Field(default_factory=list)
+    financial_numbers: list[dict] = Field(default_factory=list)
+    team_members: list[dict] = Field(default_factory=list)
+    completeness: float = 0.0
+    qa_pairs_count: int = 0
+
+
 class ProcessedDocument(BaseModel):
     """Complete result of document processing."""
     metadata: DocumentMetadata
@@ -81,11 +91,22 @@ class ProcessedDocument(BaseModel):
     images: list[ExtractedImage] = Field(default_factory=list)
     tables: list[ExtractedTable] = Field(default_factory=list)
     summary: str = ""
+    form_fields: Optional[ExtractedFormFields] = None
 
 
 # =============================================================================
 # Agent Result Models
 # =============================================================================
+
+
+class SubQuestionResult(BaseModel):
+    """Result for a single sub-question within a parameter evaluation."""
+    question_id: str = ""
+    question: str = ""
+    score: float = 0.0  # 0-10 scale
+    evidence: str = ""  # Text from proposal supporting score
+    justification: str = ""  # Why this score was given
+    mapped_fields_found: list[str] = Field(default_factory=list)
 
 
 class AgentResult(BaseModel):
@@ -97,11 +118,31 @@ class AgentResult(BaseModel):
     key_findings: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    sub_questions: list[SubQuestionResult] = Field(default_factory=list)
     raw_output: dict[str, Any] = Field(default_factory=dict)
     tokens_used: int = 0
     duration_ms: int = 0
     status: str = "success"
     error: Optional[str] = None
+
+
+class ParameterResult(BaseModel):
+    """Parameter-level result containing sub-question results."""
+    parameter_name: str
+    parameter_score: float = 0.0  # 0-100 (avg of sub_questions * 10)
+    sub_questions: list[SubQuestionResult] = Field(default_factory=list)
+    key_findings: list[str] = Field(default_factory=list)
+    red_flags: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class DebateResult(BaseModel):
+    """Result from the debate agent's cross-agent analysis."""
+    conflicts: list[dict] = Field(default_factory=list)
+    debates: list[dict] = Field(default_factory=list)
+    adjusted_scores: dict[str, float] = Field(default_factory=dict)
+    high_ambiguity_areas: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
 
 
 class SWOTAnalysis(BaseModel):
@@ -115,6 +156,17 @@ class SWOTAnalysis(BaseModel):
 class FinalEvaluation(BaseModel):
     """Final evaluation result combining all agent analyses."""
     overall_score: float = 0.0
+
+    # New parameter-aligned scores (0-100)
+    problem_relevance_score: float = 0.0
+    solution_readiness_score: float = 0.0
+    pilot_design_score: float = 0.0
+    farmer_adoption_score: float = 0.0
+    scaleup_score: float = 0.0
+    team_capacity_score: float = 0.0
+    compliance_score: float = 0.0
+
+    # Legacy scores (kept for backward compatibility)
     innovation_score: float = 0.0
     market_score: float = 0.0
     agriculture_score: float = 0.0
@@ -124,7 +176,7 @@ class FinalEvaluation(BaseModel):
     risk_score: float = 0.0
     technical_score: float = 0.0
     feasibility_score: float = 0.0
-    compliance_score: float = 0.0
+
     recommendation: str = RecommendationLevel.NOT_RECOMMENDED.value
     summary: str = ""
     strengths: list[str] = Field(default_factory=list)
@@ -135,6 +187,10 @@ class FinalEvaluation(BaseModel):
     investment_readiness: str = ""
     key_action_items: list[str] = Field(default_factory=list)
     risk_level: str = RiskLevel.MEDIUM.value
+
+    # New structured breakdown
+    parameter_breakdown: dict[str, ParameterResult] = Field(default_factory=dict)
+    debate_summary: Optional[DebateResult] = None
 
 
 # =============================================================================

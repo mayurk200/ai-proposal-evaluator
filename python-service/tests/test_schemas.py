@@ -68,7 +68,7 @@ class TestEnums:
 
     def test_agent_names(self):
         assert AgentName.SCORING.value == "FinalScoringAgent"
-        assert len(AgentName) == 9
+        assert len(AgentName) == 10
 
 
 # ============================================================================
