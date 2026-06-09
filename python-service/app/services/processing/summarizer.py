@@ -107,7 +107,8 @@ async def create_executive_summary(
     """
     Create a unified executive summary from all chunks.
 
-    If chunk_summaries are not provided, summarizes each chunk first.
+    To satisfy Groq TPM/rate limits, chunks are dynamically grouped into larger
+    units (up to 4000 tokens each) before calling the LLM when chunks > 2.
 
     Args:
         chunks: All document chunks.
@@ -118,23 +119,87 @@ async def create_executive_summary(
     """
     llm = get_llm_client()
 
-    # If we don't have chunk summaries, create them
+    # Step 1: Group chunks if chunks > 2 to minimize LLM requests
+    grouped_chunks: list[DocumentChunk] = []
+    if chunks:
+        if len(chunks) > 2 and chunk_summaries is None:
+            current_text = []
+            current_pages = set()
+            current_sections = set()
+            current_tokens = 0
+
+            for chunk in chunks:
+                chunk_tokens = estimate_token_count(chunk.text)
+                if current_tokens + chunk_tokens > 4000 and current_text:
+                    virtual_chunk = DocumentChunk(
+                        chunk_id=f"group-{len(grouped_chunks)}",
+                        text="\n\n".join(current_text),
+                        section_title=" & ".join(list(current_sections)[:3]),
+                        page_numbers=sorted(list(current_pages)),
+                        chunk_type=chunk.chunk_type,
+                        word_count=len("\n\n".join(current_text).split()),
+                        has_financial_data=any("financial" in str(s).lower() for s in current_sections),
+                        has_technical_content=any("tech" in str(s).lower() for s in current_sections),
+                        position=chunk.position,
+                        overlap_with_previous=False
+                    )
+                    grouped_chunks.append(virtual_chunk)
+                    current_text = [chunk.text]
+                    current_pages = set(chunk.page_numbers)
+                    current_sections = {chunk.section_title or "Content"}
+                    current_tokens = chunk_tokens
+                else:
+                    current_text.append(chunk.text)
+                    current_pages.update(chunk.page_numbers)
+                    if chunk.section_title:
+                        current_sections.add(chunk.section_title)
+                    current_tokens += chunk_tokens
+
+            if current_text:
+                virtual_chunk = DocumentChunk(
+                    chunk_id=f"group-{len(grouped_chunks)}",
+                    text="\n\n".join(current_text),
+                    section_title=" & ".join(list(current_sections)[:3]),
+                    page_numbers=sorted(list(current_pages)),
+                    chunk_type=chunks[-1].chunk_type if chunks else chunks[0].chunk_type,
+                    word_count=len("\n\n".join(current_text).split()),
+                    has_financial_data=any("financial" in str(s).lower() for s in current_sections),
+                    has_technical_content=any("tech" in str(s).lower() for s in current_sections),
+                    position=chunks[-1].position if chunks else chunks[0].position,
+                    overlap_with_previous=False
+                )
+                grouped_chunks.append(virtual_chunk)
+        else:
+            grouped_chunks = chunks
+    else:
+        grouped_chunks = []
+
+    # Step 2: Summarize each grouped chunk
     if chunk_summaries is None:
         chunk_summaries = []
-        for chunk in chunks:
-            summary = await summarize_chunk(chunk)
+        for v_chunk in grouped_chunks:
+            summary = await summarize_chunk(v_chunk)
             chunk_summaries.append(summary)
 
-    # If total content is small enough, skip the combine step
+    if not chunk_summaries:
+        return {
+            "executive_summary": "Empty document.",
+            "key_points": [],
+            "financial_highlights": [],
+            "technical_highlights": [],
+            "all_claims_to_verify": [],
+            "missing_information": [],
+        }
+
+    # Step 3: Combine summaries
     all_summaries_text = "\n\n".join(
         f"[Section: {chunk.section_title}]\n{summary.get('summary', chunk.text[:300])}"
-        for chunk, summary in zip(chunks, chunk_summaries)
+        for chunk, summary in zip(grouped_chunks, chunk_summaries)
     )
 
     total_tokens = estimate_token_count(all_summaries_text)
 
     if total_tokens <= 3000:
-        # Small enough to combine directly
         try:
             response = llm.chat(
                 system_prompt=COMBINE_SUMMARIES_PROMPT,
@@ -147,7 +212,7 @@ async def create_executive_summary(
         except Exception as e:
             logger.error("executive_summary_failed", error=str(e))
 
-    # If too large, just concatenate chunk summaries
+    # Manual combine fallback
     combined = {
         "executive_summary": "\n\n".join(
             s.get("summary", "") for s in chunk_summaries if s.get("summary")

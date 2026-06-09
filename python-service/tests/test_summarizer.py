@@ -140,3 +140,39 @@ class TestCreateExecutiveSummary:
         # Should fall back to concatenation
         assert "Summary A" in result["executive_summary"]
         assert "p1" in result["key_points"]
+
+    @patch("app.services.processing.summarizer.get_llm_client")
+    @pytest.mark.asyncio
+    async def test_large_doc_groups_chunks(self, mock_get_llm):
+        mock_client = MagicMock()
+        # Mock responses for summarizing each group (2 groups) and combining them (1 combine)
+        mock_client.chat.side_effect = [
+            {"result": {"summary": "Group 1 Summary", "key_points": ["g1"]}, "tokens": 100},
+            {"result": {"summary": "Group 2 Summary", "key_points": ["g2"]}, "tokens": 100},
+            {"result": {
+                "executive_summary": "Unified group summary.",
+                "key_points": ["g1", "g2"],
+                "financial_highlights": [],
+                "technical_highlights": [],
+                "all_claims_to_verify": [],
+                "missing_information": [],
+            }, "tokens": 200},
+        ]
+        mock_get_llm.return_value = mock_client
+
+        # Create 5 chunks, each with ~1000 words (which is approx 1300 tokens)
+        # 5 * 1300 = 6500 tokens total.
+        # It should group them into 2 groups (approx 4000 tokens limit)
+        chunks = [
+            make_chunk(text="word " * 1000, chunk_id="1"),
+            make_chunk(text="word " * 1000, chunk_id="2"),
+            make_chunk(text="word " * 1000, chunk_id="3"),
+            make_chunk(text="word " * 1000, chunk_id="4"),
+            make_chunk(text="word " * 1000, chunk_id="5"),
+        ]
+
+        result = await create_executive_summary(chunks)
+
+        assert result["executive_summary"] == "Unified group summary."
+        # Total chats: 2 for group summaries, 1 for combine
+        assert mock_client.chat.call_count == 3

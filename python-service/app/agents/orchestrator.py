@@ -102,6 +102,7 @@ class AgentOrchestrator:
             content=content,
             metadata=metadata_dict,
             form_fields=form_fields_dict,
+            chunks=document.chunks,
         )
         agent_results["ExtractionAgent"] = extraction_result
 
@@ -124,6 +125,7 @@ class AgentOrchestrator:
                     content=content,
                     metadata=metadata_dict,
                     form_fields=form_fields_dict,
+                    chunks=document.chunks,
                 )
                 parameter_results[agent.name] = result
                 agent_results[agent.name] = result
