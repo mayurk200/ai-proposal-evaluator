@@ -9,12 +9,14 @@ from typing import Optional
 
 from app.models.schemas import (
     DocumentMetadata,
+    ExtractedFormFields,
     ProcessedDocument,
 )
 from app.services.extraction.text_extractor import extract_text
 from app.services.ocr.ocr_engine import is_scanned_pdf, ocr_image, ocr_pdf_page
 from app.services.extraction.image_extractor import extract_images_from_file
 from app.services.extraction.table_extractor import extract_tables_from_file
+from app.services.extraction.form_field_extractor import extract_form_fields
 from app.services.processing.chunker import chunk_document
 from app.services.processing.summarizer import create_executive_summary
 from app.utils.logging import get_logger
@@ -154,6 +156,29 @@ async def process_document(
     )
 
     # =========================================================================
+    # Step 3.5: Form Field Extraction (AIAIC-specific)
+    # =========================================================================
+    form_fields_data = None
+    if full_text.strip():
+        try:
+            raw_form = extract_form_fields(full_text)
+            form_fields_data = ExtractedFormFields(
+                fields=raw_form.get("fields", {}),
+                tables_found=raw_form.get("tables_found", []),
+                financial_numbers=raw_form.get("financial_numbers", []),
+                team_members=raw_form.get("team_members", []),
+                completeness=raw_form.get("completeness", 0.0),
+                qa_pairs_count=raw_form.get("qa_pairs_count", 0),
+            )
+            logger.info(
+                "form_fields_extracted",
+                fields=len(raw_form.get("fields", {})),
+                completeness=raw_form.get("completeness", 0.0),
+            )
+        except Exception as e:
+            logger.warning("form_field_extraction_failed", error=str(e))
+
+    # =========================================================================
     # Step 4: Strategic Chunking
     # =========================================================================
     chunks = chunk_document(
@@ -206,6 +231,7 @@ async def process_document(
         images=images,
         tables=tables,
         summary=summary,
+        form_fields=form_fields_data,
     )
 
     logger.info(

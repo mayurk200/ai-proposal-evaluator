@@ -2,7 +2,12 @@
  * Tests for src/utils/pythonProxy.ts — response mapping & health check.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mapPythonResponseToLegacy, checkPythonServiceHealth, evaluateWithPythonService } from '../src/utils/pythonProxy';
+import {
+  mapPythonResponseToLegacy,
+  checkPythonServiceHealth,
+  evaluateBatchWithPythonService,
+  evaluateWithPythonService,
+} from '../src/utils/pythonProxy';
 
 // Build a full mock Python response
 function mockPythonResponse(): any {
@@ -173,5 +178,43 @@ describe('evaluateWithPythonService', () => {
     await expect(
       evaluateWithPythonService(Buffer.from('test'), 'test.pdf', 'application/pdf'),
     ).rejects.toThrow('Python service communication failed');
+  });
+});
+
+describe('evaluateBatchWithPythonService', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends all files to the batch endpoint and returns response', async () => {
+    const mockResp = {
+      status: 'success',
+      batch_id: 'batch-1',
+      total_files: 2,
+      completed: 2,
+      failed: 0,
+      results: [
+        { evaluation_id: 'eval-1', filename: 'a.pdf', status: 'completed', overall_score: 80 },
+        { evaluation_id: 'eval-2', filename: 'b.pdf', status: 'completed', overall_score: 70 },
+      ],
+    };
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResp,
+    });
+
+    const result = await evaluateBatchWithPythonService([
+      { buffer: Buffer.from('a'), originalname: 'a.pdf', mimetype: 'application/pdf' },
+      { buffer: Buffer.from('b'), originalname: 'b.pdf', mimetype: 'application/pdf' },
+    ]);
+
+    expect(result.batch_id).toBe('batch-1');
+    expect(result.results).toHaveLength(2);
+    expect((fetch as any)).toHaveBeenCalledOnce();
+    expect((fetch as any).mock.calls[0][0]).toBe('http://localhost:8000/api/v1/evaluate-batch');
   });
 });

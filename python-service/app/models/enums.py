@@ -39,6 +39,7 @@ class ChunkType(str, Enum):
     EXECUTIVE_SUMMARY = "executive_summary"
     FINANCIAL_DATA = "financial_data"
     TECHNICAL_CONTENT = "technical_content"
+    FORM_FIELD = "form_field"
     MIXED = "mixed"
 
 
@@ -68,11 +69,12 @@ class RiskLevel(str, Enum):
 class AgentName(str, Enum):
     """Names of all evaluation agents."""
     EXTRACTION = "ExtractionAgent"
-    TECHNICAL = "TechnicalAgent"
-    FINANCIAL = "FinancialAgent"
-    RISK = "RiskAgent"
-    INNOVATION = "InnovationAgent"
-    FEASIBILITY = "FeasibilityAgent"
+    PROBLEM_RELEVANCE = "ProblemRelevanceAgent"
+    SOLUTION_READINESS = "SolutionReadinessAgent"
+    PILOT_DESIGN = "PilotDesignAgent"
+    FARMER_ADOPTION = "FarmerAdoptionAgent"
+    SCALEUP = "ScaleUpAgent"
+    TEAM_CAPACITY = "TeamCapacityAgent"
     COMPLIANCE = "ComplianceAgent"
-    SUSTAINABILITY = "SustainabilityAgent"
+    DEBATE = "DebateAgent"
     SCORING = "FinalScoringAgent"

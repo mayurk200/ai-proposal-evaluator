@@ -92,10 +92,13 @@ export default function DashboardPage() {
   const scoreHistoryData = stats?.scoreHistory?.map((s, i) => ({
     name: `#${i + 1}`,
     overall: s.overallScore,
-    innovation: s.innovationScore,
-    market: s.marketScore,
-    financial: s.financialScore,
-    sustainability: s.sustainabilityScore,
+    problemRelevance: s.problemRelevanceScore || 0,
+    solutionReadiness: s.solutionReadinessScore || 0,
+    pilotDesign: s.pilotDesignScore || 0,
+    farmerAdoption: s.farmerAdoptionScore || 0,
+    scaleUp: s.scaleUpScore || 0,
+    teamCapacity: s.teamCapacityScore || 0,
+    compliance: s.complianceScore || 0,
   })) || [];
 
   const categoryData = stats?.categoryStats?.map((c) => ({
@@ -104,11 +107,13 @@ export default function DashboardPage() {
   })) || [];
 
   const radarData = stats?.topProposals?.[0] ? [
-    { metric: 'Innovation', value: stats.topProposals[0].innovationScore },
-    { metric: 'Market', value: stats.topProposals[0].marketScore },
-    { metric: 'Financial', value: stats.topProposals[0].financialScore },
-    { metric: 'Sustainability', value: stats.topProposals[0].sustainabilityScore },
-    { metric: 'Risk', value: stats.topProposals[0].riskScore },
+    { metric: 'Problem Relevance', value: stats.topProposals[0].problemRelevanceScore || 0 },
+    { metric: 'Solution Readiness', value: stats.topProposals[0].solutionReadinessScore || 0 },
+    { metric: 'Pilot Design', value: stats.topProposals[0].pilotDesignScore || 0 },
+    { metric: 'Farmer Adoption', value: stats.topProposals[0].farmerAdoptionScore || 0 },
+    { metric: 'Scale-up', value: stats.topProposals[0].scaleUpScore || 0 },
+    { metric: 'Team Capacity', value: stats.topProposals[0].teamCapacityScore || 0 },
+    { metric: 'Compliance', value: stats.topProposals[0].complianceScore || 0 },
   ] : [];
 
   return (
@@ -142,7 +147,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-text-muted">
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Overall</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-secondary" /> Innovation</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Solution Readiness</span>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={280}>
@@ -152,9 +157,9 @@ export default function DashboardPage() {
                       <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
                       <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="colorInnovation" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#66BB6A" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="#66BB6A" stopOpacity={0} />
+                    <linearGradient id="colorReadiness" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#D97706" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#D97706" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
@@ -170,7 +175,7 @@ export default function DashboardPage() {
                     }}
                   />
                   <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2.5} fill="url(#colorOverall)" />
-                  <Area type="monotone" dataKey="innovation" stroke="#66BB6A" strokeWidth={2} fill="url(#colorInnovation)" />
+                  <Area type="monotone" dataKey="solutionReadiness" stroke="#D97706" strokeWidth={2} fill="url(#colorReadiness)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
@@ -281,11 +286,13 @@ export default function DashboardPage() {
                     <div className="space-y-3">
                       <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Score Breakdown</p>
                       {[
-                        { label: 'Innovation', value: stats.topProposals[0]?.innovationScore },
-                        { label: 'Market', value: stats.topProposals[0]?.marketScore },
-                        { label: 'Financial', value: stats.topProposals[0]?.financialScore },
-                        { label: 'Sustainability', value: stats.topProposals[0]?.sustainabilityScore },
-                        { label: 'Risk', value: stats.topProposals[0]?.riskScore },
+                        { label: 'Problem Relevance', value: stats.topProposals[0]?.problemRelevanceScore },
+                        { label: 'Solution Readiness', value: stats.topProposals[0]?.solutionReadinessScore },
+                        { label: 'Pilot Design', value: stats.topProposals[0]?.pilotDesignScore },
+                        { label: 'Farmer Adoption', value: stats.topProposals[0]?.farmerAdoptionScore },
+                        { label: 'Scale-up Potential', value: stats.topProposals[0]?.scaleUpScore },
+                        { label: 'Team Capacity', value: stats.topProposals[0]?.teamCapacityScore },
+                        { label: 'Compliance', value: stats.topProposals[0]?.complianceScore },
                       ].map((item) => (
                         <div key={item.label}>
                           <div className="flex justify-between text-xs mb-1">
@@ -294,7 +301,7 @@ export default function DashboardPage() {
                               {Math.round(item.value || 0)}
                             </span>
                           </div>
-                          <Progress value={item.value || 0} />
+                          <Progress value={item.value || 0} className="h-1.5" />
                         </div>
                       ))}
                     </div>

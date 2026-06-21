@@ -209,3 +209,28 @@ class TestAnalyze:
         call_kwargs = mock_client.chat.call_args[1]
         assert call_kwargs["temperature"] == 0.1
         assert call_kwargs["max_tokens"] == 2048
+
+
+# ============================================================================
+# BaseAgent._extract_sub_questions
+# ============================================================================
+
+class TestExtractSubQuestions:
+    def _make_agent(self):
+        agent = BaseAgent.__new__(BaseAgent)
+        agent.name = "TestAgent"
+        return agent
+
+    def test_extract_sub_questions_non_list(self):
+        agent = self._make_agent()
+        assert agent._extract_sub_questions({"sub_questions": "not-a-list"}) == []
+
+    def test_extract_sub_questions_invalid_item(self):
+        agent = self._make_agent()
+        res = agent._extract_sub_questions({"sub_questions": ["not-a-dict"]})
+        assert res == []
+
+    def test_extract_sub_questions_invalid_score(self):
+        agent = self._make_agent()
+        res = agent._extract_sub_questions({"sub_questions": [{"question_id": "1", "score": "invalid"}]})
+        assert res == []

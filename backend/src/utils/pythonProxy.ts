@@ -22,6 +22,13 @@ interface PythonEvaluationResponse {
   };
   evaluation: {
     overall_score: number;
+    problem_relevance_score: number;
+    solution_readiness_score: number;
+    pilot_design_score: number;
+    farmer_adoption_score: number;
+    scaleup_score: number;
+    team_capacity_score: number;
+    compliance_score: number;
     innovation_score: number;
     market_score: number;
     agriculture_score: number;
@@ -31,7 +38,6 @@ interface PythonEvaluationResponse {
     risk_score: number;
     technical_score: number;
     feasibility_score: number;
-    compliance_score: number;
     recommendation: string;
     summary: string;
     strengths: string[];
@@ -47,9 +53,29 @@ interface PythonEvaluationResponse {
     investment_readiness: string;
     key_action_items: string[];
     risk_level: string;
+    parameter_breakdown?: Record<string, any>;
+    debate_summary?: any;
   };
   agent_results: Record<string, any>;
   processing_time_seconds: number;
+}
+
+interface PythonBatchEvaluationResponse {
+  status: string;
+  batch_id: string;
+  total_files: number;
+  completed: number;
+  failed: number;
+  results: Array<{
+    evaluation_id?: string;
+    filename: string;
+    status: string;
+    overall_score?: number;
+    recommendation?: string;
+    file_url?: string;
+    processing_time_seconds?: number;
+    error?: string;
+  }>;
 }
 
 /**
@@ -84,12 +110,54 @@ export async function evaluateWithPythonService(
       throw new Error(`Python service error (${response.status}): ${errorBody}`);
     }
 
-    return await response.json();
+    return await response.json() as PythonEvaluationResponse;
   } catch (error: any) {
     if (error.name === 'AbortError') {
       throw new Error('Python service evaluation timed out after 5 minutes');
     }
     throw new Error(`Python service communication failed: ${error.message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Send multiple files to the Python service for sequential batch evaluation.
+ */
+export async function evaluateBatchWithPythonService(
+  files: Array<{ buffer: Buffer; originalname: string; mimetype: string }>,
+): Promise<PythonBatchEvaluationResponse> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/evaluate-batch`;
+
+  const formData = new FormData();
+  for (const file of files) {
+    const blob = new Blob([file.buffer], { type: file.mimetype });
+    formData.append('files', blob, file.originalname);
+  }
+
+  const timeoutMs = Math.max(300_000, files.length * 300_000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Python batch service error (${response.status}): ${errorBody}`);
+    }
+
+    return await response.json() as PythonBatchEvaluationResponse;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Python batch evaluation timed out after ${Math.round(timeoutMs / 60000)} minutes`);
+    }
+    throw new Error(`Python batch service communication failed: ${error.message}`);
   } finally {
     clearTimeout(timeout);
   }
@@ -105,6 +173,13 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
   return {
     finalScore: {
       overall_score: evaluation.overall_score,
+      problem_relevance_score: evaluation.problem_relevance_score,
+      solution_readiness_score: evaluation.solution_readiness_score,
+      pilot_design_score: evaluation.pilot_design_score,
+      farmer_adoption_score: evaluation.farmer_adoption_score,
+      scaleup_score: evaluation.scaleup_score,
+      team_capacity_score: evaluation.team_capacity_score,
+      compliance_score: evaluation.compliance_score,
       innovation_score: evaluation.innovation_score,
       market_score: evaluation.market_score,
       agriculture_score: evaluation.agriculture_score,
@@ -119,6 +194,8 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
       swot_analysis: evaluation.swot_analysis,
       investment_readiness: evaluation.investment_readiness,
       key_action_items: evaluation.key_action_items,
+      parameter_breakdown: evaluation.parameter_breakdown,
+      debate_summary: evaluation.debate_summary,
     },
     agentResults: response.agent_results,
   };

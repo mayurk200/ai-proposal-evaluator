@@ -1,5 +1,10 @@
 import { LLMProvider, LLMConfig, LLMResponse } from './types';
 
+interface OllamaGenerateResponse {
+  response?: string;
+  eval_count?: number;
+}
+
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
 
@@ -27,7 +32,7 @@ export class OllamaProvider implements LLMProvider {
       throw new Error(`Ollama API error: ${response.statusText}`);
     }
 
-    const json = await response.json();
+    const json = await response.json() as OllamaGenerateResponse;
     const duration = Date.now() - startTime;
     const responseText = json.response || '{}';
     const tokens = json.eval_count || 0;

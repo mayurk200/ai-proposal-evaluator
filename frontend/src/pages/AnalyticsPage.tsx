@@ -42,10 +42,13 @@ export default function AnalyticsPage() {
   const history = stats?.scoreHistory?.map((s: any, i: number) => ({
     name: `#${i + 1}`,
     overall: s.overallScore ?? 0,
-    innovation: s.innovationScore ?? 0,
-    market: s.marketScore ?? 0,
-    financial: s.financialScore ?? 0,
-    sustainability: s.sustainabilityScore ?? 0,
+    problemRelevance: s.problemRelevanceScore ?? 0,
+    solutionReadiness: s.solutionReadinessScore ?? 0,
+    pilotDesign: s.pilotDesignScore ?? 0,
+    farmerAdoption: s.farmerAdoptionScore ?? 0,
+    scaleUp: s.scaleUpScore ?? 0,
+    teamCapacity: s.teamCapacityScore ?? 0,
+    compliance: s.complianceScore ?? 0,
   })) || [];
 
   const catData = stats?.categoryStats?.map((c: any) => ({
@@ -108,9 +111,9 @@ export default function AnalyticsPage() {
                       <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
                       <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="aInnovation" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#66BB6A" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="#66BB6A" stopOpacity={0} />
+                    <linearGradient id="aReadiness" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#D97706" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#D97706" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
@@ -124,8 +127,8 @@ export default function AnalyticsPage() {
                       border: '1px solid rgba(255,255,255,0.4)',
                     }}
                   />
-                  <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2} fill="url(#aOverall)" />
-                  <Area type="monotone" dataKey="innovation" stroke="#66BB6A" strokeWidth={1.5} fill="url(#aInnovation)" />
+                  <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2} fill="url(#aOverall)" name="Overall" />
+                  <Area type="monotone" dataKey="solutionReadiness" stroke="#D97706" strokeWidth={1.5} fill="url(#aReadiness)" name="Solution Readiness" />
                   <Legend />
                 </AreaChart>
               </ResponsiveContainer>

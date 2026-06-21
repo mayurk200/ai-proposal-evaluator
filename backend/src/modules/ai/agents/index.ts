@@ -11,7 +11,7 @@ import {
 
 export class ExtractionAgent extends BaseAgent {
   constructor() {
-    super({ name: 'ExtractionAgent', temperature: 0.1, maxTokens: 4096 });
+    super({ name: 'ExtractionAgent', temperature: 0.1, maxTokens: 1500, maxInputChars: 10000 });
   }
 
   async analyze(text: string) {
@@ -21,7 +21,7 @@ export class ExtractionAgent extends BaseAgent {
 
 export class AgricultureAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'AgricultureAnalysisAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'AgricultureAnalysisAgent', temperature: 0.3, maxTokens: 1200, maxInputChars: 9000 });
   }
 
   async analyze(data: string) {
@@ -31,7 +31,7 @@ export class AgricultureAnalysisAgent extends BaseAgent {
 
 export class FinancialAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'FinancialAnalysisAgent', temperature: 0.2, maxTokens: 3000 });
+    super({ name: 'FinancialAnalysisAgent', temperature: 0.2, maxTokens: 1200, maxInputChars: 9000 });
   }
 
   async analyze(data: string) {
@@ -41,7 +41,7 @@ export class FinancialAnalysisAgent extends BaseAgent {
 
 export class SustainabilityAgent extends BaseAgent {
   constructor() {
-    super({ name: 'SustainabilityAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'SustainabilityAgent', temperature: 0.3, maxTokens: 1200, maxInputChars: 9000 });
   }
 
   async analyze(data: string) {
@@ -51,7 +51,7 @@ export class SustainabilityAgent extends BaseAgent {
 
 export class RiskAssessmentAgent extends BaseAgent {
   constructor() {
-    super({ name: 'RiskAssessmentAgent', temperature: 0.2, maxTokens: 3000 });
+    super({ name: 'RiskAssessmentAgent', temperature: 0.2, maxTokens: 1200, maxInputChars: 9000 });
   }
 
   async analyze(data: string) {
@@ -61,7 +61,7 @@ export class RiskAssessmentAgent extends BaseAgent {
 
 export class InnovationAnalysisAgent extends BaseAgent {
   constructor() {
-    super({ name: 'InnovationAnalysisAgent', temperature: 0.3, maxTokens: 3000 });
+    super({ name: 'InnovationAnalysisAgent', temperature: 0.3, maxTokens: 1200, maxInputChars: 9000 });
   }
 
   async analyze(data: string) {
@@ -71,7 +71,7 @@ export class InnovationAnalysisAgent extends BaseAgent {
 
 export class FinalScoringAgent extends BaseAgent {
   constructor() {
-    super({ name: 'FinalScoringAgent', temperature: 0.2, maxTokens: 4096 });
+    super({ name: 'FinalScoringAgent', temperature: 0.2, maxTokens: 1500, maxInputChars: 10000 });
   }
 
   async analyze(data: string) {

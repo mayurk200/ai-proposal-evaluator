@@ -33,6 +33,7 @@ const memUpload = multer({
 
 // Instant evaluate: upload file → extract text in memory → AI evaluation → return results
 router.post('/evaluate-file', optionalAuthMiddleware, memUpload.single('file'), (req, res, next) => proposalController.evaluateFile(req, res, next));
+router.post('/evaluate-batch', optionalAuthMiddleware, memUpload.array('files', 20), (req, res, next) => proposalController.evaluateBatch(req, res, next));
 
 // Legacy routes (kept for backward compatibility)
 router.post('/upload', optionalAuthMiddleware, upload.single('file'), (req, res, next) => proposalController.upload(req, res, next));

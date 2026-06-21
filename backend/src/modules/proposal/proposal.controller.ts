@@ -4,6 +4,7 @@ import { proposalService } from './proposal.service';
 import { extractTextFromBuffer } from '../../utils/textExtractor';
 import { aiOrchestrator } from '../ai/orchestrator';
 import {
+  evaluateBatchWithPythonService,
   evaluateWithPythonService,
   mapPythonResponseToLegacy,
   checkPythonServiceHealth,
@@ -112,6 +113,60 @@ export class ProposalController {
     }
   }
 
+  /**
+   * Batch evaluate: files -> Python service batch pipeline.
+   */
+  async evaluateBatch(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const files = req.files as Express.Multer.File[] | undefined;
+
+      if (!files || files.length === 0) {
+        res.status(400).json({ status: 'error', message: 'No files uploaded' });
+        return;
+      }
+
+      if (files.length < 2) {
+        res.status(400).json({ status: 'error', message: 'Use single-file evaluation for one document' });
+        return;
+      }
+
+      const pythonAvailable = await checkPythonServiceHealth();
+      if (!pythonAvailable) {
+        res.status(503).json({
+          status: 'error',
+          message: 'Batch evaluation requires the Python service to be available',
+        });
+        return;
+      }
+
+      console.log(`[EvaluateBatch] Using Python service for ${files.length} files`);
+      const batchResponse = await evaluateBatchWithPythonService(files);
+
+      res.json({
+        status: 'success',
+        data: {
+          batchId: batchResponse.batch_id,
+          totalFiles: batchResponse.total_files,
+          completed: batchResponse.completed,
+          failed: batchResponse.failed,
+          results: batchResponse.results.map((result) => ({
+            evaluationId: result.evaluation_id,
+            filename: result.filename,
+            status: result.status,
+            overallScore: result.overall_score,
+            recommendation: result.recommendation,
+            fileUrl: result.file_url,
+            processingTimeSeconds: result.processing_time_seconds,
+            error: result.error,
+          })),
+        },
+      });
+    } catch (error: any) {
+      console.error('Batch evaluation failed:', error);
+      next(error);
+    }
+  }
+
   async upload(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.file) {
@@ -185,4 +240,3 @@ export class ProposalController {
 }
 
 export const proposalController = new ProposalController();
-

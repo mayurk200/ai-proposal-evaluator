@@ -22,17 +22,25 @@ export default function ComparePage() {
   const evaluated = data?.proposals?.filter((p: Proposal) => p.status === 'EVALUATED' && p.evaluation) || [];
   const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : p.length < 5 ? [...p, id] : p);
   const selectedProposals = evaluated.filter((p: Proposal) => selected.includes(p.id));
-  const radarData = selectedProposals.length > 0 ? ['Innovation', 'Market', 'Financial', 'Sustainability', 'Risk'].map(metric => {
+  const radarData = selectedProposals.length > 0 ? ['Problem Relevance', 'Solution Readiness', 'Pilot Design', 'Farmer Adoption', 'Scale-up Potential', 'Team Capacity', 'Compliance'].map(metric => {
     const d: any = { metric };
     selectedProposals.forEach((p: Proposal, i: number) => { if (p.evaluation) {
-      const key = metric.toLowerCase();
-      d[`p${i}`] = key === 'innovation' ? p.evaluation.innovationScore : key === 'market' ? p.evaluation.marketScore : key === 'financial' ? p.evaluation.financialScore : key === 'sustainability' ? p.evaluation.sustainabilityScore : p.evaluation.riskScore;
+      const key = metric;
+      let score = 0;
+      if (key === 'Problem Relevance') score = p.evaluation.problemRelevanceScore || 0;
+      else if (key === 'Solution Readiness') score = p.evaluation.solutionReadinessScore || 0;
+      else if (key === 'Pilot Design') score = p.evaluation.pilotDesignScore || 0;
+      else if (key === 'Farmer Adoption') score = p.evaluation.farmerAdoptionScore || 0;
+      else if (key === 'Scale-up Potential') score = p.evaluation.scaleUpScore || 0;
+      else if (key === 'Team Capacity') score = p.evaluation.teamCapacityScore || 0;
+      else if (key === 'Compliance') score = p.evaluation.complianceScore || 0;
+      d[`p${i}`] = score;
     }});
     return d;
   }) : [];
   const barData = selectedProposals.map((p: Proposal) => ({
     name: p.title.slice(0, 20), overall: p.evaluation?.overallScore || 0,
-    innovation: p.evaluation?.innovationScore || 0, market: p.evaluation?.marketScore || 0,
+    problemRelevance: p.evaluation?.problemRelevanceScore || 0, solutionReadiness: p.evaluation?.solutionReadinessScore || 0,
   }));
   return (
     <AppLayout>
@@ -94,8 +102,8 @@ export default function ComparePage() {
                       <YAxis domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
                       <Tooltip />
                       <Bar dataKey="overall" fill="#2E7D32" radius={[6, 6, 0, 0]} name="Overall" />
-                      <Bar dataKey="innovation" fill="#66BB6A" radius={[6, 6, 0, 0]} name="Innovation" />
-                      <Bar dataKey="market" fill="#C8E6C9" radius={[6, 6, 0, 0]} name="Market" />
+                      <Bar dataKey="problemRelevance" fill="#E11D48" radius={[6, 6, 0, 0]} name="Problem Relevance" />
+                      <Bar dataKey="solutionReadiness" fill="#D97706" radius={[6, 6, 0, 0]} name="Solution Readiness" />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>

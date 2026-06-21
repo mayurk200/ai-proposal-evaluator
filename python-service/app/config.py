@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     EVALUATION_TIMEOUT_SECONDS: int = 300
     MAX_RETRIES: int = 3
 
+    # Storage Provider (local | s3 | minio)
+    STORAGE_PROVIDER: str = "local"
+    STORAGE_LOCAL_DIR: str = "./uploads"
+    S3_BUCKET_NAME: str = "agrieval-uploads"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_ENDPOINT_URL: Optional[str] = None  # Set for MinIO (e.g. http://minio:9000)
+    S3_REGION: str = "us-east-1"
+
+    # Database (PostgreSQL)
+    DATABASE_URL: str = "postgresql+asyncpg://agrieval:agrieval123@localhost:5432/agrieval"
+
     @property
     def supported_formats_list(self) -> list[str]:
         return [fmt.strip().lower() for fmt in self.SUPPORTED_FORMATS.split(",")]

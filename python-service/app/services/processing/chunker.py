@@ -42,6 +42,25 @@ SECTION_KEYWORDS = [
     "compliance", "regulatory", "governance", "legal",
     "conclusion", "summary", "appendix", "references",
     "innovation", "intellectual property", "ip",
+    # AIAIC-specific section keywords
+    "solution synopsis", "unique value proposition",
+    "farmer-centric benefits", "farmer\u2011centric benefits",
+    "pricing strategy", "go-to-market strategy",
+    "risk assessment & mitigation", "risk assessment",
+    "training & capacity-building", "training & capacity\u2011building",
+    "workplan & milestones", "workplan",
+    "output expected", "expected outputs",
+    "gender and social inclusion", "social inclusion plan",
+    "strategic impact on maharashtra",
+    "prior govt. collaboration", "prior govt",
+    "core team and leadership", "founders background",
+    "data sources used", "trl level",
+    "current customers/pilots", "current customers",
+    "proposed project duration", "total project cost",
+    "baseline values", "proposed project districts",
+    "application track", "problem statements",
+    "dpdp act", "data governance", "model safety",
+    "open-source technologies",
 ]
 
 
@@ -58,13 +77,15 @@ def _is_section_heading(text: str) -> bool:
     if len(text_stripped) < 3:
         return False
 
-    # Numbered heading pattern: "1. Introduction", "2.1 Market Analysis"
-    if re.match(r"^\d+(\.\d+)*\.?\s+\S", text_stripped):
+    # Numbered heading pattern: "1. Introduction", "2.1 Market Analysis" (require a letter after space to avoid matching page numbers like "1 /")
+    if re.match(r"^\d+(\.\d+)*\.?\s+[a-zA-Z]", text_stripped):
         return True
 
     # Check against known section keywords
     for keyword in SECTION_KEYWORDS:
-        if keyword in text_lower:
+        # Match as whole word/phrase to avoid false matches on substrings (e.g. 'ip' in 'DIPP')
+        pattern = r"\b" + re.escape(keyword) + r"\b"
+        if re.search(pattern, text_lower):
             # Make sure it's a standalone heading, not part of a sentence
             words = text_stripped.split()
             if len(words) <= 8:

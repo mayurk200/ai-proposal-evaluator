@@ -13,6 +13,16 @@ export const proposalApi = {
     return res.data.data;
   },
 
+  evaluateBatch: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    const res = await api.post<ApiResponse<any>>('/proposals/evaluate-batch', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data;
+  },
+
   upload: async (file: File, title?: string) => {
     const formData = new FormData();
     formData.append('file', file);

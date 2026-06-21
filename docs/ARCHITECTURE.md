@@ -20,7 +20,7 @@ The platform evaluates startup/agriculture proposals using AI. It has **three se
 |---------|-------|------|------|
 | **Frontend** | React 19, Vite, TailwindCSS v4 | 5173 | Upload UI, dashboards, score visualizations |
 | **Backend** | Node.js, Express, TypeScript | 3001 | Auth (JWT), file upload, API gateway, Firestore/local JSON persistence |
-| **Python Service** | FastAPI, Python 3.11 | 8000 | Document processing (OCR, extraction, chunking) + 9-agent AI evaluation |
+| **Python Service** | FastAPI, Python 3.11 | 8000 | Document processing (OCR, extraction, chunking) + AIAIC 7-agent evaluation, debate, and scoring |
 
 ---
 
@@ -90,41 +90,42 @@ User clicks "Evaluate" on frontend
 │                                                              │
 │    PHASE B: Multi-Agent AI Evaluation                        │
 │    ┌────────────────────────────────────────────────────┐    │
-│    │ 9 agents run SEQUENTIALLY (to avoid rate limits):   │    │
+│    │ 7 parameter agents + debate & scoring in sequence: │    │
 │    │                                                      │    │
-│    │ Agent 1: ExtractionAgent                             │    │
-│    │   → Pulls structured data: team, funding, timeline  │    │
+│    │ Agent 1: ProblemRelevanceAgent                       │    │
+│    │   → Target farmers, agricultural challenges          │    │
 │    │                                                      │    │
-│    │ Agent 2: TechnicalAgent                              │    │
-│    │   → Scores architecture, scalability, tech stack     │    │
+│    │ Agent 2: SolutionReadinessAgent                      │    │
+│    │   → Core technology TRL 5-9 & innovativeness         │    │
 │    │                                                      │    │
-│    │ Agent 3: FinancialAgent                              │    │
-│    │   → Analyzes revenue model, unit economics, ROI     │    │
+│    │ Agent 3: PilotDesignAgent                            │    │
+│    │   → Implementation plans, milestones, timelines      │    │
 │    │                                                      │    │
-│    │ Agent 4: RiskAgent                                   │    │
-│    │   → 9-dimensional risk assessment                   │    │
+│    │ Agent 4: FarmerAdoptionAgent                         │    │
+│    │   → Incentives, user experience, gender/youth parity │    │
 │    │                                                      │    │
-│    │ Agent 5: InnovationAgent                             │    │
-│    │   → Novelty, IP potential, disruption score         │    │
+│    │ Agent 5: ScaleUpAgent                                │    │
+│    │   → Commercial pathways & commercial sustainability  │    │
 │    │                                                      │    │
-│    │ Agent 6: FeasibilityAgent                            │    │
-│    │   → Team capability, timeline realism, market fit   │    │
+│    │ Agent 6: TeamCapacityAgent                           │    │
+│    │   → Technical, business, & extension experience      │    │
 │    │                                                      │    │
 │    │ Agent 7: ComplianceAgent                             │    │
-│    │   → Governance, data privacy, regulatory readiness  │    │
+│    │   → Certifications, standards, safety guidelines     │    │
 │    │                                                      │    │
-│    │ Agent 8: SustainabilityAgent                         │    │
-│    │   → Environmental, social, economic sustainability  │    │
+│    │ Agent 8: DebateAgent (Conditional Trigger)           │    │
+│    │   → Triggers when parameter score differences exceed │    │
+│    │     dispute threshold; conducts cross-examination    │    │
 │    │                                                      │    │
-│    │ Agent 9: FinalScoringAgent                           │    │
-│    │   → Cross-agent synthesis, contradiction detection   │    │
-│    │   → Weighted final score calculation                │    │
+│    │ Agent 9: ScoringAgent                                │    │
+│    │   → Synthesizes all parameter rubrics, SWOT, and     │    │
+│    │     applies debate adjustments for final consensus   │    │
 │    │                                                      │    │
 │    │ Each agent:                                          │    │
-│    │   - Receives all chunks + previous agent results    │    │
-│    │   - Calls Groq API (LLaMA 3.3 70B)                 │    │
+│    │   - Receives target chunks + prior evaluations       │    │
+│    │   - Calls Groq API (LLaMA 3.3 70B)                  │    │
 │    │   - Has retry logic with exponential backoff        │    │
-│    │   - Returns structured JSON with score + analysis   │    │
+│    │   - Returns structured JSON with scores & evidence   │    │
 │    │   - Waits 3s before next agent (rate limit buffer)  │    │
 │    └────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────┘
@@ -228,21 +229,27 @@ ai-proposal-evaluator/
 │   │   │   ├── routes.py              # REST endpoints
 │   │   │   └── dependencies.py        # LLM connection check
 │   │   ├── services/
-│   │   │   ├── extraction/            # Text, image, table extractors
+│   │   │   ├── extraction/            # Text, image, table, form extractors
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── text_extractor.py
+│   │   │   │   ├── image_extractor.py
+│   │   │   │   ├── table_extractor.py
+│   │   │   │   └── form_field_extractor.py # Structural Q&A block extractor
 │   │   │   ├── ocr/                   # Tesseract + EasyOCR engine
 │   │   │   ├── processing/            # Chunker, summarizer, doc processor
 │   │   │   └── llm/                   # Groq client with retries
 │   │   ├── agents/
 │   │   │   ├── base_agent.py          # Base class (retry, JSON parsing)
-│   │   │   ├── orchestrator.py        # 9-agent sequential pipeline
+│   │   │   ├── orchestrator.py        # AIAIC evaluation orchestration
 │   │   │   ├── extraction/            # Extraction agent
-│   │   │   ├── technical/             # Technical agent
-│   │   │   ├── financial/             # Financial agent
-│   │   │   ├── risk/                  # Risk agent
-│   │   │   ├── innovation/            # Innovation agent
-│   │   │   ├── feasibility/           # Feasibility agent
+│   │   │   ├── problem_relevance/     # Problem relevance agent
+│   │   │   ├── solution_readiness/    # Solution readiness agent
+│   │   │   ├── pilot_design/          # Pilot design agent
+│   │   │   ├── farmer_adoption/       # Farmer adoption agent
+│   │   │   ├── scaleup/               # Scale-up agent
+│   │   │   ├── team_capacity/         # Team capacity agent
 │   │   │   ├── compliance/            # Compliance agent
-│   │   │   ├── sustainability/        # Sustainability agent
+│   │   │   ├── debate/                # Debate agent
 │   │   │   └── scoring/               # Final scoring agent
 │   │   ├── models/
 │   │   │   ├── enums.py
@@ -250,7 +257,7 @@ ai-proposal-evaluator/
 │   │   └── utils/
 │   │       ├── text_cleaning.py
 │   │       └── logging.py
-│   ├── tests/                         # 259 tests (pytest)
+│   ├── tests/                         # Unit & integration tests (pytest)
 │   ├── .env
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -260,21 +267,19 @@ ai-proposal-evaluator/
 
 ---
 
-## Scoring Weights (Python 9-Agent Pipeline)
+## Scoring & Rubric Design (AIAIC framework)
 
-```
-Final Score = weighted average of all agent scores
+Under the AIAIC framework, the overall score is calculated as the flat average of the 7 parameter scores (each out of 100):
 
-Innovation    ███████████████  15%
-Market        ███████████████  15%
-Technical     ███████████████  15%
-Financial     ███████████████  15%
-Feasibility   ███████████████  15%
-Risk          ██████████       10%
-Sustainability█████            5%
-Compliance    █████            5%
-Agriculture   █████            5%
-```
+1. **Problem Relevance** (14.28%): Relevance, farming challenge, target farmers
+2. **Solution Readiness** (14.28%): Novelty, TRL level, technical readiness
+3. **Pilot Design** (14.28%): Implementation milestones, timeline realism
+4. **Farmer Adoption** (14.28%): Parity, youth engagement, direct farmer benefits
+5. **Scale-up Potential** (14.28%): Sustainability, scaling model, revenue pathways
+6. **Team Capacity** (14.28%): Experience, credentials, division of responsibilities
+7. **Compliance** (14.28%): Certifications, standards, safety guidelines
+
+Each parameter score is calculated as the average of its sub-question scores (1-10 scale) multiplied by 10. The **Debate Agent** can apply positive/negative adjustments based on cross-examination.
 
 ---
 
@@ -322,16 +327,21 @@ sequenceDiagram
     P->>P: Strategic chunking (section-aware)
     P->>G: Summarize chunks
     G-->>P: Executive summary
-    loop 9 Agents (sequential)
-        P->>G: Agent prompt + chunks + prior results
-        G-->>P: Agent evaluation JSON
+    loop 7 Parameters
+        P->>G: Parameter Rubrics + extracted fields + text chunks
+        G-->>P: Parameter evaluation (scores, evidence, justifications)
         P->>P: Wait 3s (rate limit buffer)
     end
-    P->>P: Weighted score calculation
+    opt Dispute trigger (high scoring difference)
+        P->>G: Debate Agent: cross-examine agent outputs & resolve conflict
+        G-->>P: Resolution, consensus reasoning, and score adjustments
+    end
+    P->>G: Scoring Agent: Consolidate scores, generate SWOT & final summary
+    G-->>P: Consolidated evaluation JSON
     P-->>B: Full evaluation response
-    B->>B: Map Python response → frontend format
+    B->>B: Store proposal & map details
     B-->>F: { status: 'success', data: evaluation }
-    F-->>U: Render scores, SWOT, recommendations
+    F-->>U: Render 7 scores, SWOT, debate adjustments, and accordion evidence
 ```
 
 ---

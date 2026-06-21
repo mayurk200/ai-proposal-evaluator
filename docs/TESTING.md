@@ -4,9 +4,9 @@
 
 | Service | Framework | Tests | Coverage |
 |---|---|---|---|
-| Python AI Service | pytest + pytest-cov | 271 | 92% |
+| Python AI Service | pytest + pytest-cov | 281 | 88.35% |
 | Node.js Backend | Vitest | 49 | — |
-| **Total** | | **320** | |
+| **Total** | | **330** | |
 
 ---
 
@@ -25,10 +25,10 @@ pytest tests/
 pytest tests/ --cov=app --cov-report=term-missing
 
 # Run a specific test file
-pytest tests/test_chunker.py -v
+pytest tests/test_new_components.py -v
 
 # Run tests matching a pattern
-pytest tests/ -k "test_routes_pptx"
+pytest tests/ -k "test_debate"
 ```
 
 ### Test Files
@@ -52,6 +52,7 @@ pytest tests/ -k "test_routes_pptx"
 | `test_http_client.py` | `utils/http_client.py` | 3 | 100% |
 | `test_document_processor.py` | `processing/document_processor.py` | 6 | 91% |
 | `test_format_support.py` | All format routing (PPT/PPTX/images) | 16 | — |
+| `test_new_components.py` | All 7 Parameter Agents, Debate Agent, and form extraction | 64 | 92% |
 
 ### Test Design
 
