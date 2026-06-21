@@ -21,14 +21,19 @@ type ViewState = 'upload' | 'evaluating' | 'results' | 'error';
 
 export default function UploadPage() {
   const [view, setView] = useState<ViewState>('upload');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
   const [evaluation, setEvaluation] = useState<any>(null);
   const [error, setError] = useState('');
   const [expandedParam, setExpandedParam] = useState<string | null>(null);
 
   const evalMut = useMutation({
-    mutationFn: () => proposalApi.evaluateFile(file!, title || undefined),
+    mutationFn: () => {
+      if (files.length > 1) {
+        return proposalApi.evaluateBatch(files);
+      }
+      return proposalApi.evaluateFile(files[0]!, title || undefined);
+    },
     onSuccess: (data) => {
       setEvaluation(data);
       setView('results');
@@ -41,9 +46,8 @@ export default function UploadPage() {
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted.length > 0) {
-      const f = accepted[0];
-      setFile(f);
-      setTitle(f.name.replace(/\.[^/.]+$/, ''));
+      setFiles(accepted);
+      setTitle(accepted.length === 1 ? accepted[0].name.replace(/\.[^/.]+$/, '') : '');
     }
   }, []);
 
@@ -62,18 +66,19 @@ export default function UploadPage() {
       'image/bmp': ['.bmp'],
     },
     maxSize: 52428800,
-    multiple: false,
+    multiple: true,
+    maxFiles: 20,
   });
 
   const handleEvaluate = () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setView('evaluating');
     setError('');
     evalMut.mutate();
   };
 
   const handleReset = () => {
-    setFile(null);
+    setFiles([]);
     setTitle('');
     setEvaluation(null);
     setError('');
@@ -81,6 +86,7 @@ export default function UploadPage() {
   };
 
   const ev = evaluation;
+  const isBatchResult = ev && Array.isArray(ev.results);
   const radarData = ev ? [
     { metric: 'Problem Relevance', value: ev.problemRelevanceScore, fullMark: 100 },
     { metric: 'Solution Readiness', value: ev.solutionReadinessScore, fullMark: 100 },
@@ -111,8 +117,10 @@ export default function UploadPage() {
           </h1>
           <p className="text-sm text-text-muted mt-1">
             {view === 'results'
-              ? `AI evaluation for "${ev?.title || title}"`
-              : 'Upload your agriculture startup proposal for instant AI evaluation'}
+              ? isBatchResult
+                ? `Batch evaluation for ${ev.totalFiles} proposals`
+                : `AI evaluation for "${ev?.title || title}"`
+              : 'Upload one or more agriculture startup proposals for AI evaluation'}
           </p>
         </motion.div>
 
@@ -127,14 +135,14 @@ export default function UploadPage() {
                   <div className="w-16 h-16 mx-auto rounded-2xl bg-accent/50 flex items-center justify-center mb-4">
                     <Upload className="w-7 h-7 text-primary/60" />
                   </div>
-                  <p className="text-base font-medium text-text">{isDragActive ? 'Drop file here' : 'Drag & drop your proposal'}</p>
+                  <p className="text-base font-medium text-text">{isDragActive ? 'Drop files here' : 'Drag & drop proposals'}</p>
                   <p className="text-sm text-text-muted mt-1">or click to browse</p>
-                  <p className="text-xs text-text-muted mt-3">Supports PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP • Max 50MB</p>
+                  <p className="text-xs text-text-muted mt-3">Supports PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP • Max 20 files • 50MB each</p>
                 </motion.div>
               </div>
 
               {/* File Preview */}
-              {file && (
+              {files.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                   <Card hover={false} className="p-5">
                     <div className="flex items-start gap-4">
@@ -142,21 +150,42 @@ export default function UploadPage() {
                         <FileText className="w-5 h-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0 space-y-3">
-                        <Input
-                          value={title}
-                          onChange={e => setTitle(e.target.value)}
-                          placeholder="Proposal title"
-                          label="Title"
-                        />
-                        <p className="text-xs text-text-muted">{file.name} • {formatFileSize(file.size)}</p>
+                        {files.length === 1 && (
+                          <Input
+                            value={title}
+                            onChange={e => setTitle(e.target.value)}
+                            placeholder="Proposal title"
+                            label="Title"
+                          />
+                        )}
+                        <div className="space-y-2">
+                          {files.map((selectedFile) => (
+                            <div key={`${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-white px-3 py-2">
+                              <p className="min-w-0 truncate text-xs text-text-muted">
+                                {selectedFile.name} • {formatFileSize(selectedFile.size)}
+                              </p>
+                              <button
+                                onClick={() => {
+                                  const remaining = files.filter((f) => f !== selectedFile);
+                                  setFiles(remaining);
+                                  setTitle(remaining.length === 1 ? remaining[0]!.name.replace(/\.[^/.]+$/, '') : '');
+                                }}
+                                className="p-1 hover:bg-red-50 rounded-md"
+                                aria-label={`Remove ${selectedFile.name}`}
+                              >
+                                <X className="w-3.5 h-3.5 text-text-muted" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <button onClick={() => { setFile(null); setTitle(''); }} className="p-1.5 hover:bg-red-50 rounded-lg">
+                      <button onClick={() => { setFiles([]); setTitle(''); }} className="p-1.5 hover:bg-red-50 rounded-lg">
                         <X className="w-4 h-4 text-text-muted" />
                       </button>
                     </div>
                     <div className="mt-4 pt-4 border-t border-border/50">
                       <Button onClick={handleEvaluate} className="w-full" size="lg">
-                        <Brain className="w-5 h-5" /> Run AI Evaluation
+                        <Brain className="w-5 h-5" /> {files.length > 1 ? `Run Batch Evaluation (${files.length})` : 'Run AI Evaluation'}
                       </Button>
                     </div>
                   </Card>
@@ -175,13 +204,17 @@ export default function UploadPage() {
               >
                 <Brain className="w-10 h-10 text-white" />
               </motion.div>
-              <h2 className="text-xl font-bold text-text mb-2">Evaluating Your Proposal</h2>
+              <h2 className="text-xl font-bold text-text mb-2">
+                {files.length > 1 ? 'Evaluating Proposal Batch' : 'Evaluating Your Proposal'}
+              </h2>
               <p className="text-sm text-text-muted text-center max-w-md mb-6">
-                7 domain-specific AI agents are evaluating your proposal according to the AIAIC Rubrics, followed by a multi-agent debate session.
+                {files.length > 1
+                  ? `${files.length} documents are being evaluated sequentially according to the AIAIC Rubrics.`
+                  : '7 domain-specific AI agents are evaluating your proposal according to the AIAIC Rubrics, followed by a multi-agent debate session.'}
               </p>
               <div className="flex items-center gap-3 text-sm text-text-muted">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span>This may take 30-60 seconds</span>
+                <span>{files.length > 1 ? 'This can take several minutes for larger batches' : 'This may take 30-60 seconds'}</span>
               </div>
 
               {/* Animated Progress Steps */}
@@ -235,8 +268,88 @@ export default function UploadPage() {
             </motion.div>
           )}
 
+          {/* ===== BATCH RESULTS VIEW ===== */}
+          {view === 'results' && isBatchResult && (
+            <motion.div key="batch-results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-text">Batch Results</h2>
+                  <p className="text-xs text-text-muted">Batch ID: {ev.batchId}</p>
+                </div>
+                <Button onClick={handleReset} variant="secondary" size="sm">
+                  <RotateCcw className="w-4 h-4" /> Evaluate Another
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <Card hover={false} className="text-center py-5">
+                  <p className="text-xs text-text-muted mb-1">Total</p>
+                  <p className="text-3xl font-bold text-text">{ev.totalFiles}</p>
+                </Card>
+                <Card hover={false} className="text-center py-5">
+                  <p className="text-xs text-text-muted mb-1">Completed</p>
+                  <p className="text-3xl font-bold text-green-600">{ev.completed}</p>
+                </Card>
+                <Card hover={false} className="text-center py-5">
+                  <p className="text-xs text-text-muted mb-1">Failed</p>
+                  <p className="text-3xl font-bold text-red-500">{ev.failed}</p>
+                </Card>
+              </div>
+
+              <Card hover={false} className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-xs uppercase tracking-wide text-text-muted">
+                        <th className="py-3 pr-4 font-semibold">Document</th>
+                        <th className="py-3 pr-4 font-semibold">Status</th>
+                        <th className="py-3 pr-4 font-semibold">Score</th>
+                        <th className="py-3 pr-4 font-semibold">Recommendation</th>
+                        <th className="py-3 font-semibold">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ev.results.map((result: any) => (
+                        <tr key={result.evaluationId || result.filename} className="border-b border-border/60 last:border-0">
+                          <td className="py-3 pr-4 max-w-[280px]">
+                            <p className="truncate font-medium text-text">{result.filename}</p>
+                            {result.error && <p className="mt-1 text-xs text-red-500">{result.error}</p>}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded-lg px-2 py-1 text-xs font-semibold ${result.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                              {result.status}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            {typeof result.overallScore === 'number' ? (
+                              <span className={`font-bold ${getScoreColor(result.overallScore)}`}>{Math.round(result.overallScore)}</span>
+                            ) : (
+                              <span className="text-text-muted">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {result.recommendation ? (
+                              <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${getRecommendationColor(result.recommendation)}`}>
+                                {result.recommendation}
+                              </span>
+                            ) : (
+                              <span className="text-text-muted">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 text-text-muted">
+                            {typeof result.processingTimeSeconds === 'number' ? `${result.processingTimeSeconds}s` : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           {/* ===== RESULTS VIEW ===== */}
-          {view === 'results' && ev && (
+          {view === 'results' && ev && !isBatchResult && (
             <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
               {/* Action Bar */}
               <div className="flex items-center justify-between">

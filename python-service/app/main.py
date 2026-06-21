@@ -23,8 +23,35 @@ async def lifespan(app: FastAPI):
         env=settings.ENV,
         llm_provider=settings.LLM_PROVIDER,
         llm_model=settings.LLM_MODEL,
+        storage_provider=settings.STORAGE_PROVIDER,
     )
+
+    # Initialize database tables
+    try:
+        from app.services.database.repository import get_repository
+        repo = get_repository()
+        await repo.init_tables()
+        logger.info("database_ready")
+    except Exception as e:
+        logger.warning("database_init_failed", error=str(e))
+
+    # Verify storage backend
+    try:
+        from app.services.storage.storage_backend import get_storage_backend
+        storage = get_storage_backend()
+        logger.info("storage_ready", provider=settings.STORAGE_PROVIDER)
+    except Exception as e:
+        logger.warning("storage_init_failed", error=str(e))
+
     yield
+
+    # Shutdown
+    try:
+        from app.services.database.repository import get_repository
+        repo = get_repository()
+        await repo.close()
+    except Exception:
+        pass
     logger.info("shutting_down_python_service")
 
 
@@ -32,9 +59,10 @@ app = FastAPI(
     title="AgriEval AI Processing Service",
     description=(
         "AI-powered document processing and proposal evaluation microservice. "
-        "Handles text extraction, OCR, chunking, summarization, and multi-agent evaluation."
+        "Handles text extraction, OCR, chunking, summarization, multi-agent evaluation, "
+        "persistent storage, and report comparison."
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -60,7 +88,7 @@ app.include_router(router)
 async def root():
     return {
         "service": "AgriEval AI Processing Service",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/docs",
         "health": "/api/v1/health",
     }

@@ -213,6 +213,8 @@ class EvaluationResponse(BaseModel):
     evaluation: FinalEvaluation
     agent_results: dict[str, AgentResult] = Field(default_factory=dict)
     processing_time_seconds: float = 0.0
+    evaluation_id: Optional[str] = None  # DB record ID (set after persistence)
+    file_url: Optional[str] = None       # Storage URL (set after upload)
 
 
 class EvaluateChunksRequest(BaseModel):
@@ -242,3 +244,44 @@ class ErrorResponse(BaseModel):
     status: str = "error"
     message: str
     detail: Optional[str] = None
+
+
+# =============================================================================
+# Batch Processing Models
+# =============================================================================
+
+
+class BatchEvaluationResponse(BaseModel):
+    """Response for batch evaluation endpoint."""
+    status: str = "success"
+    batch_id: str
+    total_files: int = 0
+    completed: int = 0
+    failed: int = 0
+    results: list[dict] = Field(default_factory=list)
+
+
+# =============================================================================
+# Report & Comparison Models
+# =============================================================================
+
+
+class ReportListResponse(BaseModel):
+    """Paginated list of evaluation reports."""
+    evaluations: list[dict] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 20
+    total_pages: int = 0
+
+
+class CompareRequest(BaseModel):
+    """Request to compare multiple evaluation reports."""
+    report_ids: list[str] = Field(..., min_length=2)
+
+
+class CompareResponse(BaseModel):
+    """Response for report comparison."""
+    reports: list[dict] = Field(default_factory=list)
+    comparison: dict = Field(default_factory=dict)
+

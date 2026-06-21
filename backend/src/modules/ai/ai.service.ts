@@ -181,7 +181,8 @@ export class AIService {
     const comparisonAgent = new BaseAgent({
       name: 'ComparisonAgent',
       temperature: 0.3,
-      maxTokens: 4096,
+      maxTokens: 1500,
+      maxInputChars: 10000,
     });
 
     const { result } = await comparisonAgent.execute(

@@ -60,6 +60,24 @@ interface PythonEvaluationResponse {
   processing_time_seconds: number;
 }
 
+interface PythonBatchEvaluationResponse {
+  status: string;
+  batch_id: string;
+  total_files: number;
+  completed: number;
+  failed: number;
+  results: Array<{
+    evaluation_id?: string;
+    filename: string;
+    status: string;
+    overall_score?: number;
+    recommendation?: string;
+    file_url?: string;
+    processing_time_seconds?: number;
+    error?: string;
+  }>;
+}
+
 /**
  * Send a file to the Python service for full AI evaluation.
  */
@@ -92,12 +110,54 @@ export async function evaluateWithPythonService(
       throw new Error(`Python service error (${response.status}): ${errorBody}`);
     }
 
-    return await response.json();
+    return await response.json() as PythonEvaluationResponse;
   } catch (error: any) {
     if (error.name === 'AbortError') {
       throw new Error('Python service evaluation timed out after 5 minutes');
     }
     throw new Error(`Python service communication failed: ${error.message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Send multiple files to the Python service for sequential batch evaluation.
+ */
+export async function evaluateBatchWithPythonService(
+  files: Array<{ buffer: Buffer; originalname: string; mimetype: string }>,
+): Promise<PythonBatchEvaluationResponse> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/evaluate-batch`;
+
+  const formData = new FormData();
+  for (const file of files) {
+    const blob = new Blob([file.buffer], { type: file.mimetype });
+    formData.append('files', blob, file.originalname);
+  }
+
+  const timeoutMs = Math.max(300_000, files.length * 300_000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Python batch service error (${response.status}): ${errorBody}`);
+    }
+
+    return await response.json() as PythonBatchEvaluationResponse;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Python batch evaluation timed out after ${Math.round(timeoutMs / 60000)} minutes`);
+    }
+    throw new Error(`Python batch service communication failed: ${error.message}`);
   } finally {
     clearTimeout(timeout);
   }
