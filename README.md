@@ -11,8 +11,8 @@
   <img src="https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/LLM-Groq_LLaMA_3.3_70B-F55036?style=flat-square&logo=meta&logoColor=white" alt="Groq" />
-  <img src="https://img.shields.io/badge/Tests-308_passing-brightgreen?style=flat-square" alt="Tests" />
-  <img src="https://img.shields.io/badge/Coverage-83%25-yellow?style=flat-square" alt="Coverage" />
+  <img src="https://img.shields.io/badge/Tests-319_passing-brightgreen?style=flat-square" alt="Tests" />
+  <img src="https://img.shields.io/badge/Coverage-92%25-brightgreen?style=flat-square" alt="Coverage" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
 </p>
 
@@ -65,7 +65,7 @@ User uploads file → Node.js Backend → Python AI Service
 | **Document Processing** | PyMuPDF, python-docx, python-pptx |
 | **Database** | Firebase Firestore (or local JSON fallback) |
 | **Auth** | JWT + bcrypt |
-| **Testing** | pytest (Python), Vitest (Node.js) — 308 tests |
+| **Testing** | pytest (Python), Vitest (Node.js) — 319 tests |
 
 ## Quick Setup
 
@@ -152,7 +152,7 @@ VITE_API_URL=http://localhost:3001/api
 ## Running Tests
 
 ```bash
-# Python service — 259 tests, 83% coverage
+# Python service — 271 tests, 92% coverage
 cd python-service
 source venv/bin/activate
 pytest tests/ --cov=app --cov-report=term-missing
