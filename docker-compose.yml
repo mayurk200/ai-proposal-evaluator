@@ -12,6 +12,57 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - agrieval-network
+
+  # One-shot: create the proposals bucket + allow public downloads, then exit.
+  createbuckets:
+    image: minio/mc:latest
+    container_name: agrieval-createbuckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb --ignore-existing local/${S3_BUCKET:-proposals};
+      mc anonymous set download local/${S3_BUCKET:-proposals};
+      echo 'Bucket ${S3_BUCKET:-proposals} ready';
+      "
+    networks:
+      - agrieval-network
+
+  # Backend API + Phase 1 upload page
+  backend:
+    build: ./backend
+    container_name: agrieval-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-agri-eval-super-secret-jwt-key-2026}
+      # Phase 1 storage: files land in the MinIO bucket.
+      - STORAGE_PROVIDER=minio
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_PUBLIC_ENDPOINT=http://localhost:9000
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - AWS_REGION=us-east-1
+      - S3_BUCKET=${S3_BUCKET:-proposals}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-52428800}
+      - CORS_ORIGINS=http://localhost:3001,http://localhost:5173
+    depends_on:
+      minio:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - agrieval-network

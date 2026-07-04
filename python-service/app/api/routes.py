@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, Form, Query
 
-from app.config import settings
+from app.config import settings, apply_settings_overrides, get_editable_settings
 from app.models.schemas import (
     BatchEvaluationResponse,
     CompareRequest,
@@ -80,6 +80,24 @@ async def health_check():
         environment=settings.ENV,
         services=services,
     )
+
+
+@router.get("/settings")
+async def get_settings_endpoint():
+    """Return the current runtime-editable settings (secrets masked)."""
+    return {"status": "success", "settings": get_editable_settings()}
+
+
+@router.put("/settings")
+async def update_settings_endpoint(payload: dict):
+    """
+    Apply runtime setting overrides (from the backend Settings page).
+
+    Only whitelisted keys are honoured; overrides are persisted and re-applied
+    on restart. Returns the resulting editable settings.
+    """
+    updated = apply_settings_overrides(payload)
+    return {"status": "success", "settings": updated}
 
 
 @router.get("/supported-formats", response_model=SupportedFormatsResponse)

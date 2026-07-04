@@ -35,7 +35,9 @@ const envSchema = z.object({
   AWS_REGION: z.string().default('us-east-1'),
   S3_BUCKET: z.string().optional(),
   MINIO_ENDPOINT: z.string().optional(),
-  
+  // Public (host-reachable) MinIO endpoint used to build browser-openable URLs.
+  MINIO_PUBLIC_ENDPOINT: z.string().optional(),
+
   // Cloudinary
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),

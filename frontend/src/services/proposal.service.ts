@@ -1,5 +1,5 @@
 import api from './api';
-import type { ApiResponse, Proposal, PaginatedResponse, Evaluation, DashboardStats, Comparison } from '@/types';
+import type { ApiResponse, Proposal, PaginatedResponse, Evaluation, DashboardStats, Comparison, StoredFile } from '@/types';
 
 export const proposalApi = {
   evaluateFile: async (file: File, title?: string) => {
@@ -57,6 +57,38 @@ export const proposalApi = {
   reject: async (id: string) => {
     const res = await api.patch<ApiResponse<{ message: string }>>(`/proposals/${id}/reject`);
     return res.data.data;
+  },
+};
+
+// ===== Phase 1: raw file storage (MinIO) =====
+// Files uploaded here go straight to object storage. No extraction or AI runs —
+// nothing happens to a file until the user explicitly chooses to act on it.
+export interface StorageUploadResult {
+  originalName: string;
+  key: string;
+  size: number;
+  contentType: string;
+  url: string;
+}
+
+export const uploadApi = {
+  // POST /api/uploads — send one or more files to storage (multipart field "files").
+  upload: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+
+    const res = await api.post<{ success: boolean; count: number; files: StorageUploadResult[] }>(
+      '/uploads',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return res.data;
+  },
+
+  // GET /api/uploads — list everything currently in storage (for the "All Files" tab).
+  list: async () => {
+    const res = await api.get<{ success: boolean; count: number; files: StoredFile[]; note?: string }>('/uploads');
+    return res.data;
   },
 };
 

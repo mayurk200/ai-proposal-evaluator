@@ -55,6 +55,7 @@ export const collections = {
   evaluations: makeCollection('evaluations'),
   comparisons: makeCollection('comparisons'),
   aiLogs: makeCollection('ai_logs'),
+  settings: makeCollection('settings'),
 };
 
 export default admin;

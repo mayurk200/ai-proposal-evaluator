@@ -33,6 +33,18 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 };
 
+/**
+ * Restrict a route to ADMIN users. Must run after `authMiddleware`, which
+ * populates `req.userRole` from the verified JWT.
+ */
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.userRole !== 'ADMIN') {
+    res.status(403).json({ status: 'error', message: 'Admin privileges required.' });
+    return;
+  }
+  next();
+};
+
 export const optionalAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction): void => {
   try {
     const authHeader = req.headers.authorization;

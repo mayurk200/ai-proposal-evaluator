@@ -190,6 +190,15 @@ export const AIAIC_PARAMETERS = [
   { key: 'complianceScore', label: 'Compliance', weight: 0.05 },
 ] as const;
 
+// ===== Storage / Upload Types =====
+export interface StoredFile {
+  key: string;
+  name: string;
+  size: number;
+  lastModified: string | null;
+  url: string;
+}
+
 // ===== API Types =====
 export interface ApiResponse<T> {
   status: 'success' | 'error';

@@ -82,6 +82,79 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 Input.displayName = 'Input';
 
+// ===== Select =====
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string;
+  error?: string;
+  options: { value: string; label: string }[];
+}
+
+export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className, label, error, id, options, ...props }, ref) => {
+    return (
+      <div className="space-y-1.5">
+        {label && (
+          <label htmlFor={id} className="block text-sm font-medium text-text">
+            {label}
+          </label>
+        )}
+        <select
+          ref={ref}
+          id={id}
+          className={cn(
+            'w-full px-4 py-2.5 rounded-xl border bg-white/80 backdrop-blur-sm text-sm',
+            'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary',
+            'transition-all duration-200',
+            error ? 'border-red-300 focus:ring-red-200' : 'border-border',
+            className
+          )}
+          {...props}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      </div>
+    );
+  }
+);
+Select.displayName = 'Select';
+
+// ===== Toggle =====
+interface ToggleProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+}
+
+export const Toggle: React.FC<ToggleProps> = ({ checked, onChange, disabled, id }) => (
+  <button
+    type="button"
+    role="switch"
+    id={id}
+    aria-checked={checked}
+    disabled={disabled}
+    onClick={() => onChange(!checked)}
+    className={cn(
+      'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200',
+      'focus:outline-none focus:ring-2 focus:ring-primary/30',
+      disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+      checked ? 'bg-primary' : 'bg-gray-300'
+    )}
+  >
+    <span
+      className={cn(
+        'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200',
+        checked ? 'translate-x-6' : 'translate-x-1'
+      )}
+    />
+  </button>
+);
+
 // ===== Card =====
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean;

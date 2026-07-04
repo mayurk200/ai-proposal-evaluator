@@ -1,39 +1,33 @@
-# Build stage
+# ---------- Build stage ----------
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Install ALL dependencies (incl. devDeps like typescript) — needed to build.
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy source code
+# Copy source and compile TypeScript -> dist/
 COPY . .
-
-# Build TypeScript
 RUN npm run build
 
-# Production stage
+# ---------- Production stage ----------
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
+ENV NODE_ENV=production
+
+# Install production dependencies only.
 COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Install production dependencies only
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built files from builder
+# Compiled app.
 COPY --from=builder /app/dist ./dist
 
-# Create uploads directory
-RUN mkdir -p /app/uploads
-
-# Set non-root user
-RUN addgroup -g 1001 -S nodejs && \
+# Runtime upload dir (local-provider fallback) + non-root user.
+RUN mkdir -p /app/uploads && \
+    addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
     chown -R nodejs:nodejs /app
 
