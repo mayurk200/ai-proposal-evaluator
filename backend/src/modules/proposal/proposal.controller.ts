@@ -9,6 +9,7 @@ import {
   mapPythonResponseToLegacy,
   checkPythonServiceHealth,
 } from '../../utils/pythonProxy';
+import { buildEvaluationResponse } from '../../utils/responseMapper';
 
 export class ProposalController {
   /**
@@ -39,28 +40,14 @@ export class ProposalController {
 
           const mapped = mapPythonResponseToLegacy(pythonResponse);
 
-          const evaluation = {
+          const evaluation = buildEvaluationResponse({
+            finalScore: mapped.finalScore,
             title,
             fileName: req.file.originalname,
             fileSize: req.file.size,
-            overallScore: mapped.finalScore.overall_score || 0,
-            innovationScore: mapped.finalScore.innovation_score || 0,
-            marketScore: mapped.finalScore.market_score || 0,
-            financialScore: mapped.finalScore.financial_score || 0,
-            sustainabilityScore: mapped.finalScore.sustainability_score || 0,
-            scalabilityScore: mapped.finalScore.scalability_score || 0,
-            agricultureScore: mapped.finalScore.agriculture_score || 0,
-            riskScore: mapped.finalScore.risk_score || 0,
-            recommendation: mapped.finalScore.recommendation || 'Under Review',
-            summary: mapped.finalScore.summary || '',
-            strengths: mapped.finalScore.strengths || [],
-            weaknesses: mapped.finalScore.weaknesses || [],
-            swotAnalysis: mapped.finalScore.swot_analysis || {
-              strengths: [], weaknesses: [], opportunities: [], threats: [],
-            },
             agentResults: mapped.agentResults,
             documentMetadata: pythonResponse.document_metadata,
-          };
+          });
 
           res.json({ status: 'success', data: evaluation });
           return;
@@ -84,27 +71,13 @@ export class ProposalController {
 
       const result = await aiOrchestrator.evaluate('instant', text);
 
-      const evaluation = {
+      const evaluation = buildEvaluationResponse({
+        finalScore: result.finalScore,
         title,
         fileName: req.file.originalname,
         fileSize: req.file.size,
-        overallScore: result.finalScore.overall_score || 0,
-        innovationScore: result.finalScore.innovation_score || 0,
-        marketScore: result.finalScore.market_score || 0,
-        financialScore: result.finalScore.financial_score || 0,
-        sustainabilityScore: result.finalScore.sustainability_score || 0,
-        scalabilityScore: result.finalScore.scalability_score || 0,
-        agricultureScore: result.finalScore.agriculture_score || 0,
-        riskScore: result.finalScore.risk_score || 0,
-        recommendation: result.finalScore.recommendation || 'Under Review',
-        summary: result.finalScore.summary || '',
-        strengths: result.finalScore.strengths || [],
-        weaknesses: result.finalScore.weaknesses || [],
-        swotAnalysis: result.finalScore.swot_analysis || {
-          strengths: [], weaknesses: [], opportunities: [], threats: [],
-        },
         agentResults: result.agentResults,
-      };
+      });
 
       res.json({ status: 'success', data: evaluation });
     } catch (error: any) {
@@ -182,6 +155,24 @@ export class ProposalController {
       });
 
       res.status(201).json({ status: 'success', data: proposal });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PHASE 2 — Trigger extraction + AI JSON generation for an uploaded proposal.
+   * Pass ?force=true (or {"force": true} in the body) to re-run extraction.
+   */
+  async extract(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const force = req.query.force === 'true' || req.body?.force === true;
+      const result = await proposalService.extract(
+        req.params.id as string,
+        req.userId || null,
+        force
+      );
+      res.json({ status: 'success', data: result });
     } catch (error) {
       next(error);
     }

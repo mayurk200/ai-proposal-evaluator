@@ -29,6 +29,17 @@ export class LocalStorageProvider implements StorageProvider {
     return filePath;
   }
 
+  async uploadBuffer(buffer: Buffer, key: string, _contentType: string): Promise<string> {
+    const filePath = path.join(this.uploadDir, key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, buffer);
+    return filePath;
+  }
+
+  async download(filePath: string): Promise<Buffer> {
+    return fs.readFile(path.resolve(filePath));
+  }
+
   async delete(filePath: string): Promise<void> {
     try {
       await fs.unlink(filePath);

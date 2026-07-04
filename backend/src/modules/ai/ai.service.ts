@@ -10,6 +10,7 @@ import {
   mapPythonResponseToLegacy,
   checkPythonServiceHealth,
 } from '../../utils/pythonProxy';
+import { buildStoredEvaluation } from '../../utils/responseMapper';
 import fs from 'fs';
 
 export class AIService {
@@ -45,39 +46,14 @@ export class AIService {
 
           // Save evaluation to Firestore
           const evalId = uuidv4();
-          const evaluation = {
+          const evaluation = buildStoredEvaluation({
+            finalScore: mapped.finalScore,
             id: evalId,
             proposalId,
-            overallScore: mapped.finalScore.overall_score || 0,
-            problemRelevanceScore: mapped.finalScore.problem_relevance_score || 0,
-            solutionReadinessScore: mapped.finalScore.solution_readiness_score || 0,
-            pilotDesignScore: mapped.finalScore.pilot_design_score || 0,
-            farmerAdoptionScore: mapped.finalScore.farmer_adoption_score || 0,
-            scaleUpScore: mapped.finalScore.scaleup_score || 0,
-            teamCapacityScore: mapped.finalScore.team_capacity_score || 0,
-            complianceScore: mapped.finalScore.compliance_score || 0,
-            innovationScore: mapped.finalScore.innovation_score || 0,
-            marketScore: mapped.finalScore.market_score || 0,
-            financialScore: mapped.finalScore.financial_score || 0,
-            sustainabilityScore: mapped.finalScore.sustainability_score || 0,
-            scalabilityScore: mapped.finalScore.scalability_score || 0,
-            agricultureScore: mapped.finalScore.agriculture_score || 0,
-            riskScore: mapped.finalScore.risk_score || 0,
-            recommendation: mapped.finalScore.recommendation || 'Under Review',
-            summary: mapped.finalScore.summary || '',
-            strengths: mapped.finalScore.strengths || [],
-            weaknesses: mapped.finalScore.weaknesses || [],
-            swotAnalysis: mapped.finalScore.swot_analysis || {
-              strengths: [], weaknesses: [], opportunities: [], threats: [],
-            },
             agentResults: mapped.agentResults,
-            rawResponse: mapped.finalScore,
-            parameterBreakdown: mapped.finalScore.parameter_breakdown || {},
-            debateSummary: mapped.finalScore.debate_summary || null,
             documentMetadata: pythonResponse.document_metadata,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
+            timestamp: new Date().toISOString(),
+          });
 
           await collections.evaluations.doc(evalId).set(evaluation);
           await collections.proposals.doc(proposalId).update({ status: 'EVALUATED' });

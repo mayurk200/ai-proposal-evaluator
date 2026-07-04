@@ -5,6 +5,87 @@
 
 import { env } from '../config/env';
 
+/** Retry configuration for transient Python-service failures. */
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Transient HTTP statuses worth retrying: rate limiting and gateway/availability
+ * errors. A plain 500 is treated as a hard application error (the evaluate
+ * pipeline failed deterministically) and is NOT retried.
+ */
+function isTransientStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+/**
+ * Perform a fetch with retry + exponential backoff for transient failures.
+ * Retries on network errors and transient statuses (429/502/503/504); does NOT
+ * retry on aborts (timeouts), 4xx client errors, or 500s, which won't succeed
+ * on a retry.
+ *
+ * `makeRequest` is a factory so each attempt gets a fresh AbortController/timeout.
+ */
+async function fetchWithRetry(
+  makeRequest: () => { promise: Promise<Response>; cleanup: () => void },
+  label: string,
+): Promise<Response> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    const { promise, cleanup } = makeRequest();
+
+    let response: Response;
+    try {
+      response = await promise;
+    } catch (error: any) {
+      cleanup();
+      if (error?.name === 'AbortError') {
+        throw error; // timeout — surfaced by the caller, not retried
+      }
+      // Network-level error: transient, retry.
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < MAX_RETRY_ATTEMPTS) {
+        await backoff(attempt, label, lastError);
+        continue;
+      }
+      break;
+    }
+
+    if (response.ok) {
+      cleanup();
+      return response;
+    }
+
+    const errorBody = await response.text();
+    cleanup();
+    const httpError = new Error(`${label} error (${response.status}): ${errorBody}`);
+
+    // Non-transient HTTP error (4xx, 500): fail fast.
+    if (!isTransientStatus(response.status)) {
+      throw httpError;
+    }
+
+    lastError = httpError;
+    if (attempt < MAX_RETRY_ATTEMPTS) {
+      await backoff(attempt, label, lastError);
+      continue;
+    }
+    break;
+  }
+
+  throw lastError ?? new Error(`${label} failed after ${MAX_RETRY_ATTEMPTS} attempts`);
+}
+
+/** Wait with exponential backoff before the next retry attempt. */
+async function backoff(attempt: number, label: string, error: Error): Promise<void> {
+  const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  console.warn(`[pythonProxy] ${label} attempt ${attempt} failed (${error.message}); retrying in ${delay}ms`);
+  await sleep(delay);
+}
+
 interface PythonEvaluationResponse {
   status: string;
   document_metadata: {
@@ -95,20 +176,15 @@ export async function evaluateWithPythonService(
   formData.append('file', blob, filename);
   formData.append('run_ocr', String(runOcr));
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300_000); // 5 min timeout
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Python service error (${response.status}): ${errorBody}`);
-    }
+    const response = await fetchWithRetry(() => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 300_000); // 5 min timeout
+      return {
+        promise: fetch(url, { method: 'POST', body: formData, signal: controller.signal }),
+        cleanup: () => clearTimeout(timeout),
+      };
+    }, 'Python service');
 
     return await response.json() as PythonEvaluationResponse;
   } catch (error: any) {
@@ -116,8 +192,6 @@ export async function evaluateWithPythonService(
       throw new Error('Python service evaluation timed out after 5 minutes');
     }
     throw new Error(`Python service communication failed: ${error.message}`);
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

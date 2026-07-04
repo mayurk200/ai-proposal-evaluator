@@ -1,26 +1,14 @@
 import multer from 'multer';
 import { env } from '../config/env';
+import { ALLOWED_MIME_TYPES, INVALID_FILE_TYPE_MESSAGE } from '../config/constants';
 
 const storage = multer.memoryStorage();
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = [
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'application/vnd.ms-powerpoint',
-    'text/plain',
-    'image/png',
-    'image/jpeg',
-    'image/tiff',
-    'image/bmp',
-  ];
-
-  if (allowedTypes.includes(file.mimetype)) {
+  if ((ALLOWED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Supported: PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP.'));
+    cb(new Error(INVALID_FILE_TYPE_MESSAGE));
   }
 };
 

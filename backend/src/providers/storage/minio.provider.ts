@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { StorageProvider } from './types';
@@ -37,6 +37,29 @@ export class MinIOStorageProvider implements StorageProvider {
     );
 
     return key;
+  }
+
+  async uploadBuffer(buffer: Buffer, key: string, contentType: string): Promise<string> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      })
+    );
+    return key;
+  }
+
+  async download(filePath: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: filePath,
+      })
+    );
+    const bytes = await response.Body!.transformToByteArray();
+    return Buffer.from(bytes);
   }
 
   async delete(filePath: string): Promise<void> {

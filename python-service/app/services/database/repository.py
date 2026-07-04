@@ -56,6 +56,13 @@ class EvaluationRepository:
         status: str = "completed",
         error_message: Optional[str] = None,
         batch_id: Optional[str] = None,
+        file_hash: Optional[str] = None,
+        processing_stage: Optional[str] = None,
+        failure_status: Optional[str] = None,
+        error_code: Optional[str] = None,
+        retry_count: int = 0,
+        worker_id: Optional[str] = None,
+        started_at: Optional[datetime] = None,
     ) -> str:
         """Save an evaluation record and return the generated ID."""
         record_id = str(uuid.uuid4())
@@ -74,7 +81,14 @@ class EvaluationRepository:
             status=status,
             error_message=error_message,
             batch_id=batch_id,
+            file_hash=file_hash,
+            processing_stage=processing_stage,
+            failure_status=failure_status,
+            error_code=error_code,
+            retry_count=retry_count,
+            worker_id=worker_id,
             created_at=utc_now_naive(),
+            started_at=started_at,
             completed_at=utc_now_naive() if status == "completed" else None,
         )
 
@@ -141,6 +155,25 @@ class EvaluationRepository:
             )
             records = result.scalars().all()
             return [self._record_to_dict(r) for r in records]
+
+    async def find_by_hash(self, file_hash: str) -> Optional[dict]:
+        """Find the most recent completed evaluation matching a file hash.
+
+        Used for deduplication: if an identical file was already evaluated,
+        the stored result can be reused instead of re-running the pipeline.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(EvaluationRecord)
+                .where(EvaluationRecord.file_hash == file_hash)
+                .where(EvaluationRecord.status == "completed")
+                .order_by(EvaluationRecord.created_at.desc())
+                .limit(1)
+            )
+            record = result.scalar_one_or_none()
+            if record is None:
+                return None
+            return self._record_to_dict(record)
 
     async def get_evaluations_by_batch(self, batch_id: str) -> list[dict]:
         """Get all evaluations for a batch."""
@@ -209,7 +242,14 @@ class EvaluationRepository:
             "status": record.status,
             "error_message": record.error_message,
             "batch_id": record.batch_id,
+            "file_hash": record.file_hash,
+            "processing_stage": record.processing_stage,
+            "failure_status": record.failure_status,
+            "error_code": record.error_code,
+            "retry_count": record.retry_count,
+            "worker_id": record.worker_id,
             "created_at": record.created_at.isoformat() if record.created_at else None,
+            "started_at": record.started_at.isoformat() if record.started_at else None,
             "completed_at": record.completed_at.isoformat() if record.completed_at else None,
         }
 
@@ -223,6 +263,8 @@ class EvaluationRepository:
             "overall_score": record.overall_score,
             "recommendation": record.recommendation,
             "status": record.status,
+            "processing_stage": record.processing_stage,
+            "failure_status": record.failure_status,
             "batch_id": record.batch_id,
             "created_at": record.created_at.isoformat() if record.created_at else None,
         }

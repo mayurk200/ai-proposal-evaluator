@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
+import { generalLimiter } from './middleware/rateLimit';
 import authRoutes from './modules/auth/auth.routes';
 import proposalRoutes from './modules/proposal/proposal.routes';
 import aiRoutes from './modules/ai/ai.routes';
@@ -18,8 +19,9 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Middleware
+const corsOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean);
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: corsOrigins,
   credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -27,6 +29,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 app.use('/uploads', express.static(uploadDir));
+
+// Rate limiting on all API routes
+app.use('/api', generalLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);

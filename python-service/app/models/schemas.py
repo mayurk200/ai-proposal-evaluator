@@ -285,3 +285,22 @@ class CompareResponse(BaseModel):
     reports: list[dict] = Field(default_factory=list)
     comparison: dict = Field(default_factory=dict)
 
+
+# =============================================================================
+# Ingestion (Step 1: upload -> store -> extract -> manifest)
+# =============================================================================
+
+
+class IngestResponse(BaseModel):
+    """Response for the document ingestion endpoint."""
+    status: str = "success"
+    proposal_id: str
+    deduplicated: bool = False
+    manifest: dict = Field(default_factory=dict)
+
+
+class ProposalResponse(BaseModel):
+    """Full stored proposal record (including extracted text)."""
+    status: str = "success"
+    proposal: dict = Field(default_factory=dict)
+

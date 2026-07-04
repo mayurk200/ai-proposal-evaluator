@@ -18,15 +18,19 @@ from app.models.schemas import (
     EvaluateChunksRequest,
     EvaluationResponse,
     HealthResponse,
+    IngestResponse,
     ProcessDocumentResponse,
     ProcessedDocument,
+    ProposalResponse,
     ReportListResponse,
     SupportedFormatsResponse,
 )
 from app.services.processing.document_processor import process_document
 from app.services.processing.batch_processor import process_batch
+from app.services.processing.ingestion_service import IngestionError, ingest_document
 from app.services.storage.storage_backend import StorageBackend, get_storage_backend
 from app.services.database.repository import get_repository
+from app.services.database.proposal_repository import get_proposal_repository
 from app.agents.orchestrator import AgentOrchestrator
 from app.api.dependencies import verify_llm_connection
 from app.utils.logging import get_logger
@@ -143,6 +147,88 @@ async def process_document_endpoint(
     except Exception as e:
         logger.error("document_processing_failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+
+
+# =============================================================================
+# Ingestion (Step 1: upload -> store -> extract -> manifest)
+# =============================================================================
+
+
+@router.post("/ingest", response_model=IngestResponse)
+async def ingest_document_endpoint(
+    file: UploadFile = File(...),
+    run_ocr: bool = Form(default=True),
+    dedup: bool = Form(default=True),
+):
+    """
+    Ingest a proposal document (no AI evaluation).
+
+    Stores the original file in object storage, extracts its text, stores the
+    extracted text, writes a JSON manifest indexing every storage address, and
+    persists a `proposals` row with the extracted text.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    ext = Path(file.filename).suffix.lower().lstrip(".")
+    if ext not in settings.supported_formats_list:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format: {ext}. Supported: {', '.join(settings.supported_formats_list)}",
+        )
+
+    file_bytes = await file.read()
+
+    if len(file_bytes) > settings.max_file_size_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB",
+        )
+
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        manifest = await ingest_document(
+            file_bytes=file_bytes,
+            filename=file.filename,
+            content_type=file.content_type or "application/octet-stream",
+            run_ocr=run_ocr,
+            dedup=dedup,
+        )
+    except IngestionError as e:
+        logger.error("ingest_failed", failure_status=e.failure_status.value, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ingestion failed ({e.failure_status.value}): {str(e)}")
+    except Exception as e:
+        logger.error("ingest_failed_unexpected", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+
+    return IngestResponse(
+        status="success",
+        proposal_id=manifest["proposal_id"],
+        deduplicated=bool(manifest.get("deduplicated", False)),
+        manifest=manifest,
+    )
+
+
+@router.get("/proposals/{proposal_id}", response_model=ProposalResponse)
+async def get_proposal_endpoint(proposal_id: str):
+    """Fetch a stored proposal record (includes extracted text and addresses)."""
+    repo = get_proposal_repository()
+    record = await repo.get_proposal(proposal_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return ProposalResponse(status="success", proposal=record)
+
+
+@router.get("/proposals")
+async def list_proposals_endpoint(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """List ingested proposals (summary view, newest first)."""
+    repo = get_proposal_repository()
+    return await repo.list_proposals(page=page, limit=limit)
 
 
 # =============================================================================

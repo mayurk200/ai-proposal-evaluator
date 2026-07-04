@@ -20,6 +20,9 @@ const envSchema = z.object({
   
   // Python Service
   PYTHON_SERVICE_URL: z.string().default('http://localhost:8000'),
+
+  // CORS: comma-separated list of allowed origins
+  CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
   
   // Storage Provider
   STORAGE_PROVIDER: z.enum(['local', 's3', 'minio', 'cloudinary']).default('local'),
