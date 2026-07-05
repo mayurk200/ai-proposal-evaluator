@@ -43,6 +43,39 @@ RUNTIME_OVERRIDABLE_KEYS: set[str] = {
 # Secret keys are never returned to callers of get_editable_settings().
 SECRET_KEYS: set[str] = {"GROQ_API_KEY", "DATABASE_URL"}
 
+# Curated agriculture category taxonomy used by the CategorizationAgent.
+# This is the *preferred* vocabulary the agent tags proposals with. The agent may
+# introduce a new tag when nothing here fits — but every category must remain
+# strictly agriculture-related (see the agent's system prompt). Non-agri tags are
+# not permitted.
+AGRI_CATEGORY_TAXONOMY: list[str] = [
+    "precision-agriculture",
+    "iot-and-sensors",
+    "remote-sensing-and-gis",
+    "ai-and-data-analytics",
+    "farm-automation-and-robotics",
+    "drones-and-aerial-imaging",
+    "soil-health-and-nutrition",
+    "crop-health-and-protection",
+    "irrigation-and-water-management",
+    "weather-and-climate-resilience",
+    "livestock-and-dairy",
+    "aquaculture-and-fisheries",
+    "horticulture-and-plantation",
+    "seeds-and-genetics",
+    "post-harvest-and-cold-chain",
+    "supply-chain-and-logistics",
+    "market-linkage-and-e-commerce",
+    "agri-fintech-and-credit",
+    "agri-insurance",
+    "farmer-advisory-and-extension",
+    "traceability-and-food-safety",
+    "sustainability-and-regenerative-ag",
+    "carbon-and-agroforestry",
+    "biotech-and-inputs",
+    "farm-management-software",
+]
+
 _OVERRIDES_FILE = Path(__file__).resolve().parent.parent / "runtime_settings.json"
 
 

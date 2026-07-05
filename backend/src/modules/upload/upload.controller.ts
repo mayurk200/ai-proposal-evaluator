@@ -2,6 +2,31 @@ import { Request, Response, NextFunction } from 'express';
 import { createStorageProvider } from '../../providers/storage/factory';
 import { StorageProvider } from '../../providers/storage/types';
 import { env } from '../../config/env';
+import {
+  categorizeWithPythonService,
+  listProcessedProposals,
+  listProcessedCategories,
+  listProcessedSourceKeys,
+  checkPythonServiceHealth,
+} from '../../utils/pythonProxy';
+
+/** Best-effort content-type from a filename extension (Python only needs a hint). */
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  rtf: 'application/rtf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+};
+
+function contentTypeForKey(key: string): string {
+  const ext = key.split('.').pop()?.toLowerCase() ?? '';
+  return CONTENT_TYPE_BY_EXT[ext] ?? 'application/octet-stream';
+}
 
 /**
  * Phase 1 upload controller.
@@ -87,7 +112,18 @@ export const uploadController = {
       }
 
       const objects = await provider.list();
+
+      // Hide files that have already been sent for processing so they drop off
+      // the "All Files" tab. If Python is unreachable, degrade to the full list.
+      let processedKeys = new Set<string>();
+      try {
+        processedKeys = new Set(await listProcessedSourceKeys());
+      } catch (e: any) {
+        console.warn(`[uploads] Could not fetch processed source keys: ${e.message}`);
+      }
+
       const files = objects
+        .filter((o) => !processedKeys.has(o.key))
         .map((o) => ({
           key: o.key,
           name: o.originalName || o.key.split('/').pop() || o.key,
@@ -109,6 +145,111 @@ export const uploadController = {
       });
     } catch (err) {
       next(err);
+    }
+  },
+
+  /**
+   * PHASE 2 — Send selected stored files for processing (extract + agri
+   * categorization; no scoring). Body: { files: { key, name }[] }.
+   *
+   * Downloads each object from storage and forwards it to the Python service,
+   * which runs extraction + categorization asynchronously. Requires the Python
+   * service to be up (there is no Node fallback) — returns 503 otherwise.
+   */
+  async process(req: Request, res: Response, next: NextFunction) {
+    try {
+      const items = (req.body?.files as Array<{ key: string; name?: string }> | undefined) ?? [];
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Provide a non-empty "files" array of { key, name } to process.',
+        });
+      }
+
+      const pythonAvailable = await checkPythonServiceHealth();
+      if (!pythonAvailable) {
+        return res.status(503).json({
+          success: false,
+          error: 'Processing service is unavailable. Please try again shortly.',
+        });
+      }
+
+      const provider = getStorage();
+      if (provider.ensureReady) {
+        await provider.ensureReady();
+      }
+
+      const results = await Promise.all(
+        items.map(async (item) => {
+          try {
+            const buffer = await provider.download(item.key);
+            const filename = item.name || item.key.split('/').pop() || item.key;
+            const contentType = contentTypeForKey(item.key);
+            const sourceUrl = provider.getUrl(item.key);
+
+            const result = await categorizeWithPythonService(
+              buffer,
+              filename,
+              contentType,
+              item.key,
+              sourceUrl
+            );
+
+            return {
+              key: item.key,
+              proposalId: result.proposal_id,
+              status: result.processing_status,
+              deduplicated: result.deduplicated,
+            };
+          } catch (e: any) {
+            return { key: item.key, error: e.message };
+          }
+        })
+      );
+
+      const failed = results.filter((r) => 'error' in r).length;
+      return res.status(202).json({
+        success: failed === 0,
+        submitted: results.length - failed,
+        failed,
+        results,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * PHASE 2 — List processed (categorized) proposals for the Proposals page.
+   * Optional query: category, status, page, limit.
+   */
+  async listProcessed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await listProcessedProposals({
+        page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        category: (req.query.category as string) || undefined,
+        status: (req.query.status as string) || undefined,
+      });
+      return res.status(200).json({ success: true, ...data });
+    } catch (err: any) {
+      return res.status(503).json({
+        success: false,
+        error: `Could not fetch processed proposals: ${err.message}`,
+      });
+    }
+  },
+
+  /** PHASE 2 — Distinct agri categories (with counts) for the filter dropdown. */
+  async listCategories(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const categories = await listProcessedCategories();
+      return res.status(200).json({ success: true, categories });
+    } catch (err: any) {
+      return res.status(503).json({
+        success: false,
+        error: `Could not fetch categories: ${err.message}`,
+      });
     }
   },
 };

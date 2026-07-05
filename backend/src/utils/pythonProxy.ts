@@ -275,6 +275,151 @@ export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — Categorization (extract text + agri categorization, no scoring)
+// ---------------------------------------------------------------------------
+
+export interface CategorizeResult {
+  status: string;
+  proposal_id: string;
+  processing_status: string;
+  deduplicated: boolean;
+}
+
+export interface ProcessedProposalSummary {
+  id: string;
+  title?: string;
+  filename?: string;
+  status?: string;
+  rank?: number;
+  agri_relevant?: boolean;
+  categories?: string[];
+  categorization?: Record<string, any> | null;
+  source_key?: string | null;
+  created_at?: string;
+  categorized_at?: string | null;
+}
+
+export interface ProcessedProposalList {
+  proposals: ProcessedProposalSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
+/**
+ * Send a file to the Python service for extraction + agri categorization.
+ * Runs async on the Python side (BackgroundTasks); returns immediately with a
+ * proposal id and the current processing status.
+ */
+export async function categorizeWithPythonService(
+  fileBuffer: Buffer,
+  filename: string,
+  mimeType: string,
+  sourceKey?: string,
+  sourceUrl?: string,
+): Promise<CategorizeResult> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/categorize`;
+
+  const formData = new FormData();
+  const blob = new Blob([fileBuffer], { type: mimeType });
+  formData.append('file', blob, filename);
+  if (sourceKey) formData.append('source_key', sourceKey);
+  if (sourceUrl) formData.append('source_url', sourceUrl);
+
+  try {
+    const response = await fetchWithRetry(() => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60_000); // enqueue only
+      return {
+        promise: fetch(url, { method: 'POST', body: formData, signal: controller.signal }),
+        cleanup: () => clearTimeout(timeout),
+      };
+    }, 'Python categorize');
+
+    return await response.json() as CategorizeResult;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('Python categorization request timed out');
+    }
+    throw new Error(`Python categorization failed: ${error.message}`);
+  }
+}
+
+/** List processed (categorized) proposals from the Python service. */
+export async function listProcessedProposals(params: {
+  page?: number;
+  limit?: number;
+  category?: string;
+  status?: string;
+} = {}): Promise<ProcessedProposalList> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.category) query.set('category', params.category);
+  if (params.status) query.set('status', params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const url = `${baseUrl}/api/v1/proposals${suffix}`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python proposals');
+
+  return await response.json() as ProcessedProposalList;
+}
+
+/** List the distinct agri categories (with counts) across processed proposals. */
+export async function listProcessedCategories(): Promise<CategoryCount[]> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/categories`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python categories');
+
+  const body = await response.json() as { categories?: CategoryCount[] };
+  return body.categories ?? [];
+}
+
+/** List MinIO source keys that have already been sent for processing. */
+export async function listProcessedSourceKeys(): Promise<string[]> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/processed-source-keys`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python processed-source-keys');
+
+  // Each item is { proposal_id, source_key, status }; we only need the keys.
+  const body = await response.json() as { items?: Array<{ source_key?: string | null }> };
+  return (body.items ?? [])
+    .map((it) => it.source_key)
+    .filter((k): k is string => Boolean(k));
+}
+
 /**
  * Check if the Python service is available.
  */

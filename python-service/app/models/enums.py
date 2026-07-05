@@ -36,6 +36,7 @@ class ProcessingStatus(str, Enum):
     AI_PROCESSING = "ai_processing"
     JSON_VALIDATION = "json_validation"
     CATEGORIZING = "categorizing"
+    CATEGORIZED = "categorized"
     SAVING_METADATA = "saving_metadata"
     COMPLETED = "completed"
     FAILED = "failed"

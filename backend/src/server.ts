@@ -12,6 +12,7 @@ import aiRoutes from './modules/ai/ai.routes';
 import comparisonRoutes from './modules/comparison/comparison.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { initSettings, runtime } from './modules/settings/settings.service';
+import { connectWithRetry, closePool, isDbReady } from './config/pg';
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: env.NODE_ENV,
+    database: isDbReady() ? 'connected' : 'disconnected',
   });
 });
 
@@ -70,11 +72,28 @@ const PORT = parseInt(env.PORT);
 // Prime the runtime settings cache from persisted overrides before serving.
 initSettings()
   .catch((err) => console.warn('[settings] init failed, using defaults:', err?.message ?? err))
-  .finally(() => {
-    app.listen(PORT, () => {
+  .finally(async () => {
+    // Establish the PostgreSQL pool with retry (tolerates Docker start ordering).
+    // Non-fatal: the API still boots on its existing store if Postgres is down.
+    await connectWithRetry().catch((err) => console.warn('[pg] connect error:', err?.message ?? err));
+
+    const server = app.listen(PORT, () => {
       console.log(`🚀 AgriEval API running on http://localhost:${PORT}`);
       console.log(`📊 Environment: ${env.NODE_ENV}`);
     });
+
+    // Graceful shutdown: stop accepting connections, then drain the pool.
+    const shutdown = (signal: string) => {
+      console.log(`\n${signal} received — shutting down gracefully...`);
+      server.close(async () => {
+        await closePool().catch((err) => console.warn('[pg] close error:', err?.message ?? err));
+        process.exit(0);
+      });
+      // Failsafe: force-exit if connections don't drain in time.
+      setTimeout(() => process.exit(1), 10_000).unref();
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
   });
 
 export default app;

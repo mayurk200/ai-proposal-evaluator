@@ -20,4 +20,16 @@ router.post('/', upload.array('files', 20), (req, res, next) =>
 
 router.get('/', (req, res, next) => uploadController.listAll(req, res, next));
 
+/**
+ * Phase 2 endpoints.
+ *
+ * POST /api/uploads/process   Body { files: { key, name }[] } — send stored
+ *   files for extraction + agri categorization (async on the Python service).
+ * GET  /api/uploads/processed  List categorized proposals (?category, ?status).
+ * GET  /api/uploads/categories Distinct agri categories with counts.
+ */
+router.post('/process', (req, res, next) => uploadController.process(req, res, next));
+router.get('/processed', (req, res, next) => uploadController.listProcessed(req, res, next));
+router.get('/categories', (req, res, next) => uploadController.listCategories(req, res, next));
+
 export default router;

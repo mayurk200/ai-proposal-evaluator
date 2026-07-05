@@ -104,6 +104,18 @@ class ProposalRecord(Base):
     has_scanned_content = Column(Boolean, default=False)
     detected_sections = Column(Text, nullable=True)              # JSON array
 
+    # Phase 2: source object this row was created from (an already-stored upload,
+    # e.g. the Node upload's MinIO key). Lets the upload list exclude processed files.
+    source_key = Column(String(512), nullable=True, index=True)
+    source_url = Column(Text, nullable=True)
+
+    # Phase 2: categorization output (from the CategorizationAgent)
+    categories = Column(Text, nullable=True)        # JSON array of agri category strings
+    category_json = Column(Text, nullable=True)     # full CategorizationResult JSON
+    rank = Column(Integer, default=0, index=True)   # 0-100 triage rank (not the evaluation)
+    agri_relevant = Column(Boolean, default=True)
+    categorized_at = Column(DateTime, nullable=True)
+
     # Status tracking
     status = Column(String(50), default="uploaded", index=True)  # ProcessingStatus value
     error_message = Column(Text, nullable=True)

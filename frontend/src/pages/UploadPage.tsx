@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, FileText, X, CheckCircle, AlertTriangle,
-  HardDrive, RefreshCw, ExternalLink, Loader2, Inbox,
+  HardDrive, RefreshCw, ExternalLink, Loader2, Inbox, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -31,6 +32,9 @@ export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [justUploaded, setJustUploaded] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [processInfo, setProcessInfo] = useState<{ submitted: number; failed: number } | null>(null);
+  const [processError, setProcessError] = useState('');
   const queryClient = useQueryClient();
 
   // All Files tab data — the list of everything currently in storage.
@@ -54,6 +58,27 @@ export default function UploadPage() {
         e.response?.data?.message ||
         e.message ||
         'Upload failed. Please try again.'
+      );
+    },
+  });
+
+  const processMut = useMutation({
+    mutationFn: (items: { key: string; name?: string }[]) => uploadApi.sendForProcessing(items),
+    onSuccess: (data) => {
+      setProcessInfo({ submitted: data.submitted, failed: data.failed });
+      setProcessError('');
+      setSelected(new Set());
+      // Processed files drop off the All Files list (they're excluded server-side).
+      queryClient.invalidateQueries({ queryKey: ['stored-files'] });
+      queryClient.invalidateQueries({ queryKey: ['processed-proposals'] });
+    },
+    onError: (e: any) => {
+      setProcessInfo(null);
+      setProcessError(
+        e.response?.data?.error ||
+        e.response?.data?.message ||
+        e.message ||
+        'Could not send files for processing.'
       );
     },
   });
@@ -95,6 +120,28 @@ export default function UploadPage() {
 
   const stored = filesQuery.data?.files ?? [];
   const storedCount = filesQuery.data?.count ?? stored.length;
+
+  const toggleSelect = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const allSelected = stored.length > 0 && stored.every((f) => selected.has(f.key));
+  const toggleSelectAll = () =>
+    setSelected(allSelected ? new Set() : new Set(stored.map((f) => f.key)));
+
+  const handleProcess = () => {
+    if (selected.size === 0) return;
+    setProcessInfo(null);
+    setProcessError('');
+    const items = stored
+      .filter((f) => selected.has(f.key))
+      .map((f) => ({ key: f.key, name: f.name }));
+    processMut.mutate(items);
+  };
 
   return (
     <AppLayout>
@@ -250,21 +297,64 @@ export default function UploadPage() {
                 </motion.div>
               )}
 
-              <div className="flex items-center justify-between">
+              {/* Processing result banner */}
+              {processInfo && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+                  <Card hover={false} className="border-primary/30 bg-accent/20 py-3.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Sparkles className="w-5 h-5 text-primary flex-shrink-0" />
+                        <p className="text-sm font-medium text-text">
+                          {processInfo.submitted} file{processInfo.submitted === 1 ? '' : 's'} sent for processing
+                          {processInfo.failed > 0 && ` • ${processInfo.failed} failed`}.
+                        </p>
+                      </div>
+                      <Link to="/proposals" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline whitespace-nowrap">
+                        View on Proposals <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+
+              {processError && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <Card hover={false} className="border-red-200 bg-red-50/40 py-3.5">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">Processing failed</p>
+                        <p className="text-sm text-red-600 mt-0.5">{processError}</p>
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-text">Files in storage</h2>
                   <p className="text-xs text-text-muted">
                     {storedCount} file{storedCount === 1 ? '' : 's'} stored
+                    {selected.size > 0 && ` • ${selected.size} selected`}
                   </p>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => filesQuery.refetch()}
-                  loading={filesQuery.isFetching}
-                >
-                  {!filesQuery.isFetching && <RefreshCw className="w-4 h-4" />} Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  {selected.size > 0 && (
+                    <Button size="sm" onClick={handleProcess} loading={processMut.isPending}>
+                      {!processMut.isPending && <Sparkles className="w-4 h-4" />}
+                      Send for processing ({selected.size})
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => filesQuery.refetch()}
+                    loading={filesQuery.isFetching}
+                  >
+                    {!filesQuery.isFetching && <RefreshCw className="w-4 h-4" />} Refresh
+                  </Button>
+                </div>
               </div>
 
               {/* Loading */}
@@ -310,7 +400,16 @@ export default function UploadPage() {
                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-border text-xs uppercase tracking-wide text-text-muted">
-                          <th className="py-3 px-5 font-semibold">Name</th>
+                          <th className="py-3 pl-5 pr-2 w-10">
+                            <input
+                              type="checkbox"
+                              checked={allSelected}
+                              onChange={toggleSelectAll}
+                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                              aria-label="Select all files"
+                            />
+                          </th>
+                          <th className="py-3 px-3 font-semibold">Name</th>
                           <th className="py-3 px-4 font-semibold">Size</th>
                           <th className="py-3 px-4 font-semibold">Uploaded</th>
                           <th className="py-3 px-5 font-semibold text-right">Open</th>
@@ -318,8 +417,22 @@ export default function UploadPage() {
                       </thead>
                       <tbody>
                         {stored.map((file) => (
-                          <tr key={file.key} className="border-b border-border/60 last:border-0 hover:bg-accent/5">
-                            <td className="py-3 px-5 max-w-[320px]">
+                          <tr
+                            key={file.key}
+                            className={`border-b border-border/60 last:border-0 hover:bg-accent/5 ${
+                              selected.has(file.key) ? 'bg-accent/10' : ''
+                            }`}
+                          >
+                            <td className="py-3 pl-5 pr-2">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(file.key)}
+                                onChange={() => toggleSelect(file.key)}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                                aria-label={`Select ${file.name}`}
+                              />
+                            </td>
+                            <td className="py-3 px-3 max-w-[300px]">
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-accent/40 flex items-center justify-center flex-shrink-0">
                                   <FileText className="w-4 h-4 text-primary" />

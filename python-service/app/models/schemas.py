@@ -287,6 +287,48 @@ class CompareResponse(BaseModel):
 
 
 # =============================================================================
+# Categorization (Phase 2: extract -> categorize -> store JSON)
+# =============================================================================
+
+
+class CategorizationFlags(BaseModel):
+    """Extensible boolean flags the categorization agent may raise."""
+    agri_relevant: bool = True
+    needs_review: bool = False
+    insufficient_text: bool = False
+    out_of_scope: bool = False
+
+
+class CategorizationResult(BaseModel):
+    """
+    Structured, all-information record the CategorizationAgent produces from a
+    proposal's extracted text. No scoring/evaluation here — that is a later phase.
+    """
+    title: str = ""
+    summary: str = ""
+    problem_statement: str = ""
+    proposed_solution: str = ""
+    technologies: list[str] = Field(default_factory=list)
+    target_beneficiaries: list[str] = Field(default_factory=list)
+    geography: str = ""
+    stage: str = ""  # idea | pilot | scaling
+    categories: list[str] = Field(default_factory=list)  # agri-only, may be several
+    keywords: list[str] = Field(default_factory=list)
+    agri_relevance: bool = True
+    rank: int = 0  # 0-100 quick triage rank (NOT the formal evaluation)
+    confidence: float = 0.0
+    flags: CategorizationFlags = Field(default_factory=CategorizationFlags)
+
+
+class CategorizeResponse(BaseModel):
+    """Response for the async categorization trigger endpoint."""
+    status: str = "success"
+    proposal_id: str
+    processing_status: ProcessingStatus = ProcessingStatus.CATEGORIZING
+    deduplicated: bool = False
+
+
+# =============================================================================
 # Ingestion (Step 1: upload -> store -> extract -> manifest)
 # =============================================================================
 

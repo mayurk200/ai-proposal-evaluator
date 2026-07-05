@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
         from app.services.database.repository import get_repository
         repo = get_repository()
         await repo.init_tables()
+        # Ensure Phase 2 categorization columns exist on the proposals table
+        # (create_all only creates missing tables; the ALTERs live on the proposal repo).
+        from app.services.database.proposal_repository import get_proposal_repository
+        await get_proposal_repository().init_tables()
         logger.info("database_ready")
     except Exception as e:
         logger.warning("database_init_failed", error=str(e))

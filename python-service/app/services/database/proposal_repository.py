@@ -33,10 +33,27 @@ class ProposalRepository:
         self._engine = create_async_engine(self._url, echo=False, pool_pre_ping=True)
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
 
+    # Phase 2 columns added after the table may already exist in a running DB.
+    # create_all only creates missing tables, so add them idempotently here.
+    _PHASE2_COLUMNS = (
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS source_key VARCHAR(512)",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS source_url TEXT",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS categories TEXT",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS category_json TEXT",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS rank INTEGER DEFAULT 0",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS agri_relevant BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS categorized_at TIMESTAMP",
+    )
+
     async def init_tables(self) -> None:
-        """Create tables if they don't exist (creates all Base tables)."""
+        """Create tables if they don't exist, then add any missing Phase 2 columns."""
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            for stmt in self._PHASE2_COLUMNS:
+                try:
+                    await conn.exec_driver_sql(stmt)
+                except Exception as e:  # pragma: no cover - best effort migration
+                    logger.warning("proposal_column_migration_failed", stmt=stmt, error=str(e))
         logger.info("proposal_tables_initialized")
 
     async def close(self) -> None:
@@ -53,6 +70,8 @@ class ProposalRepository:
         file_content_type: str = "application/octet-stream",
         file_size_bytes: int = 0,
         file_hash: Optional[str] = None,
+        source_key: Optional[str] = None,
+        source_url: Optional[str] = None,
         original_key: str = "",
         original_url: str = "",
         extracted_key: str = "",
@@ -79,6 +98,8 @@ class ProposalRepository:
             file_content_type=file_content_type,
             file_size_bytes=file_size_bytes,
             file_hash=file_hash,
+            source_key=source_key,
+            source_url=source_url,
             original_key=original_key,
             original_url=original_url,
             extracted_key=extracted_key,
@@ -134,22 +155,83 @@ class ProposalRepository:
                 return None
             return self._record_to_dict(record)
 
-    async def list_proposals(self, page: int = 1, limit: int = 20) -> dict:
-        """List proposals with pagination (summary view)."""
-        from sqlalchemy import func
+    async def get_by_source_key(self, source_key: str) -> Optional[dict]:
+        """Find the most recent proposal created from a given source object key."""
+        if not source_key:
+            return None
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProposalRecord)
+                .where(ProposalRecord.source_key == source_key)
+                .order_by(ProposalRecord.created_at.desc())
+                .limit(1)
+            )
+            record = result.scalar_one_or_none()
+            return self._record_to_dict(record) if record else None
+
+    async def list_source_keys(self) -> list[dict]:
+        """Return every known source_key with its proposal id + status.
+
+        Used by the upload list to hide files that are already processing/processed.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProposalRecord.id, ProposalRecord.source_key, ProposalRecord.status)
+                .where(ProposalRecord.source_key.isnot(None))
+            )
+            return [
+                {"proposal_id": pid, "source_key": key, "status": status}
+                for pid, key, status in result.all()
+            ]
+
+    async def list_categories(self) -> list[dict]:
+        """Aggregate distinct categories with counts (for the category filter)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProposalRecord.categories).where(ProposalRecord.categories.isnot(None))
+            )
+            counts: dict[str, int] = {}
+            for (cats_json,) in result.all():
+                try:
+                    for c in json.loads(cats_json) or []:
+                        counts[c] = counts.get(c, 0) + 1
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            return [
+                {"category": name, "count": count}
+                for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            ]
+
+    async def list_proposals(
+        self,
+        page: int = 1,
+        limit: int = 20,
+        category: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> dict:
+        """List proposals with pagination (summary view), optionally filtered."""
+        from sqlalchemy import and_, func
+
+        conditions = []
+        if status:
+            conditions.append(ProposalRecord.status == status)
+        if category:
+            # categories are stored as a JSON array string, e.g. ["a","b"].
+            conditions.append(ProposalRecord.categories.like(f'%"{category}"%'))
 
         async with self._session_factory() as session:
-            count_result = await session.execute(
-                select(func.count()).select_from(ProposalRecord)
-            )
-            total = count_result.scalar() or 0
+            count_q = select(func.count()).select_from(ProposalRecord)
+            list_q = select(ProposalRecord)
+            if conditions:
+                where = and_(*conditions)
+                count_q = count_q.where(where)
+                list_q = list_q.where(where)
+
+            total = (await session.execute(count_q)).scalar() or 0
 
             offset = (page - 1) * limit
             result = await session.execute(
-                select(ProposalRecord)
-                .order_by(ProposalRecord.created_at.desc())
-                .offset(offset)
-                .limit(limit)
+                list_q.order_by(ProposalRecord.created_at.desc()).offset(offset).limit(limit)
             )
             records = result.scalars().all()
 
@@ -174,7 +256,7 @@ class ProposalRepository:
                 return False
 
             for key, value in kwargs.items():
-                if key == "detected_sections" and isinstance(value, list):
+                if key in ("detected_sections", "categories") and isinstance(value, list):
                     value = json.dumps(value)
                 if isinstance(value, datetime) and value.tzinfo is not None:
                     value = value.astimezone(timezone.utc).replace(tzinfo=None)
@@ -220,6 +302,13 @@ class ProposalRepository:
             "total_tables": record.total_tables,
             "has_scanned_content": record.has_scanned_content,
             "detected_sections": json.loads(record.detected_sections) if record.detected_sections else [],
+            "source_key": record.source_key,
+            "source_url": record.source_url,
+            "categories": json.loads(record.categories) if record.categories else [],
+            "categorization": json.loads(record.category_json) if record.category_json else None,
+            "rank": record.rank,
+            "agri_relevant": record.agri_relevant,
+            "categorized_at": record.categorized_at.isoformat() if record.categorized_at else None,
             "status": record.status,
             "error_message": record.error_message,
             "created_at": record.created_at.isoformat() if record.created_at else None,
@@ -228,7 +317,7 @@ class ProposalRepository:
         }
 
     def _record_to_summary(self, record: ProposalRecord) -> dict:
-        """Convert a record to a lightweight summary (no extracted text)."""
+        """Convert a record to a lightweight summary (no raw extracted text)."""
         return {
             "id": record.id,
             "filename": record.filename,
@@ -238,6 +327,14 @@ class ProposalRepository:
             "manifest_url": record.manifest_url,
             "total_words": record.total_words,
             "status": record.status,
+            # Phase 2 categorization fields (for the Proposals page + filter)
+            "source_key": record.source_key,
+            "source_url": record.source_url,
+            "categories": json.loads(record.categories) if record.categories else [],
+            "categorization": json.loads(record.category_json) if record.category_json else None,
+            "rank": record.rank,
+            "agri_relevant": record.agri_relevant,
+            "categorized_at": record.categorized_at.isoformat() if record.categorized_at else None,
             "created_at": record.created_at.isoformat() if record.created_at else None,
         }
 

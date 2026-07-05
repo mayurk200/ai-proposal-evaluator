@@ -2,15 +2,18 @@
 FastAPI API routes for document processing, evaluation, storage, and report comparison.
 """
 
+import hashlib
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, Form, Query
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, Form, Query
 
 from app.config import settings, apply_settings_overrides, get_editable_settings
 from app.models.schemas import (
     BatchEvaluationResponse,
+    CategorizeResponse,
     CompareRequest,
     CompareResponse,
     DocumentMetadata,
@@ -25,9 +28,11 @@ from app.models.schemas import (
     ReportListResponse,
     SupportedFormatsResponse,
 )
+from app.models.enums import ProcessingStatus
 from app.services.processing.document_processor import process_document
 from app.services.processing.batch_processor import process_batch
 from app.services.processing.ingestion_service import IngestionError, ingest_document
+from app.services.processing.categorization_service import run_categorization
 from app.services.storage.storage_backend import StorageBackend, get_storage_backend
 from app.services.database.repository import get_repository
 from app.services.database.proposal_repository import get_proposal_repository
@@ -229,6 +234,116 @@ async def ingest_document_endpoint(
     )
 
 
+# =============================================================================
+# Categorization (Phase 2: extract -> categorize -> store JSON, no scoring)
+# =============================================================================
+
+
+@router.post("/categorize", response_model=CategorizeResponse)
+async def categorize_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    source_key: str = Form(default=""),
+    source_url: str = Form(default=""),
+    run_ocr: bool = Form(default=True),
+    dedup: bool = Form(default=True),
+):
+    """
+    Trigger Phase 2 processing for a file: extraction + categorization only (no
+    scoring/evaluation).
+
+    Creates a proposal row immediately with status `categorizing` and returns its
+    id; the extract -> categorize -> persist work runs in the background and moves
+    the row to `categorized` (or `failed`). Poll GET /proposals to see the result.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    ext = Path(file.filename).suffix.lower().lstrip(".")
+    if ext not in settings.supported_formats_list:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format: {ext}. Supported: {', '.join(settings.supported_formats_list)}",
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(file_bytes) > settings.max_file_size_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB",
+        )
+
+    repo = get_proposal_repository()
+
+    # Idempotency: if this source object (or an identical file) was already sent,
+    # return the existing proposal instead of processing again.
+    if source_key:
+        existing = await repo.get_by_source_key(source_key)
+        if existing is not None:
+            return CategorizeResponse(
+                proposal_id=existing["id"],
+                processing_status=existing.get("status") or ProcessingStatus.CATEGORIZING.value,
+                deduplicated=True,
+            )
+
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    if dedup:
+        existing = await repo.find_by_hash(file_hash)
+        if existing is not None:
+            return CategorizeResponse(
+                proposal_id=existing["id"],
+                processing_status=existing.get("status") or ProcessingStatus.CATEGORIZING.value,
+                deduplicated=True,
+            )
+
+    proposal_id = str(uuid.uuid4())
+    await repo.create_proposal(
+        proposal_id=proposal_id,
+        filename=file.filename,
+        document_format=ext,
+        file_content_type=file.content_type or "application/octet-stream",
+        file_size_bytes=len(file_bytes),
+        file_hash=file_hash,
+        source_key=source_key or None,
+        source_url=source_url or None,
+        status=ProcessingStatus.CATEGORIZING.value,
+    )
+
+    background_tasks.add_task(
+        run_categorization,
+        proposal_id,
+        file_bytes,
+        file.filename,
+        file.content_type or "application/octet-stream",
+        run_ocr,
+    )
+
+    return CategorizeResponse(
+        proposal_id=proposal_id,
+        processing_status=ProcessingStatus.CATEGORIZING,
+    )
+
+
+@router.get("/categories")
+async def list_categories_endpoint():
+    """List distinct agri categories with counts (for the Proposals page filter)."""
+    repo = get_proposal_repository()
+    return {"status": "success", "categories": await repo.list_categories()}
+
+
+@router.get("/processed-source-keys")
+async def processed_source_keys_endpoint():
+    """Source keys that already have a proposal row (processing or done).
+
+    The upload list uses this to hide files that have already been sent for
+    processing so they don't appear as still-unprocessed.
+    """
+    repo = get_proposal_repository()
+    return {"status": "success", "items": await repo.list_source_keys()}
+
+
 @router.get("/proposals/{proposal_id}", response_model=ProposalResponse)
 async def get_proposal_endpoint(proposal_id: str):
     """Fetch a stored proposal record (includes extracted text and addresses)."""
@@ -243,10 +358,16 @@ async def get_proposal_endpoint(proposal_id: str):
 async def list_proposals_endpoint(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    category: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
 ):
-    """List ingested proposals (summary view, newest first)."""
+    """List ingested/categorized proposals (summary view, newest first).
+
+    Optional filters: `category` (agri category slug) and `status`
+    (e.g. `categorized`, `categorizing`, `failed`).
+    """
     repo = get_proposal_repository()
-    return await repo.list_proposals(page=page, limit=limit)
+    return await repo.list_proposals(page=page, limit=limit, category=category, status=status)
 
 
 # =============================================================================
