@@ -1,50 +1,25 @@
-import admin from 'firebase-admin';
-import { env } from './env';
+import { isDbConfigured } from './pg';
+import { createPgCollection } from './pgStore';
 import { createLocalCollection } from './localStore';
-import path from 'path';
-import fs from 'fs';
 
-let useFirestore = false;
+/**
+ * Document store wiring. PostgreSQL (the shared "agrieval" database, managed
+ * via pgAdmin) is the primary store; the local JSON store remains as a
+ * zero-config fallback for development without a database.
+ */
+const usePostgres = isDbConfigured();
 
-try {
-  const serviceAccountPath = path.resolve(__dirname, '../../firebase-service-account.json');
-
-  if (env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: env.FIREBASE_PROJECT_ID,
-        clientEmail: env.FIREBASE_CLIENT_EMAIL,
-        privateKey: env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      }),
-    });
-    useFirestore = true;
-    console.log('🔥 Firebase initialized with env credentials');
-  } else if (fs.existsSync(serviceAccountPath)) {
-    const sa = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf-8'));
-    admin.initializeApp({
-      credential: admin.credential.cert(sa),
-    });
-    useFirestore = true;
-    console.log('🔥 Firebase initialized with service account JSON');
-  } else {
-    console.log('📁 No Firebase credentials found — using local JSON store');
-    console.log('   To use Firestore: place firebase-service-account.json in backend/');
-  }
-} catch (error: any) {
-  console.error('❌ Firebase error:', error.message);
-  console.log('📁 Falling back to local JSON store');
+if (usePostgres) {
+  console.log('🐘 PostgreSQL configured — using Postgres document store');
+} else {
+  console.log('📁 No PostgreSQL configuration found — using local JSON store');
+  console.log('   To use Postgres: set DATABASE_URL (or DB_HOST/DB_NAME/DB_USER) in backend/.env');
 }
 
-// Set up Firestore if available
-if (useFirestore) {
-  const db = admin.firestore();
-  db.settings({ ignoreUndefinedProperties: true });
-}
-
-// Create collections — Firestore or local fallback
+// Create collections — Postgres or local fallback
 function makeCollection(name: string) {
-  if (useFirestore) {
-    return admin.firestore().collection(name);
+  if (usePostgres) {
+    return createPgCollection(name) as any;
   }
   return createLocalCollection(name) as any;
 }
@@ -57,5 +32,3 @@ export const collections = {
   aiLogs: makeCollection('ai_logs'),
   settings: makeCollection('settings'),
 };
-
-export default admin;

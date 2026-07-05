@@ -86,7 +86,7 @@ export class AIOrchestrator {
     try {
       const agentResult = await fn();
 
-      // Log agent execution to Firestore
+      // Log agent execution to the ai_logs store
       await collections.aiLogs.doc(uuidv4()).set({
         id: uuidv4(),
         proposalId,

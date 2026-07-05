@@ -3,7 +3,7 @@
  *
  * Effective settings = registry defaults (seeded from env) deep-merged with the
  * persisted override document. Overrides live in the `settings` collection
- * (Firestore or the local JSON store) under a single `app` document.
+ * (PostgreSQL or the local JSON store) under a single `app` document.
  *
  * An in-memory cache of the effective settings is kept so synchronous runtime
  * consumers (CORS origin check, rate-limit config) can read current values

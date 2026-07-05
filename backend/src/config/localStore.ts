@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * Simple local JSON file store — used as a fallback when Firebase
- * service account is not configured. Data is persisted to disk.
- * Automatically replaced by Firestore when firebase-service-account.json is present.
+ * Simple local JSON file store — used as a fallback when PostgreSQL
+ * is not configured. Data is persisted to disk.
+ * Automatically replaced by Postgres when DATABASE_URL (or DB_*) is set.
  */
 
 const DATA_DIR = path.resolve(__dirname, '../../data');

@@ -44,7 +44,7 @@ export class AIService {
 
           const mapped = mapPythonResponseToLegacy(pythonResponse);
 
-          // Save evaluation to Firestore
+          // Save evaluation to the document store
           const evalId = uuidv4();
           const evaluation = buildStoredEvaluation({
             finalScore: mapped.finalScore,
@@ -80,7 +80,7 @@ export class AIService {
       // Run AI orchestration
       const result = await aiOrchestrator.evaluate(proposalId, text);
 
-      // Save evaluation to Firestore
+      // Save evaluation to the document store
       const evalId = uuidv4();
       const evaluation = {
         id: evalId,
@@ -251,7 +251,7 @@ export class AIService {
     let topProposals: any[] = [];
 
     if (proposalIds.length > 0) {
-      // Firestore 'in' supports max 30 items
+      // Query 'in' batches of 30 to keep result sets bounded
       const chunks = [];
       for (let i = 0; i < proposalIds.length; i += 30) {
         chunks.push(proposalIds.slice(i, i + 30));

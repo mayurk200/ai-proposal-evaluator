@@ -4,9 +4,6 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
-  FIREBASE_PROJECT_ID: z.string().optional(),
-  FIREBASE_CLIENT_EMAIL: z.string().optional(),
-  FIREBASE_PRIVATE_KEY: z.string().optional(),
   JWT_SECRET: z.string().min(10),
   PORT: z.string().default('3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -20,6 +17,20 @@ const envSchema = z.object({
   
   // Python Service
   PYTHON_SERVICE_URL: z.string().default('http://localhost:8000'),
+
+  // PostgreSQL — either a full DATABASE_URL (preferred; the "+asyncpg" suffix
+  // used by the Python service is tolerated) or discrete DB_* parts. When none
+  // are set, Postgres is simply skipped and the backend runs on the local
+  // JSON store.
+  DATABASE_URL: z.string().optional(),
+  DB_HOST: z.string().optional(),
+  DB_PORT: z.coerce.number().default(5432),
+  DB_NAME: z.string().optional(),
+  DB_USER: z.string().optional(),
+  DB_PASSWORD: z.string().optional(),
+  DB_POOL_MAX: z.coerce.number().default(10),
+  DB_CONNECT_RETRIES: z.coerce.number().default(5),
+  DB_CONNECT_RETRY_DELAY_MS: z.coerce.number().default(2000),
 
   // CORS: comma-separated list of allowed origins
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
