@@ -1,7 +1,21 @@
 # Running the Full Stack
 
 Everything needed to bring up the AI Proposal Evaluator locally for development.
-Start the pieces **in this order** — later services depend on earlier ones.
+**First-time setup (prerequisites, .env layout, troubleshooting): see [setup.md](setup.md).**
+
+## One command
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
+```
+
+That verifies prerequisites, starts + health-gates the Docker containers,
+self-heals the PostgreSQL password, validates/recreates the Python venv (uv,
+Python 3.11), installs missing node_modules, and starts all three host
+services in their own windows — each gated on the previous one's health check.
+Stop everything with `scripts\stop.ps1`.
+
+The rest of this document is the manual, step-by-step equivalent.
 
 | # | Component        | How it runs                  | Port | Depends on          |
 |---|------------------|------------------------------|------|---------------------|
@@ -11,69 +25,57 @@ Start the pieces **in this order** — later services depend on earlier ones.
 | 3 | Node backend     | host, `npm run dev`          | 3001 | Postgres, MinIO, Python service |
 | 4 | React frontend   | host, `npm run dev` (Vite)   | 5173 | Node backend        |
 
-## Prerequisites
+## Configuration
 
-- **Docker Desktop** (running — the whole stack depends on it)
-- **Node.js** 18+ and npm
-- **Python** 3.11+ with the venv at `python-service/venv` (see step 2 if it doesn't exist)
-- A **Groq API key** for the LLM (used by the Python service, and optionally by the backend)
+Shared values (secrets, `DATABASE_URL`, MinIO credentials) live in the **root
+`.env`** — the single source of truth, read by docker-compose, the backend, and
+the Python service. `backend/.env` and `python-service/.env` hold only
+service-specific settings and win over the root file for duplicated keys.
+Templates: `.env.example`, `backend/.env.example`, `python-service/.env.example`.
 
 ## 1. Infrastructure (Docker)
 
 From the repository root:
 
 ```powershell
-docker compose up -d minio createbuckets postgres
+docker compose up -d postgres minio createbuckets
 ```
 
 This starts:
-- **PostgreSQL** on `localhost:5432` (user `agrieval`, password `agrieval123`, database `agrieval`)
-- **MinIO** on `localhost:9000` (S3 API) and `localhost:9001` (web console, login `minioadmin` / `minioadmin`)
+- **PostgreSQL** on `localhost:5432` (credentials from the root `.env`)
+- **MinIO** on `localhost:9000` (S3 API) and `localhost:9001` (web console)
 - **createbuckets** — a one-shot init container that creates the `proposals` bucket with public-read and exits
 
-Check both are healthy before continuing:
+Check health before continuing:
 
 ```powershell
 docker ps --format "{{.Names}}`t{{.Status}}"
 ```
 
+> `POSTGRES_PASSWORD` only takes effect when the `postgres-data` volume is
+> first created. If auth fails against an older volume, see
+> [setup.md → Password reset](setup.md#password-reset) (`scripts\dev.ps1`
+> self-heals this automatically).
+
 ## 2. Python service (port 8000)
 
 ```powershell
 cd python-service
-# First time only: create the venv and install dependencies
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
+# First time only (uses uv — NOT the system python, which is broken on this machine):
+uv venv venv --python 3.11
+uv pip install -r requirements.txt --python .\venv\Scripts\python.exe
+
+.\venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 ```
 
-Configure `python-service/.env` (copy from a teammate or fill the keys below):
+On startup it runs a **preflight check** (config, PostgreSQL, schema init +
+verification, MinIO, GROQ key, OCR, writable dirs), prints a PASS/FAIL report,
+and **exits if any hard dependency fails** — a failed start names the exact
+problem instead of degrading into 500s later.
 
-```ini
-PORT=8000
-ENV=development
-LLM_PROVIDER=groq
-GROQ_API_KEY=<your key>
-LLM_MODEL=llama-3.3-70b-versatile
-STORAGE_PROVIDER=minio
-S3_ENDPOINT_URL=http://localhost:9000
-S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
-DATABASE_URL=postgresql+asyncpg://agrieval:agrieval123@localhost:5432/agrieval
-```
-
-Start it:
-
-```powershell
-.\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-On startup it creates its database tables (`proposals`, `evaluations`) automatically.
-**Important:** Postgres must already be up — if table creation fails you only get a
-log *warning* (`database_init_failed`), and every `/proposals` request will then
-return 500 until you restart the service.
-
-Verify: <http://localhost:8000/api/v1/health> should show
-`"database": "connected"` and `"storage": "minio (ok)"`.
+Verify: <http://localhost:8000/api/v1/health> should return 200 with
+`"database": "connected"` and `"storage": "minio (ok)"`. It returns **503**
+when the database or storage is down.
 (`tesseract_ocr: unavailable` is fine — EasyOCR is the fallback.)
 
 ## 3. Node backend (port 3001)
@@ -81,39 +83,22 @@ Verify: <http://localhost:8000/api/v1/health> should show
 ```powershell
 cd backend
 npm install        # first time only
-```
-
-Configure `backend/.env` (start from `backend/.env.example`). The keys that matter:
-
-```ini
-PORT=3001
-JWT_SECRET=<any dev secret>
-PYTHON_SERVICE_URL=http://localhost:8000
-
-# Storage — MUST be "minio" or uploaded files will silently go to local disk
-# and the All Files list will always be empty:
-STORAGE_PROVIDER=minio
-MINIO_ENDPOINT=http://localhost:9000
-MINIO_PUBLIC_ENDPOINT=http://localhost:9000
-S3_BUCKET=proposals
-
-# Database — Postgres document store (falls back to a local JSON store if unset)
-DATABASE_URL=postgresql://agrieval:agrieval123@localhost:5432/agrieval
-```
-
-Start it:
-
-```powershell
 npm run dev
 ```
 
-The boot log tells you which stores are active — you want:
+The boot log prints a readiness summary — you want:
 
 ```
-🐘 PostgreSQL configured — using Postgres document store
+[startup] PostgreSQL:     connected
+[startup] Storage:        minio (ok)
+[startup] Python service: connected (http://localhost:8000)
 ```
 
-Verify: <http://localhost:3001/api/health> should show `"database": "connected"`.
+If `DATABASE_URL` is set but PostgreSQL is unreachable the backend **exits
+with an explanatory error** instead of silently falling back to the JSON store.
+
+Verify: <http://localhost:3001/api/health> returns 200 with per-dependency
+statuses (`database`, `storage`, `python_service`); 503 when the DB is down.
 
 > `npm run dev` uses tsx watch: it hot-reloads on **source** changes but does
 > **not** re-read `.env` — restart it after any `.env` edit.
@@ -143,24 +128,34 @@ Open <http://localhost:5173>.
 
 ```powershell
 cd backend
-npm test               # vitest suite
+npm test                                        # vitest suite
+
+cd ..\python-service
+.\venv\Scripts\python.exe -m pytest             # python suite
 ```
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
+| `password authentication failed for user "agrieval"` | Stale volume password — run `scripts\dev.ps1` (self-heals) or see [setup.md → Password reset](setup.md#password-reset). |
+| Python service exits at startup with a FAIL report | Working as intended — the report names the broken dependency and the fix. |
 | *All Files* tab always empty, even after uploading | `STORAGE_PROVIDER=local` in `backend/.env` — set it to `minio` and **restart** the backend. |
-| Proposals page: `Could not fetch processed proposals … (500)` | Python service was started before Postgres, so its tables were never created. Start Docker first, then **restart** the Python service; health must say `database: connected`. |
 | Backend health shows `database: disconnected` | Postgres container down (`docker compose up -d postgres`) — or the native Windows PostgreSQL service grabbed port 5432. Keep `postgresql-x64-18` **Stopped** (StartType Manual); the Docker container owns 5432. |
 | `EADDRINUSE :::3001` | A backend instance is already running — don't start a second one. |
 | MinIO console won't open / uploads fail | Docker Desktop isn't running. Everything in step 1 requires it. |
-| Changed `.env` but behavior didn't change | tsx watch and uvicorn `--reload` don't watch `.env`. Restart the process. |
+| Changed `.env` but behavior didn't change | tsx watch and uvicorn don't watch `.env`. Restart the process. Also check `python-service/runtime_settings.json` overrides (preflight WARNs about them). |
+| `python` / `py` commands broken on the host | Irrelevant to this project — everything uses `python-service\venv` via uv. See [setup.md → Broken system Python](setup.md#broken-system-python). |
 
 ## Alternative: backend in Docker
 
-`docker compose up -d` also builds and runs the **backend** container
-(production build, `STORAGE_PROVIDER=minio` preconfigured, same port 3001).
-Don't run the host `npm run dev` backend at the same time — they'd fight over
-port 3001. The Python service and frontend are not part of the compose file and
-always run on the host as described above.
+The compose backend is behind the `full` profile so it can't fight the host
+dev backend over port 3001 by default:
+
+```powershell
+docker compose --profile full up -d
+```
+
+It runs the production build with `STORAGE_PROVIDER=minio` and
+`DATABASE_URL` pointing at the compose Postgres. The Python service and
+frontend are not part of the compose file and always run on the host.

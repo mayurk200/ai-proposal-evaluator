@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile, Form, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from app.config import settings, apply_settings_overrides, get_editable_settings
 from app.models.schemas import (
@@ -52,7 +54,14 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
+    """
+    Health check endpoint.
+
+    Returns 200 when the hard dependencies (database, storage) are up — OCR
+    and LLM problems only degrade the status string. Returns 503 with the same
+    payload when a hard dependency is down, so callers and orchestration can
+    react instead of treating a broken service as healthy.
+    """
     services = {
         "llm": "connected" if verify_llm_connection() else "disconnected",
     }
@@ -65,26 +74,33 @@ async def health_check():
     except Exception:
         services["tesseract_ocr"] = "unavailable"
 
-    # Check database
+    # Check database (hard dependency)
     try:
         repo = get_repository()
         await repo.list_evaluations(page=1, limit=1)
         services["database"] = "connected"
-    except Exception:
-        services["database"] = "disconnected"
+    except Exception as e:
+        services["database"] = f"disconnected: {e}"
 
-    # Check storage
+    # Check storage (hard dependency)
     try:
         storage = get_storage_backend()
         services["storage"] = f"{settings.STORAGE_PROVIDER} (ok)"
-    except Exception:
-        services["storage"] = "unavailable"
+    except Exception as e:
+        services["storage"] = f"unavailable: {e}"
 
-    return HealthResponse(
-        status="ok",
+    db_ok = services["database"] == "connected"
+    storage_ok = not services["storage"].startswith("unavailable")
+    degraded = services["llm"] != "connected" or services["tesseract_ocr"] != "available"
+
+    payload = HealthResponse(
+        status="ok" if (db_ok and storage_ok and not degraded) else ("degraded" if db_ok and storage_ok else "unhealthy"),
         environment=settings.ENV,
         services=services,
     )
+    if not (db_ok and storage_ok):
+        return JSONResponse(status_code=503, content=jsonable_encoder(payload))
+    return payload
 
 
 @router.get("/settings")

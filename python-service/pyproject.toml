@@ -2,7 +2,7 @@
 name = "agrieval-python-service"
 version = "1.0.0"
 description = "AI-powered document processing & proposal evaluation microservice"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -67,7 +67,7 @@ class LocalStorageBackend(StorageBackend):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(file_bytes)
         logger.info("file_uploaded_local", key=key, size=len(file_bytes))
-        return f"file://{file_path}"
+        return file_path.as_uri()
 
     async def download(self, key: str) -> bytes:
         file_path = self.base_dir / key
@@ -82,8 +82,9 @@ class LocalStorageBackend(StorageBackend):
             logger.info("file_deleted_local", key=key)
 
     async def get_url(self, key: str) -> str:
-        file_path = self.base_dir / key
-        return f"file://{file_path}"
+        # as_uri() yields a well-formed file:// URL with forward slashes on
+        # every platform (interpolating a Windows path embeds backslashes).
+        return (self.base_dir / key).as_uri()
 
     async def list_files(self, prefix: str = "") -> list[str]:
         target = self.base_dir / prefix if prefix else self.base_dir

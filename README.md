@@ -212,6 +212,8 @@ docker-compose up --build
 
 | Document | Description |
 |---|---|
+| [setup.md](docs/setup.md) | **Local dev setup** — prerequisites, .env layout, one-command startup (`scripts\dev.ps1`), troubleshooting |
+| [RUN.md](docs/RUN.md) | Full-stack run order and per-service health verification |
 | [QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup with screenshots and troubleshooting |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow diagrams, scoring weights, file structure |
 

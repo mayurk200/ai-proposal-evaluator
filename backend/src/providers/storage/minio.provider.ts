@@ -39,15 +39,31 @@ export class MinIOStorageProvider implements StorageProvider {
     this.endpoint = (env.MINIO_ENDPOINT ?? 'http://localhost:9000').replace(/\/$/, '');
     this.publicEndpoint = (env.MINIO_PUBLIC_ENDPOINT ?? this.endpoint).replace(/\/$/, '');
     this.bucket = env.S3_BUCKET ?? 'proposals';
+    if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+      throw new Error(
+        'STORAGE_PROVIDER=minio but AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set. ' +
+          'Set them in the root .env (they must match MINIO_ROOT_USER / MINIO_ROOT_PASSWORD).'
+      );
+    }
     this.client = new S3Client({
       endpoint: this.endpoint,
       region: env.AWS_REGION,
       credentials: {
-        accessKeyId: env.AWS_ACCESS_KEY_ID ?? 'minioadmin',
-        secretAccessKey: env.AWS_SECRET_ACCESS_KEY ?? 'minioadmin',
+        accessKeyId: env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
       },
       forcePathStyle: true, // required for MinIO
     });
+  }
+
+  /**
+   * Active reachability probe: unlike ensureReady (which self-heals and only
+   * warns), this throws when MinIO is unreachable or the bucket is missing —
+   * used by /api/health and the startup readiness summary.
+   */
+  async healthCheck(): Promise<void> {
+    await this.ensureReady();
+    await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
   /** Ensure the bucket exists (create it + public-read policy if missing). Runs once. */

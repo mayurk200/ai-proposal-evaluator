@@ -26,26 +26,17 @@ async def lifespan(app: FastAPI):
         storage_provider=settings.STORAGE_PROVIDER,
     )
 
-    # Initialize database tables
-    try:
-        from app.services.database.repository import get_repository
-        repo = get_repository()
-        await repo.init_tables()
-        # Ensure Phase 2 categorization columns exist on the proposals table
-        # (create_all only creates missing tables; the ALTERs live on the proposal repo).
-        from app.services.database.proposal_repository import get_proposal_repository
-        await get_proposal_repository().init_tables()
-        logger.info("database_ready")
-    except Exception as e:
-        logger.warning("database_init_failed", error=str(e))
+    # Preflight: validates config, PostgreSQL (with retries), schema init +
+    # verification, MinIO, GROQ, OCR, and writable dirs. Prints a PASS/FAIL
+    # report and raises on FAIL so the service refuses to start half-broken
+    # instead of returning 500s later.
+    from app.preflight import assert_preflight
+    await assert_preflight()
 
-    # Verify storage backend
-    try:
-        from app.services.storage.storage_backend import get_storage_backend
-        storage = get_storage_backend()
-        logger.info("storage_ready", provider=settings.STORAGE_PROVIDER)
-    except Exception as e:
-        logger.warning("storage_init_failed", error=str(e))
+    # Warm the storage backend singleton (bucket self-heal happens here).
+    from app.services.storage.storage_backend import get_storage_backend
+    get_storage_backend()
+    logger.info("service_ready", storage_provider=settings.STORAGE_PROVIDER)
 
     yield
 

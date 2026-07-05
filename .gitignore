@@ -18,6 +18,9 @@ backend/data/
 *.log
 npm-debug.log*
 
+# dev.ps1 bookkeeping
+scripts/.dev-pids.json
+
 # OS files
 .DS_Store
 Thumbs.db

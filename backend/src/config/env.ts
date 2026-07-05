@@ -1,7 +1,14 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { z } from 'zod';
 
-dotenv.config();
+// Env-file precedence (highest → lowest): real OS environment variables →
+// backend/.env (service-specific) → repo-root .env (shared values, single
+// source of truth). dotenv never overwrites keys that are already set, so
+// listing backend/.env first makes it win over the root file.
+dotenv.config({
+  path: [path.resolve(__dirname, '../../.env'), path.resolve(__dirname, '../../../.env')],
+});
 
 const envSchema = z.object({
   JWT_SECRET: z.string().min(10),

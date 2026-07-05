@@ -38,8 +38,11 @@ services:
     networks:
       - agrieval-network
 
-  # Backend API + Phase 1 upload page
+  # Backend API in a container. NOT started by default: local development runs
+  # the backend on the host (scripts\dev.ps1 / npm run dev). Start it with:
+  #   docker compose --profile full up -d
   backend:
+    profiles: ["full"]
     build: ./backend
     container_name: agrieval-backend
     ports:
@@ -47,7 +50,12 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - JWT_SECRET=${JWT_SECRET:-agri-eval-super-secret-jwt-key-2026}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in the root .env}
+      # Inside the compose network Postgres is reachable as "postgres".
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-agrieval}:${POSTGRES_PASSWORD:-agrieval123}@postgres:5432/${POSTGRES_DB:-agrieval}
+      # The Python service runs on the host in dev; reach it via the gateway.
+      - PYTHON_SERVICE_URL=${PYTHON_SERVICE_URL:-http://host.docker.internal:8000}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       # Phase 1 storage: files land in the MinIO bucket.
       - STORAGE_PROVIDER=minio
       - MINIO_ENDPOINT=http://minio:9000
@@ -63,6 +71,8 @@ services:
         condition: service_healthy
       createbuckets:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - agrieval-network

@@ -76,7 +76,10 @@ AGRI_CATEGORY_TAXONOMY: list[str] = [
     "farm-management-software",
 ]
 
-_OVERRIDES_FILE = Path(__file__).resolve().parent.parent / "runtime_settings.json"
+_SERVICE_DIR = Path(__file__).resolve().parent.parent  # python-service/
+_REPO_ROOT = _SERVICE_DIR.parent
+
+_OVERRIDES_FILE = _SERVICE_DIR / "runtime_settings.json"
 
 
 class Settings(BaseSettings):
@@ -118,8 +121,10 @@ class Settings(BaseSettings):
     S3_ENDPOINT_URL: Optional[str] = None  # Set for MinIO (e.g. http://minio:9000)
     S3_REGION: str = "us-east-1"
 
-    # Database (PostgreSQL)
-    DATABASE_URL: str = "postgresql+asyncpg://agrieval:agrieval123@localhost:5432/agrieval"
+    # Database (PostgreSQL). No default on purpose: the URL (and its password)
+    # must come from the environment / .env files. Preflight fails startup with
+    # a clear message when it is missing.
+    DATABASE_URL: str = ""
 
     @property
     def supported_formats_list(self) -> list[str]:
@@ -129,7 +134,15 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # Env-file precedence (lowest → highest): repo-root .env (shared values,
+    # single source of truth) → python-service/.env (service-specific
+    # overrides) → real OS environment variables. Absolute paths so startup
+    # works regardless of the current working directory.
+    model_config = {
+        "env_file": (str(_REPO_ROOT / ".env"), str(_SERVICE_DIR / ".env")),
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()
