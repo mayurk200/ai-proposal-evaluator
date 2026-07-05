@@ -115,6 +115,33 @@ export interface ProcessedProposalList {
   total_pages: number;
 }
 
+// Full stored record for one proposal ("More info"): everything the agent used
+// (the extracted text) plus file metadata, storage links and extraction stats.
+export interface ProcessedProposalDetail extends ProcessedProposal {
+  document_format?: string;
+  file_content_type?: string;
+  file_size_bytes?: number;
+  file_hash?: string | null;
+  original_key?: string | null;
+  original_url?: string | null;
+  extracted_key?: string | null;
+  extracted_url?: string | null;
+  manifest_key?: string | null;
+  manifest_url?: string | null;
+  source_url?: string | null;
+  extracted_text?: string | null;
+  char_count?: number;
+  total_pages?: number;
+  total_words?: number;
+  total_images?: number;
+  total_tables?: number;
+  has_scanned_content?: boolean;
+  detected_sections?: string[];
+  error_message?: string | null;
+  extracted_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface CategoryCount {
   category: string;
   count: number;
@@ -161,6 +188,14 @@ export const uploadApi = {
     const qs = search.toString() ? `?${search.toString()}` : '';
     const res = await api.get<{ success: boolean } & ProcessedProposalList>(`/uploads/processed${qs}`);
     return res.data;
+  },
+
+  // GET /api/uploads/processed/:id — full record for one proposal ("More info").
+  getProcessedDetail: async (id: string) => {
+    const res = await api.get<{ success: boolean; proposal: ProcessedProposalDetail }>(
+      `/uploads/processed/${encodeURIComponent(id)}`
+    );
+    return res.data.proposal;
   },
 
   // GET /api/uploads/categories — distinct agri categories with counts.

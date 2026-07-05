@@ -381,6 +381,28 @@ export async function listProcessedProposals(params: {
   return await response.json() as ProcessedProposalList;
 }
 
+/**
+ * Fetch the full stored record for one processed proposal: file metadata,
+ * storage addresses, extraction stats, the extracted text the agent analyzed,
+ * and the complete categorization output.
+ */
+export async function getProcessedProposal(id: string): Promise<Record<string, any>> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/proposals/${encodeURIComponent(id)}`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python proposal detail');
+
+  const body = await response.json() as { proposal?: Record<string, any> };
+  return body.proposal ?? {};
+}
+
 /** List the distinct agri categories (with counts) across processed proposals. */
 export async function listProcessedCategories(): Promise<CategoryCount[]> {
   const baseUrl = env.PYTHON_SERVICE_URL;

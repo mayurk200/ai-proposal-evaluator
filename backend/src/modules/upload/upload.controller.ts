@@ -7,6 +7,7 @@ import {
   listProcessedProposals,
   listProcessedCategories,
   listProcessedSourceKeys,
+  getProcessedProposal,
   checkPythonServiceHealth,
 } from '../../utils/pythonProxy';
 
@@ -236,6 +237,26 @@ export const uploadController = {
       return res.status(503).json({
         success: false,
         error: `Could not fetch processed proposals: ${err.message}`,
+      });
+    }
+  },
+
+  /**
+   * PHASE 2 — Full record for one processed proposal ("More info"): file
+   * metadata, storage links, extraction stats, the extracted text the agent
+   * analyzed, and the complete categorization output.
+   */
+  async getProcessed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const proposal = await getProcessedProposal(String(req.params.id));
+      return res.status(200).json({ success: true, proposal });
+    } catch (err: any) {
+      if (/\(404\)/.test(err.message)) {
+        return res.status(404).json({ success: false, error: 'Proposal not found' });
+      }
+      return res.status(503).json({
+        success: false,
+        error: `Could not fetch proposal details: ${err.message}`,
       });
     }
   },

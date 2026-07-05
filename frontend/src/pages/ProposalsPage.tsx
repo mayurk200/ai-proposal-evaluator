@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, Button, Input, Skeleton } from '@/components/ui';
+import { Card, Button, Input, Skeleton, Badge } from '@/components/ui';
 import { uploadApi, type ProcessedProposal } from '@/services/proposal.service';
 import { formatDate } from '@/utils';
 
@@ -35,8 +35,239 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/** External link that only renders when a URL exists. */
+function StorageLink({ url, label }: { url?: string | null; label: string }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+    >
+      <ExternalLink className="w-3 h-3" /> {label}
+    </a>
+  );
+}
+
+/**
+ * "More info" modal: the complete stored record for one proposal — file
+ * metadata, storage links, extraction stats, the exact extracted text the
+ * categorization agent analyzed, and the agent's full output.
+ */
+function MoreInfoModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data: d, isLoading, isError, error } = useQuery({
+    queryKey: ['proposal-detail', id],
+    queryFn: () => uploadApi.getProcessedDetail(id),
+    retry: false,
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const cat = d?.categorization || null;
+  const flags = cat?.flags || {};
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border/60">
+          <div className="min-w-0">
+            <p className="text-base font-semibold text-text truncate">
+              {cat?.title || d?.filename || 'Proposal details'}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <StatusBadge status={d?.status} />
+              {typeof d?.rank === 'number' && d.rank > 0 && (
+                <Badge variant="info">Rank {d.rank}</Badge>
+              )}
+              {d?.agri_relevant === false && <Badge variant="warning">Not agri-relevant</Badge>}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent/40 text-text-muted flex-shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto space-y-6">
+          {isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-6 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : isError ? (
+            <div className="text-center py-8">
+              <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <p className="text-sm text-red-600">
+                {(error as any)?.response?.data?.error || (error as any)?.message || 'Could not load details.'}
+              </p>
+            </div>
+          ) : d ? (
+            <>
+              {/* ---- File ---- */}
+              <section>
+                <SectionTitle>File</SectionTitle>
+                <div className="grid gap-3 text-xs sm:grid-cols-3 mt-2">
+                  <Field label="Filename">{d.filename || '—'}</Field>
+                  <Field label="Format">{(d.document_format || '—').toUpperCase()}</Field>
+                  <Field label="Size">{formatBytes(d.file_size_bytes)}</Field>
+                  <Field label="Content type">{d.file_content_type || '—'}</Field>
+                  <Field label="Uploaded">{d.created_at ? formatDate(d.created_at) : '—'}</Field>
+                  <Field label="Proposal ID">
+                    <span className="font-mono break-all">{d.id}</span>
+                  </Field>
+                </div>
+                {d.file_hash && (
+                  <div className="mt-3">
+                    <Field label="SHA-256 (dedup hash)">
+                      <span className="font-mono break-all">{d.file_hash}</span>
+                    </Field>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-4 mt-3">
+                  <StorageLink url={d.source_url || d.original_url} label="Open original file" />
+                  <StorageLink url={d.extracted_url} label="Stored extracted text" />
+                  <StorageLink url={d.manifest_url} label="Manifest (JSON index)" />
+                </div>
+                {d.error_message && (
+                  <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+                    <Field label="Processing error">
+                      <span className="text-red-700">{d.error_message}</span>
+                    </Field>
+                  </div>
+                )}
+              </section>
+
+              {/* ---- Extraction ---- */}
+              <section>
+                <SectionTitle>Extraction — what was read from the file</SectionTitle>
+                <div className="grid gap-3 text-xs grid-cols-2 sm:grid-cols-4 mt-2">
+                  <Field label="Pages">{d.total_pages ?? 0}</Field>
+                  <Field label="Words">{d.total_words ?? 0}</Field>
+                  <Field label="Characters">{d.char_count ?? 0}</Field>
+                  <Field label="Images">{d.total_images ?? 0}</Field>
+                  <Field label="Tables">{d.total_tables ?? 0}</Field>
+                  <Field label="Scanned content">{d.has_scanned_content ? 'Yes (OCR needed)' : 'No'}</Field>
+                  <Field label="Extracted at">{d.extracted_at ? formatDate(d.extracted_at) : '—'}</Field>
+                  <Field label="Categorized at">{d.categorized_at ? formatDate(d.categorized_at) : '—'}</Field>
+                </div>
+                {d.detected_sections?.length ? (
+                  <div className="mt-3">
+                    <Field label="Detected sections">{d.detected_sections.join(', ')}</Field>
+                  </div>
+                ) : null}
+              </section>
+
+              {/* ---- Agent input ---- */}
+              <section>
+                <SectionTitle>Agent input — the text the agent analyzed</SectionTitle>
+                {d.extracted_text ? (
+                  <pre className="mt-2 text-xs text-text-secondary bg-accent/20 border border-border/60 rounded-xl p-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words">
+                    {d.extracted_text}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-text-muted mt-2">
+                    No extracted text stored for this proposal.
+                  </p>
+                )}
+              </section>
+
+              {/* ---- Agent output ---- */}
+              <section>
+                <SectionTitle>Agent output — full categorization result</SectionTitle>
+                {cat ? (
+                  <div className="mt-2 space-y-3">
+                    <div className="grid gap-3 text-xs sm:grid-cols-2">
+                      {cat.title && <Field label="Title">{cat.title}</Field>}
+                      {cat.stage && <Field label="Stage">{cat.stage}</Field>}
+                      {cat.summary && (
+                        <div className="sm:col-span-2">
+                          <Field label="Summary">{cat.summary}</Field>
+                        </div>
+                      )}
+                      {cat.problem_statement && <Field label="Problem">{cat.problem_statement}</Field>}
+                      {cat.proposed_solution && <Field label="Solution">{cat.proposed_solution}</Field>}
+                      {cat.technologies?.length ? (
+                        <Field label="Technologies">{cat.technologies.join(', ')}</Field>
+                      ) : null}
+                      {cat.target_beneficiaries?.length ? (
+                        <Field label="Beneficiaries">{cat.target_beneficiaries.join(', ')}</Field>
+                      ) : null}
+                      {cat.geography && <Field label="Geography">{cat.geography}</Field>}
+                      {cat.keywords?.length ? (
+                        <Field label="Keywords">{cat.keywords.join(', ')}</Field>
+                      ) : null}
+                      <Field label="Triage rank (0–100)">{typeof cat.rank === 'number' ? cat.rank : '—'}</Field>
+                      <Field label="Agent confidence">
+                        {typeof cat.confidence === 'number' ? `${Math.round(cat.confidence * 100)}%` : '—'}
+                      </Field>
+                    </div>
+                    {(d.categories?.length || cat.categories?.length) ? (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mb-1.5">Categories</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(d.categories?.length ? d.categories : cat.categories || []).map((c) => (
+                            <span key={c} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-accent/50 text-primary font-medium">
+                              <Tag className="w-2.5 h-2.5" /> {labelForCategory(c)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-text-muted font-semibold mb-1.5">Flags</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge variant={flags.agri_relevant === false ? 'warning' : 'success'}>
+                          {flags.agri_relevant === false ? 'Not agri-relevant' : 'Agri-relevant'}
+                        </Badge>
+                        {flags.needs_review && <Badge variant="warning">Needs review</Badge>}
+                        {flags.insufficient_text && <Badge variant="danger">Insufficient text</Badge>}
+                        {flags.out_of_scope && <Badge variant="danger">Out of scope</Badge>}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-muted mt-2">
+                    No categorization output yet — the agent has not finished (or failed) for this file.
+                  </p>
+                )}
+              </section>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="text-xs font-bold uppercase tracking-wide text-text-secondary border-b border-border/50 pb-1.5">
+      {children}
+    </h3>
+  );
+}
+
 function ProposalRow({ p, index }: { p: ProcessedProposal; index: number }) {
   const [open, setOpen] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const detail = p.categorization || null;
   const title = detail?.title || p.filename || 'Untitled proposal';
   const summary = detail?.summary;
@@ -77,15 +308,24 @@ function ProposalRow({ p, index }: { p: ProcessedProposal; index: number }) {
           </div>
         </div>
 
-        {hasDetail && (
-          <div className="mt-3 pt-3 border-t border-border/50">
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="flex items-center gap-4">
+            {hasDetail && (
+              <button
+                onClick={() => setOpen((v) => !v)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                {open ? <><ChevronUp className="w-3.5 h-3.5" /> Hide details</> : <><ChevronDown className="w-3.5 h-3.5" /> Show details</>}
+              </button>
+            )}
             <button
-              onClick={() => setOpen((v) => !v)}
+              onClick={() => setShowInfo(true)}
               className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
-              {open ? <><ChevronUp className="w-3.5 h-3.5" /> Hide details</> : <><ChevronDown className="w-3.5 h-3.5" /> Show details</>}
+              <Info className="w-3.5 h-3.5" /> More info
             </button>
-            {open && detail && (
+          </div>
+          {open && detail && (
               <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
                 {detail.problem_statement && (
                   <Field label="Problem">{detail.problem_statement}</Field>
@@ -108,9 +348,10 @@ function ProposalRow({ p, index }: { p: ProcessedProposal; index: number }) {
                   <Field label="Agri relevance">{Math.round(detail.agri_relevance * 100)}%</Field>
                 )}
               </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
+
+        {showInfo && <MoreInfoModal id={p.id} onClose={() => setShowInfo(false)} />}
       </Card>
     </motion.div>
   );
