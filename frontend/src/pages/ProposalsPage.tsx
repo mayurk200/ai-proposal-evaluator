@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List } from 'lucide-react';
+import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Copy, Check } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Input, Select, Skeleton, Badge, ScoreBadge, Progress } from '@/components/ui';
@@ -58,6 +58,37 @@ function formatBytes(bytes?: number): string {
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/**
+ * Minimal proposal ID: shows the first 8 characters of the UUID (enough to
+ * tell proposals apart) with a button that copies the full ID for API use.
+ */
+function ShortId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyFull = async () => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable (e.g. non-HTTPS) — leave the short id visible */
+    }
+  };
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="font-mono" title={id}>{id.slice(0, 8)}</span>
+      <button
+        onClick={copyFull}
+        title={copied ? 'Copied!' : 'Copy full ID'}
+        className="text-text-muted hover:text-primary transition-colors"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </span>
+  );
 }
 
 /** External link that only renders when a URL exists. */
@@ -175,7 +206,7 @@ function MoreInfoModal({ id, onClose }: { id: string; onClose: () => void }) {
                   <Field label="Content type">{d.file_content_type || '—'}</Field>
                   <Field label="Uploaded">{d.created_at ? formatDate(d.created_at) : '—'}</Field>
                   <Field label="Proposal ID">
-                    <span className="font-mono break-all">{d.id}</span>
+                    <ShortId id={d.id} />
                   </Field>
                 </div>
                 {d.file_hash && (
