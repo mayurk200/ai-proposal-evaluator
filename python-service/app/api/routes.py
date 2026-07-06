@@ -370,6 +370,42 @@ async def get_proposal_endpoint(proposal_id: str):
     return ProposalResponse(status="success", proposal=record)
 
 
+@router.delete("/proposals/{proposal_id}")
+async def delete_proposal_endpoint(proposal_id: str):
+    """Delete a proposal: its stored artifacts (extracted text, manifest, any
+    original copy in this service's bucket) and the database row.
+
+    The caller (Node backend) is responsible for removing the source object in
+    its own upload bucket; this endpoint returns the `source_key` so it can.
+    """
+    repo = get_proposal_repository()
+    record = await repo.get_proposal(proposal_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    # Best-effort artifact cleanup — a missing object must not block the delete.
+    artifact_keys = [record.get("original_key"), record.get("extracted_key"), record.get("manifest_key")]
+    try:
+        storage = get_storage_backend()
+        for key in artifact_keys:
+            if not key:
+                continue
+            try:
+                await storage.delete(key)
+            except Exception as e:
+                logger.warning("proposal_artifact_delete_failed", key=key, error=str(e))
+    except Exception as e:
+        logger.warning("storage_unavailable_for_delete", error=str(e))
+
+    await repo.delete_proposal(proposal_id)
+    logger.info("proposal_deleted", id=proposal_id, filename=record.get("filename"))
+    return {
+        "status": "success",
+        "deleted": proposal_id,
+        "source_key": record.get("source_key"),
+    }
+
+
 @router.get("/proposals")
 async def list_proposals_endpoint(
     page: int = Query(default=1, ge=1),

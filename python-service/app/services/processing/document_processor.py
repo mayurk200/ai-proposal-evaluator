@@ -1,8 +1,13 @@
 """
 Document processor orchestrator.
 Coordinates the full pipeline: extraction → OCR → tables → chunking → summarization.
+
+All heavy synchronous work (text extraction, OCR, image/table extraction) is
+offloaded to worker threads with asyncio.to_thread so the event loop — and with
+it every other request, including health checks — stays responsive.
 """
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Optional
@@ -91,12 +96,13 @@ async def process_document(
         else:
             raise ValueError("No file provided")
 
-        full_text = ocr_image(image=img) if run_ocr else ""
+        full_text = await asyncio.to_thread(ocr_image, image=img) if run_ocr else ""
         has_scanned_content = True
         page_count = 1
     else:
         # Document file — extract text
-        extraction_result = extract_text(
+        extraction_result = await asyncio.to_thread(
+            extract_text,
             file_path=file_path,
             file_bytes=file_bytes,
             file_type=file_type,

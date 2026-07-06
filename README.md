@@ -216,6 +216,7 @@ docker-compose up --build
 | [RUN.md](docs/RUN.md) | Full-stack run order and per-service health verification |
 | [QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup with screenshots and troubleshooting |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow diagrams, scoring weights, file structure |
+| [ranking.md](docs/ranking.md) | How the proposal triage rank (0–100) is produced and how the Rankings view orders proposals |
 
 ## Project Structure
 

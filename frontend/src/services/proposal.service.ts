@@ -198,6 +198,14 @@ export const uploadApi = {
     return res.data.proposal;
   },
 
+  // DELETE /api/uploads/processed/:id — delete a proposal (DB row + stored files).
+  deleteProcessed: async (id: string) => {
+    const res = await api.delete<{ success: boolean; deleted: string }>(
+      `/uploads/processed/${encodeURIComponent(id)}`
+    );
+    return res.data;
+  },
+
   // GET /api/uploads/categories — distinct agri categories with counts.
   listCategories: async () => {
     const res = await api.get<{ success: boolean; categories: CategoryCount[] }>('/uploads/categories');

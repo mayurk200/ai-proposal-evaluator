@@ -27,11 +27,13 @@ router.get('/', (req, res, next) => uploadController.listAll(req, res, next));
  *   files for extraction + agri categorization (async on the Python service).
  * GET  /api/uploads/processed  List categorized proposals (?category, ?status).
  * GET  /api/uploads/processed/:id  Full record for one proposal ("More info").
+ * DELETE /api/uploads/processed/:id  Delete a proposal (DB row + stored files).
  * GET  /api/uploads/categories Distinct agri categories with counts.
  */
 router.post('/process', (req, res, next) => uploadController.process(req, res, next));
 router.get('/processed', (req, res, next) => uploadController.listProcessed(req, res, next));
 router.get('/processed/:id', (req, res, next) => uploadController.getProcessed(req, res, next));
+router.delete('/processed/:id', (req, res, next) => uploadController.deleteProcessed(req, res, next));
 router.get('/categories', (req, res, next) => uploadController.listCategories(req, res, next));
 
 export default router;

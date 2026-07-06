@@ -403,6 +403,28 @@ export async function getProcessedProposal(id: string): Promise<Record<string, a
   return body.proposal ?? {};
 }
 
+/**
+ * Delete a processed proposal on the Python service (DB row + its stored
+ * artifacts). Returns the source object key so the caller can also remove the
+ * original upload from the backend's own bucket.
+ */
+export async function deleteProcessedProposal(id: string): Promise<{ source_key: string | null }> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/proposals/${encodeURIComponent(id)}`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { method: 'DELETE', signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python proposal delete');
+
+  const body = await response.json() as { source_key?: string | null };
+  return { source_key: body.source_key ?? null };
+}
+
 /** List the distinct agri categories (with counts) across processed proposals. */
 export async function listProcessedCategories(): Promise<CategoryCount[]> {
   const baseUrl = env.PYTHON_SERVICE_URL;

@@ -8,6 +8,7 @@ import {
   listProcessedCategories,
   listProcessedSourceKeys,
   getProcessedProposal,
+  deleteProcessedProposal,
   checkPythonServiceHealth,
 } from '../../utils/pythonProxy';
 
@@ -257,6 +258,41 @@ export const uploadController = {
       return res.status(503).json({
         success: false,
         error: `Could not fetch proposal details: ${err.message}`,
+      });
+    }
+  },
+
+  /**
+   * PHASE 2 — Delete a processed proposal everywhere: the Python service
+   * removes the DB row + extracted/manifest artifacts and reports back the
+   * source object key, which we then remove from the upload bucket here.
+   */
+  async deleteProcessed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const { source_key } = await deleteProcessedProposal(id);
+
+      // Best-effort: remove the original upload from our bucket too.
+      if (source_key) {
+        try {
+          const provider = getStorage();
+          if (provider.ensureReady) {
+            await provider.ensureReady();
+          }
+          await provider.delete(source_key);
+        } catch (e: any) {
+          console.warn(`[uploads] Could not delete source object ${source_key}: ${e.message}`);
+        }
+      }
+
+      return res.status(200).json({ success: true, deleted: id });
+    } catch (err: any) {
+      if (/\(404\)/.test(err.message)) {
+        return res.status(404).json({ success: false, error: 'Proposal not found' });
+      }
+      return res.status(503).json({
+        success: false,
+        error: `Could not delete proposal: ${err.message}`,
       });
     }
   },
