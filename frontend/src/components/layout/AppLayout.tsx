@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Upload, FileText, GitCompare,
-  BarChart3, Settings, LogOut, Leaf, Menu, X, ChevronRight
+  BarChart3, Settings, LogOut, Leaf, Menu, X, ChevronRight, Info
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 
@@ -16,6 +16,7 @@ const navItems = [
   { icon: GitCompare, label: 'Compare', path: '/compare' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: Settings, label: 'Settings', path: '/settings' },
+  { icon: Info, label: 'About', path: '/about' },
 ];
 
 export function Sidebar() {
