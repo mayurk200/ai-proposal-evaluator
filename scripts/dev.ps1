@@ -94,7 +94,23 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 docker info *> $null
 if ($LASTEXITCODE -ne 0) {
-    Fail 'prerequisites' 'Docker engine is not running. Start Docker Desktop and retry.'
+    # Engine down - try to launch Docker Desktop ourselves and wait for it.
+    $dockerDesktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+    if (Test-Path $dockerDesktop) {
+        Write-Host "  Docker engine not running - starting Docker Desktop..." -ForegroundColor Yellow
+        Start-Process $dockerDesktop
+        $dockerWait = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($dockerWait.Elapsed.TotalSeconds -lt 180) {
+            Start-Sleep -Seconds 5
+            docker info *> $null
+            if ($LASTEXITCODE -eq 0) { break }
+        }
+    }
+    docker info *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Fail 'prerequisites' 'Docker engine is not running (auto-start failed or timed out after 180s). Start Docker Desktop manually and retry.'
+    }
+    Write-Host "  Docker engine ready after $([int]$dockerWait.Elapsed.TotalSeconds)s"
 }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Fail 'prerequisites' 'Node.js not found. Install Node 20+: https://nodejs.org/'

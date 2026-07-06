@@ -1,20 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  FileText, TrendingUp, Brain, Clock, Award,
-  ArrowUpRight, Sparkles
+  FileText, TrendingUp, Loader2, Clock, Award,
+  Sparkles, Leaf, AlertTriangle, Inbox,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, Radar, PieChart, Pie, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Card, Badge, ScoreBadge, Skeleton, Progress } from '@/components/ui';
+import { Card, Skeleton, Progress, ScoreBadge } from '@/components/ui';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { aiApi } from '@/services/proposal.service';
+import { uploadApi, type ProcessedProposal } from '@/services/proposal.service';
 import { useAuthStore } from '@/store/authStore';
-import { formatDate, getStatusColor, getScoreColor } from '@/utils';
+import { formatDate } from '@/utils';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -25,10 +23,39 @@ const fadeUp = {
   }),
 };
 
-const COLORS = ['#2E7D32', '#66BB6A', '#C8E6C9', '#81C784', '#A5D6A7'];
+/** Turn a kebab-case category slug into a readable label. */
+function labelForCategory(slug: string): string {
+  return slug
+    .split('-')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
 
-function StatCard({ icon: Icon, label, value, change, index }: {
-  icon: any; label: string; value: string | number; change?: string; index: number;
+const STATUS_STYLES: Record<string, string> = {
+  categorized: 'bg-green-100 text-green-700',
+  categorizing: 'bg-blue-100 text-blue-700',
+  extracting: 'bg-blue-100 text-blue-700',
+  failed: 'bg-red-100 text-red-700',
+};
+
+function StatusBadge({ status }: { status?: string }) {
+  const s = (status || '').toLowerCase();
+  const style = STATUS_STYLES[s] || 'bg-accent/40 text-text-secondary';
+  const isBusy = s === 'categorizing' || s === 'extracting';
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md font-medium ${style}`}>
+      {isBusy && <Loader2 className="w-3 h-3 animate-spin" />}
+      {s || 'unknown'}
+    </span>
+  );
+}
+
+function titleFor(p: ProcessedProposal): string {
+  return p.categorization?.title || p.filename || 'Untitled proposal';
+}
+
+function StatCard({ icon: Icon, label, value, sub, index }: {
+  icon: any; label: string; value: string | number; sub?: string; index: number;
 }) {
   return (
     <motion.div custom={index} initial="hidden" animate="visible" variants={fadeUp}>
@@ -38,12 +65,7 @@ function StatCard({ icon: Icon, label, value, change, index }: {
           <div>
             <p className="text-sm text-text-muted font-medium">{label}</p>
             <p className="text-3xl font-bold text-text mt-1">{value}</p>
-            {change && (
-              <div className="flex items-center gap-1 mt-2">
-                <ArrowUpRight className="w-3.5 h-3.5 text-primary" />
-                <span className="text-xs font-medium text-primary">{change}</span>
-              </div>
-            )}
+            {sub && <p className="text-xs text-text-muted mt-2">{sub}</p>}
           </div>
           <div className="w-11 h-11 rounded-xl bg-accent/40 flex items-center justify-center">
             <Icon className="w-5 h-5 text-primary" />
@@ -76,12 +98,25 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: aiApi.getDashboard,
+
+  // All three sources are the same live APIs the Proposals page uses.
+  const { data: processed, isLoading: loadingProposals } = useQuery({
+    queryKey: ['dashboard-processed'],
+    queryFn: () => uploadApi.listProcessed({ limit: 100 }),
+    refetchInterval: 15000,
+  });
+  const { data: categories, isLoading: loadingCategories } = useQuery({
+    queryKey: ['dashboard-categories'],
+    queryFn: uploadApi.listCategories,
+    refetchInterval: 15000,
+  });
+  const { data: storedFiles } = useQuery({
+    queryKey: ['dashboard-files'],
+    queryFn: uploadApi.list,
+    refetchInterval: 15000,
   });
 
-  if (isLoading) {
+  if (loadingProposals || loadingCategories) {
     return (
       <AppLayout>
         <DashboardSkeleton />
@@ -89,32 +124,44 @@ export default function DashboardPage() {
     );
   }
 
-  const scoreHistoryData = stats?.scoreHistory?.map((s, i) => ({
-    name: `#${i + 1}`,
-    overall: s.overallScore,
-    problemRelevance: s.problemRelevanceScore || 0,
-    solutionReadiness: s.solutionReadinessScore || 0,
-    pilotDesign: s.pilotDesignScore || 0,
-    farmerAdoption: s.farmerAdoptionScore || 0,
-    scaleUp: s.scaleUpScore || 0,
-    teamCapacity: s.teamCapacityScore || 0,
-    compliance: s.complianceScore || 0,
-  })) || [];
+  const proposals = processed?.proposals ?? [];
+  const total = processed?.total ?? proposals.length;
 
-  const categoryData = stats?.categoryStats?.map((c) => ({
-    name: c.recommendation,
-    value: c._count,
-  })) || [];
+  const categorized = proposals.filter((p) => (p.status || '').toLowerCase() === 'categorized');
+  const processing = proposals.filter((p) =>
+    ['categorizing', 'extracting'].includes((p.status || '').toLowerCase()));
+  const failed = proposals.filter((p) => (p.status || '').toLowerCase() === 'failed');
+  const agriRelevant = categorized.filter((p) => p.agri_relevant);
+  const awaiting = storedFiles?.count ?? 0;
 
-  const radarData = stats?.topProposals?.[0] ? [
-    { metric: 'Problem Relevance', value: stats.topProposals[0].problemRelevanceScore || 0 },
-    { metric: 'Solution Readiness', value: stats.topProposals[0].solutionReadinessScore || 0 },
-    { metric: 'Pilot Design', value: stats.topProposals[0].pilotDesignScore || 0 },
-    { metric: 'Farmer Adoption', value: stats.topProposals[0].farmerAdoptionScore || 0 },
-    { metric: 'Scale-up', value: stats.topProposals[0].scaleUpScore || 0 },
-    { metric: 'Team Capacity', value: stats.topProposals[0].teamCapacityScore || 0 },
-    { metric: 'Compliance', value: stats.topProposals[0].complianceScore || 0 },
-  ] : [];
+  // "rank" is the agent's 0–100 triage score (labelled "Score" in the UI).
+  const scored = categorized
+    .filter((p) => typeof p.rank === 'number')
+    .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
+  const averageScore = scored.length
+    ? Math.round(scored.reduce((sum, p) => sum + (p.rank ?? 0), 0) / scored.length)
+    : null;
+
+  const scoreChartData = scored.map((p) => ({
+    id: p.id,
+    name: titleFor(p),
+    score: p.rank ?? 0,
+  }));
+
+  const categoryData = (categories ?? [])
+    .slice()
+    .sort((a, b) => b.count - a.count);
+  const maxCategoryCount = categoryData.length
+    ? Math.max(...categoryData.map((c) => c.count))
+    : 0;
+
+  const recent = proposals
+    .slice()
+    .sort((a, b) =>
+      new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+    .slice(0, 5);
+
+  const top = scored[0];
 
   return (
     <AppLayout>
@@ -124,102 +171,115 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-text">
             Welcome back, <span className="text-gradient">{user?.name?.split(' ')[0] || 'Guest'}</span>
           </h1>
-          <p className="text-sm text-text-muted mt-1">Here's your proposal evaluation overview</p>
+          <p className="text-sm text-text-muted mt-1">Live overview of your proposal pipeline</p>
         </motion.div>
 
         {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard icon={FileText} label="Total Proposals" value={stats?.totalProposals || 0} index={0} />
-          <StatCard icon={Award} label="Evaluated" value={stats?.evaluatedProposals || 0} index={1} />
-          <StatCard icon={TrendingUp} label="Average Score" value={stats?.averageScore || 0} index={2} />
-          <StatCard icon={Clock} label="Pending" value={stats?.pendingProposals || 0} index={3} />
+          <StatCard
+            icon={FileText}
+            label="Total Proposals"
+            value={total}
+            sub={failed.length ? `${failed.length} failed` : undefined}
+            index={0}
+          />
+          <StatCard
+            icon={Award}
+            label="Categorized"
+            value={categorized.length}
+            sub={processing.length ? `${processing.length} processing` : undefined}
+            index={1}
+          />
+          <StatCard
+            icon={TrendingUp}
+            label="Average Score"
+            value={averageScore ?? '—'}
+            sub={agriRelevant.length ? `${agriRelevant.length} agri-relevant` : undefined}
+            index={2}
+          />
+          <StatCard
+            icon={Clock}
+            label="Awaiting Processing"
+            value={awaiting}
+            sub="files uploaded, not yet processed"
+            index={3}
+          />
         </div>
 
         {/* Charts Row */}
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Score Trend */}
+          {/* Proposal scores */}
           <motion.div custom={4} initial="hidden" animate="visible" variants={fadeUp} className="lg:col-span-2">
             <Card hover={false}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-base font-semibold text-text">Score Trends</h3>
-                  <p className="text-xs text-text-muted mt-0.5">Evaluation scores over time</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-text-muted">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Overall</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Solution Readiness</span>
-                </div>
+              <div className="mb-6">
+                <h3 className="text-base font-semibold text-text">Proposal Scores</h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  AI triage score (0–100) for each categorized proposal
+                </p>
               </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={scoreHistoryData}>
-                  <defs>
-                    <linearGradient id="colorOverall" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorReadiness" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D97706" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="#D97706" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                  <XAxis dataKey="name" fontSize={12} stroke="#94A3B8" />
-                  <YAxis fontSize={12} stroke="#94A3B8" domain={[0, 100]} />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'rgba(255,255,255,0.9)',
-                      backdropFilter: 'blur(12px)',
-                      border: '1px solid rgba(255,255,255,0.4)',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                    }}
-                  />
-                  <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2.5} fill="url(#colorOverall)" />
-                  <Area type="monotone" dataKey="solutionReadiness" stroke="#D97706" strokeWidth={2} fill="url(#colorReadiness)" />
-                </AreaChart>
-              </ResponsiveContainer>
+              {scoreChartData.length ? (
+                <ResponsiveContainer width="100%" height={Math.max(120, scoreChartData.length * 48)}>
+                  <BarChart data={scoreChartData} layout="vertical" barCategoryGap="30%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} fontSize={12} stroke="#94A3B8" />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={170}
+                      fontSize={12}
+                      stroke="#64748B"
+                      tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(46,125,50,0.06)' }}
+                      formatter={(value) => [`${value ?? 0}/100`, 'Score']}
+                      contentStyle={{
+                        background: 'rgba(255,255,255,0.95)',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                      }}
+                    />
+                    <Bar dataKey="score" fill="#2E7D32" barSize={18} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center py-12">
+                  <Inbox className="w-10 h-10 text-text-muted mx-auto mb-2" />
+                  <p className="text-sm text-text-muted">No categorized proposals yet</p>
+                  <Link to="/proposals" className="text-sm text-primary font-medium mt-1 inline-block">
+                    Process your uploads →
+                  </Link>
+                </div>
+              )}
             </Card>
           </motion.div>
 
-          {/* Distribution or Radar */}
+          {/* Category distribution */}
           <motion.div custom={5} initial="hidden" animate="visible" variants={fadeUp}>
             <Card hover={false} className="h-full">
-              <h3 className="text-base font-semibold text-text mb-4">
-                {radarData.length > 0 ? 'Top Proposal Profile' : 'Category Distribution'}
-              </h3>
-              <ResponsiveContainer width="100%" height={280}>
-                {radarData.length > 0 ? (
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="#E2E8F0" />
-                    <PolarAngleAxis dataKey="metric" fontSize={11} stroke="#64748B" />
-                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar
-                      dataKey="value"
-                      stroke="#2E7D32"
-                      fill="#2E7D32"
-                      fillOpacity={0.15}
-                      strokeWidth={2}
-                    />
-                  </RadarChart>
-                ) : (
-                  <PieChart>
-                    <Pie
-                      data={categoryData.length > 0 ? categoryData : [{ name: 'No data', value: 1 }]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {(categoryData.length > 0 ? categoryData : [{ name: 'No data' }]).map((_, idx) => (
-                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                )}
-              </ResponsiveContainer>
+              <div className="mb-5">
+                <h3 className="text-base font-semibold text-text">Category Distribution</h3>
+                <p className="text-xs text-text-muted mt-0.5">Proposals per agri category</p>
+              </div>
+              {categoryData.length ? (
+                <div className="space-y-3">
+                  {categoryData.map((c) => (
+                    <div key={c.category}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary">{labelForCategory(c.category)}</span>
+                        <span className="font-medium text-text">{c.count}</span>
+                      </div>
+                      <Progress value={c.count} max={maxCategoryCount} className="h-1.5" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Leaf className="w-10 h-10 text-text-muted mx-auto mb-2" />
+                  <p className="text-sm text-text-muted">Categories appear once proposals are processed</p>
+                </div>
+              )}
             </Card>
           </motion.div>
         </div>
@@ -234,85 +294,102 @@ export default function DashboardPage() {
                 <Link to="/proposals" className="text-xs text-primary font-medium hover:underline">View all →</Link>
               </div>
               <div className="space-y-3">
-                {stats?.recentProposals?.length ? stats.recentProposals.map((p) => (
-                  <Link key={p.id} to={`/proposals/${p.id}`}>
+                {recent.length ? recent.map((p) => (
+                  <Link key={p.id} to="/proposals">
                     <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent-light/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-accent/40 flex items-center justify-center">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-accent/40 flex items-center justify-center shrink-0">
                           <FileText className="w-4 h-4 text-primary" />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-text truncate max-w-[200px]">{p.title}</p>
-                          <p className="text-xs text-text-muted">{formatDate(p.createdAt)}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-text truncate max-w-[220px]">{titleFor(p)}</p>
+                          <p className="text-xs text-text-muted">
+                            {p.created_at ? formatDate(p.created_at) : '—'}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${getStatusColor(p.status)}`}>
-                          {p.status}
-                        </span>
-                        {p.evaluation && <ScoreBadge score={p.evaluation.overallScore} size="sm" />}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusBadge status={p.status} />
+                        {(p.status || '').toLowerCase() === 'categorized' && typeof p.rank === 'number' && (
+                          <ScoreBadge score={p.rank} size="sm" />
+                        )}
                       </div>
                     </div>
                   </Link>
                 )) : (
                   <div className="text-center py-8">
                     <p className="text-sm text-text-muted">No proposals yet</p>
-                    <Link to="/upload" className="text-sm text-primary font-medium mt-1 inline-block">Upload your first →</Link>
+                    <Link to="/proposals" className="text-sm text-primary font-medium mt-1 inline-block">Upload your first →</Link>
                   </div>
                 )}
               </div>
             </Card>
           </motion.div>
 
-          {/* AI Insights */}
+          {/* Top Proposal */}
           <motion.div custom={7} initial="hidden" animate="visible" variants={fadeUp}>
             <Card hover={false}>
               <div className="flex items-center gap-2 mb-5">
                 <Sparkles className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-text">AI Insights</h3>
+                <h3 className="text-base font-semibold text-text">Top Proposal</h3>
               </div>
-              <div className="space-y-4">
-                {stats?.topProposals?.length ? (
-                  <>
-                    <div className="p-4 rounded-xl bg-accent-light/50 border border-accent/30">
-                      <p className="text-sm font-medium text-primary">Top Performer</p>
-                      <p className="text-lg font-bold text-text mt-1">
-                        {stats.topProposals[0]?.proposal?.title}
-                      </p>
-                      <p className="text-xs text-text-muted mt-1">
-                        Score: {stats.topProposals[0]?.overallScore}/100 — {stats.topProposals[0]?.recommendation}
-                      </p>
+              {top ? (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-accent-light/50 border border-accent/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-lg font-bold text-text truncate">{titleFor(top)}</p>
+                        {top.filename && (
+                          <p className="text-xs text-text-muted mt-0.5 truncate">{top.filename}</p>
+                        )}
+                      </div>
+                      <ScoreBadge score={top.rank ?? 0} />
                     </div>
-                    <div className="space-y-3">
-                      <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Score Breakdown</p>
-                      {[
-                        { label: 'Problem Relevance', value: stats.topProposals[0]?.problemRelevanceScore },
-                        { label: 'Solution Readiness', value: stats.topProposals[0]?.solutionReadinessScore },
-                        { label: 'Pilot Design', value: stats.topProposals[0]?.pilotDesignScore },
-                        { label: 'Farmer Adoption', value: stats.topProposals[0]?.farmerAdoptionScore },
-                        { label: 'Scale-up Potential', value: stats.topProposals[0]?.scaleUpScore },
-                        { label: 'Team Capacity', value: stats.topProposals[0]?.teamCapacityScore },
-                        { label: 'Compliance', value: stats.topProposals[0]?.complianceScore },
-                      ].map((item) => (
-                        <div key={item.label}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-text-secondary">{item.label}</span>
-                            <span className={`font-medium ${getScoreColor(item.value || 0)}`}>
-                              {Math.round(item.value || 0)}
-                            </span>
-                          </div>
-                          <Progress value={item.value || 0} className="h-1.5" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-8">
-                    <Brain className="w-10 h-10 text-text-muted mx-auto mb-2" />
-                    <p className="text-sm text-text-muted">AI insights will appear after your first evaluation</p>
+                    {top.categorization?.summary && (
+                      <p className="text-sm text-text-secondary mt-3 line-clamp-3">
+                        {top.categorization.summary}
+                      </p>
+                    )}
                   </div>
-                )}
-              </div>
+
+                  {(top.categories?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Categories</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {top.categories!.map((c) => (
+                          <span key={c} className="text-xs px-2.5 py-1 rounded-lg bg-accent/40 text-text-secondary font-medium">
+                            {labelForCategory(c)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="p-3 rounded-xl bg-accent-light/30">
+                      <p className="text-xs text-text-muted">Agri relevance</p>
+                      <p className="font-medium text-text mt-0.5 flex items-center gap-1.5">
+                        {top.agri_relevant
+                          ? <><Leaf className="w-3.5 h-3.5 text-primary" /> Relevant</>
+                          : <><AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Not relevant</>}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-accent-light/30">
+                      <p className="text-xs text-text-muted">Agent confidence</p>
+                      <p className="font-medium text-text mt-0.5">
+                        {typeof top.categorization?.confidence === 'number'
+                          ? `${Math.round(top.categorization.confidence * 100)}%`
+                          : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Inbox className="w-10 h-10 text-text-muted mx-auto mb-2" />
+                  <p className="text-sm text-text-muted">Insights will appear after your first proposal is processed</p>
+                </div>
+              )}
             </Card>
           </motion.div>
         </div>
