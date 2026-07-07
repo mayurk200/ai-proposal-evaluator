@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Copy, Check, Brain, type LucideIcon } from 'lucide-react';
+import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Layers, Copy, Check, Brain, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Input, Select, Skeleton, Badge, ScoreBadge, Progress } from '@/components/ui';
@@ -37,22 +37,69 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
-type StatusFilter = 'all' | 'categorized' | 'processing' | 'failed';
+type StatusFilter = 'all' | 'categorized' | 'evaluated' | 'processing' | 'failed' | 'review';
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'categorized', label: 'Categorized' },
+  { value: 'evaluated', label: 'Evaluated' },
   { value: 'processing', label: 'Processing' },
   { value: 'failed', label: 'Failed' },
+  { value: 'review', label: 'Needs review' },
 ];
 
 function statusGroup(status?: string): StatusFilter {
   const s = (status || '').toLowerCase();
-  // "evaluated" is a categorized proposal that also has a full evaluation.
-  if (s === 'categorized' || s === 'evaluated') return 'categorized';
+  if (s === 'categorized') return 'categorized';
+  // A categorized proposal that also has a full multi-agent evaluation.
+  if (s === 'evaluated') return 'evaluated';
   if (s === 'categorizing' || s === 'extracting') return 'processing';
   if (s === 'failed') return 'failed';
   return 'all';
+}
+
+/** Processing finished successfully (categorized, with or without evaluation). */
+function isDone(p: ProcessedProposal): boolean {
+  const g = statusGroup(p.status);
+  return g === 'categorized' || g === 'evaluated';
+}
+
+/** Flagged by the agent as needing a human look (or not agri-relevant). */
+function needsReviewOf(p: ProcessedProposal): boolean {
+  return Boolean(p.categorization?.flags?.needs_review) || p.agri_relevant === false;
+}
+
+// ---- Sort system ----
+
+type SortKey = 'newest' | 'oldest' | 'score-desc' | 'score-asc' | 'name-asc' | 'name-desc';
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'score-desc', label: 'Highest score' },
+  { value: 'score-asc', label: 'Lowest score' },
+  { value: 'name-asc', label: 'Name A–Z' },
+  { value: 'name-desc', label: 'Name Z–A' },
+];
+
+function displayTitle(p: ProcessedProposal): string {
+  return p.categorization?.title || p.filename || '';
+}
+
+function sortRows(rows: ProcessedProposal[], sort: SortKey): ProcessedProposal[] {
+  const time = (p: ProcessedProposal) => new Date(p.created_at ?? 0).getTime();
+  // Unscored rows (rank missing/0) sink to the bottom in both score orders.
+  const score = (p: ProcessedProposal) => (typeof p.rank === 'number' && p.rank > 0 ? p.rank : -1);
+  return [...rows].sort((a, b) => {
+    switch (sort) {
+      case 'oldest': return time(a) - time(b);
+      case 'score-desc': return score(b) - score(a) || time(b) - time(a);
+      case 'score-asc': return score(a) - score(b) || time(b) - time(a);
+      case 'name-asc': return displayTitle(a).localeCompare(displayTitle(b));
+      case 'name-desc': return displayTitle(b).localeCompare(displayTitle(a));
+      default: return time(b) - time(a);
+    }
+  });
 }
 
 function formatBytes(bytes?: number): string {
@@ -347,21 +394,38 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Compact stat chip for the header row (slim version of the Dashboard StatCard). */
-function StatChip({ icon: Icon, label, value, spinning, index }: {
+/**
+ * Compact stat chip for the header row (slim version of the Dashboard StatCard).
+ * Clickable: doubles as a status-filter toggle for the list below.
+ */
+function StatChip({ icon: Icon, label, value, spinning, index, active, onClick }: {
   icon: LucideIcon; label: string; value: number; spinning?: boolean; index: number;
+  active?: boolean; onClick?: () => void;
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
-      <Card hover={false} className="p-4 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-accent/40 flex items-center justify-center flex-shrink-0">
-          <Icon className={cn('w-4 h-4 text-primary', spinning && 'animate-spin')} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xl font-bold text-text leading-none">{value}</p>
-          <p className="text-xs text-text-muted mt-1 truncate">{label}</p>
-        </div>
-      </Card>
+      <button
+        type="button"
+        onClick={onClick}
+        title={active ? 'Clear this filter' : `Show only: ${label}`}
+        className="w-full text-left"
+      >
+        <Card
+          hover={false}
+          className={cn(
+            'p-4 flex items-center gap-3 transition-all hover:shadow-card-hover',
+            active && 'ring-2 ring-primary/40'
+          )}
+        >
+          <div className="w-9 h-9 rounded-lg bg-accent/40 flex items-center justify-center flex-shrink-0">
+            <Icon className={cn('w-4 h-4 text-primary', spinning && 'animate-spin')} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xl font-bold text-text leading-none">{value}</p>
+            <p className="text-xs text-text-muted mt-1 truncate">{label}</p>
+          </div>
+        </Card>
+      </button>
     </motion.div>
   );
 }
@@ -457,7 +521,8 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <StatusBadge status={p.status} />
+            {/* "categorized" is the normal resting state — no tag needed for it. */}
+            {status !== 'categorized' && <StatusBadge status={p.status} />}
             {typeof p.rank === 'number' && p.rank > 0 && <ScoreBadge score={p.rank} size="md" />}
           </div>
         </div>
@@ -578,6 +643,152 @@ function categoriesOf(p: ProcessedProposal): string[] {
   return p.categories?.length ? p.categories : p.categorization?.categories || [];
 }
 
+/** Shared per-row props threaded from the page into every proposal card. */
+interface RowActions {
+  activeCategory: string;
+  onCategoryClick: (slug: string) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+  onEvaluate: (id: string, force?: boolean) => void;
+  evaluatingId: string | null;
+}
+
+/** One collapsible category section in the grouped view. */
+function CategoryGroupSection({ slug, rows, actions, open, onToggle }: {
+  slug: string;
+  rows: ProcessedProposal[];
+  actions: RowActions;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const scored = rows.filter((p) => typeof p.rank === 'number' && p.rank > 0);
+  const avgScore = scored.length
+    ? Math.round(scored.reduce((sum, p) => sum + (p.rank ?? 0), 0) / scored.length)
+    : null;
+  const label = slug ? labelForCategory(slug) : 'Uncategorized';
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-1 py-2 text-left group"
+      >
+        {open ? (
+          <ChevronUp className="w-4 h-4 text-text-muted flex-shrink-0" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
+        )}
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-text group-hover:text-primary transition-colors">
+          <Tag className="w-3.5 h-3.5 text-primary" /> {label}
+        </span>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-accent/50 text-primary font-medium">
+          {rows.length}
+        </span>
+        {avgScore !== null && (
+          <span className="text-xs text-text-muted ml-auto">avg score {avgScore}</span>
+        )}
+      </button>
+      {open && (
+        <div className="space-y-3 mt-1">
+          {rows.map((p, i) => (
+            <ProposalRow
+              key={`${slug}-${p.id}`}
+              p={p}
+              index={i}
+              activeCategory={actions.activeCategory}
+              onCategoryClick={actions.onCategoryClick}
+              onDelete={actions.onDelete}
+              deleting={actions.deletingId === p.id}
+              onEvaluate={actions.onEvaluate}
+              evaluating={actions.evaluatingId === p.id}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Grouped view: the filtered proposals arranged into one section per category
+ * (a proposal with several categories appears under each). Sections are ordered
+ * by size, with proposals the agent left uncategorized collected at the end.
+ */
+function CategorizedBoard({ rows, actions }: { rows: ProcessedProposal[]; actions: RowActions }) {
+  // Sections are open by default; this holds the ones the user closed.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const groups = useMemo(() => {
+    const byCat = new Map<string, ProcessedProposal[]>();
+    const uncategorized: ProcessedProposal[] = [];
+    for (const p of rows) {
+      const cats = categoriesOf(p);
+      if (cats.length === 0) {
+        uncategorized.push(p);
+        continue;
+      }
+      for (const c of cats) {
+        const list = byCat.get(c) ?? [];
+        list.push(p);
+        byCat.set(c, list);
+      }
+    }
+    const sections = [...byCat.entries()]
+      .map(([slug, list]) => ({ slug, list }))
+      .sort((a, b) => b.list.length - a.list.length || a.slug.localeCompare(b.slug));
+    if (uncategorized.length) sections.push({ slug: '', list: uncategorized });
+    return sections;
+  }, [rows]);
+
+  if (groups.length === 0) return null;
+
+  const keyOf = (slug: string) => slug || '__uncategorized';
+  const allClosed = groups.every((g) => collapsed.has(keyOf(g.slug)));
+
+  const toggleSection = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setCollapsed(allClosed ? new Set() : new Set(groups.map((g) => keyOf(g.slug))));
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-text-muted">
+          {groups.length} {groups.length === 1 ? 'category' : 'categories'}
+        </span>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          {allClosed
+            ? <><ChevronsUpDown className="w-3.5 h-3.5" /> Expand all</>
+            : <><ChevronsDownUp className="w-3.5 h-3.5" /> Collapse all</>}
+        </button>
+      </div>
+      {groups.map((g) => (
+        <CategoryGroupSection
+          key={keyOf(g.slug)}
+          slug={g.slug}
+          rows={g.list}
+          actions={actions}
+          open={!collapsed.has(keyOf(g.slug))}
+          onToggle={() => toggleSection(keyOf(g.slug))}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
  * Ranking system view. Works from the full (unfiltered) proposal set so every
  * category can be compared against the total file count:
@@ -628,7 +839,7 @@ function RankingBoard({ search, activeCategory, onCategoryClick }: {
     const q = search.toLowerCase();
     return all
       .filter((p) => {
-        if (statusGroup(p.status) !== 'categorized' || !(typeof p.rank === 'number' && p.rank > 0)) return false;
+        if (!isDone(p) || !(typeof p.rank === 'number' && p.rank > 0)) return false;
         if (activeCategory && !categoriesOf(p).includes(activeCategory)) return false;
         const hay = `${p.categorization?.title || ''} ${p.filename || ''}`.toLowerCase();
         return hay.includes(q);
@@ -805,8 +1016,8 @@ function RankingBoard({ search, activeCategory, onCategoryClick }: {
 function ProposalsSkeleton() {
   return (
     <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[1, 2, 3, 4, 5].map((i) => (
           <Card key={i} hover={false} className="p-4 flex items-center gap-3">
             <Skeleton className="w-9 h-9 rounded-lg flex-shrink-0" />
             <div className="flex-1 space-y-2">
@@ -842,8 +1053,8 @@ export default function ProposalsPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sort, setSort] = useState<'newest' | 'rank'>('newest');
-  const [view, setView] = useState<'list' | 'rankings'>('list');
+  const [sort, setSort] = useState<SortKey>('newest');
+  const [view, setView] = useState<'list' | 'grouped' | 'rankings'>('list');
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -889,15 +1100,17 @@ export default function ProposalsPage() {
 
   const stats = useMemo(() => {
     let categorized = 0;
+    let evaluated = 0;
     let processing = 0;
     let needsReview = 0;
     for (const p of proposals) {
       const group = statusGroup(p.status);
       if (group === 'categorized') categorized += 1;
+      if (group === 'evaluated') evaluated += 1;
       if (group === 'processing') processing += 1;
-      if (p.categorization?.flags?.needs_review || p.agri_relevant === false) needsReview += 1;
+      if (needsReviewOf(p)) needsReview += 1;
     }
-    return { total: data?.total ?? proposals.length, categorized, processing, needsReview };
+    return { total: data?.total ?? proposals.length, categorized, evaluated, processing, needsReview };
   }, [proposals, data?.total]);
 
   const searchFiltered = useMemo(
@@ -911,13 +1124,12 @@ export default function ProposalsPage() {
 
   const filtered = useMemo(() => {
     let rows = searchFiltered;
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'review') {
+      rows = rows.filter(needsReviewOf);
+    } else if (statusFilter !== 'all') {
       rows = rows.filter((p) => statusGroup(p.status) === statusFilter);
     }
-    if (sort === 'rank') {
-      rows = [...rows].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
-    }
-    return rows;
+    return sortRows(rows, sort);
   }, [searchFiltered, statusFilter, sort]);
 
   const hasActiveFilters = search.trim() !== '' || category !== '' || statusFilter !== 'all';
@@ -931,6 +1143,20 @@ export default function ProposalsPage() {
   // Clicking a card's category chip toggles the category filter.
   const handleCategoryClick = (slug: string) => {
     setCategory((current) => (current === slug ? '' : slug));
+  };
+
+  // Clicking a stat chip toggles the matching status filter.
+  const toggleStatusFilter = (value: StatusFilter) => {
+    setStatusFilter((current) => (current === value ? 'all' : value));
+  };
+
+  const rowActions: RowActions = {
+    activeCategory: category,
+    onCategoryClick: handleCategoryClick,
+    onDelete: (id) => deleteMutation.mutate(id),
+    deletingId: deleteMutation.isPending ? deleteMutation.variables ?? null : null,
+    onEvaluate: (id, force) => evaluateMutation.mutate({ id, force }),
+    evaluatingId: evaluateMutation.isPending ? evaluateMutation.variables?.id ?? null : null,
   };
 
   const categoryOptions = [
@@ -965,6 +1191,16 @@ export default function ProposalsPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setView('grouped')}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  view === 'grouped' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-accent-light'
+                )}
+              >
+                <Layers className="w-3.5 h-3.5" /> Categories
+              </button>
+              <button
+                type="button"
                 onClick={() => setView('rankings')}
                 className={cn(
                   'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
@@ -994,11 +1230,27 @@ export default function ProposalsPage() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatChip icon={FileText} label="Total" value={stats.total} index={0} />
-              <StatChip icon={CheckCircle2} label="Categorized" value={stats.categorized} index={1} />
-              <StatChip icon={Loader2} label="Processing" value={stats.processing} spinning={stats.processing > 0} index={2} />
-              <StatChip icon={AlertTriangle} label="Needs review" value={stats.needsReview} index={3} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <StatChip
+                icon={FileText} label="Total" value={stats.total} index={0}
+                active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}
+              />
+              <StatChip
+                icon={CheckCircle2} label="Categorized" value={stats.categorized} index={1}
+                active={statusFilter === 'categorized'} onClick={() => toggleStatusFilter('categorized')}
+              />
+              <StatChip
+                icon={Brain} label="Evaluated" value={stats.evaluated} index={2}
+                active={statusFilter === 'evaluated'} onClick={() => toggleStatusFilter('evaluated')}
+              />
+              <StatChip
+                icon={Loader2} label="Processing" value={stats.processing} spinning={stats.processing > 0} index={3}
+                active={statusFilter === 'processing'} onClick={() => toggleStatusFilter('processing')}
+              />
+              <StatChip
+                icon={AlertTriangle} label="Needs review" value={stats.needsReview} index={4}
+                active={statusFilter === 'review'} onClick={() => toggleStatusFilter('review')}
+              />
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -1006,30 +1258,29 @@ export default function ProposalsPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted z-10" />
                 <Input placeholder="Search proposals..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
               </div>
-              <div className="w-full sm:w-56">
-                <Select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  options={categoryOptions}
-                  aria-label="Filter by category"
-                />
-              </div>
-              {view === 'list' && (
+              {view === 'grouped' && (
+                <div className="w-full sm:w-56">
+                  <Select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    options={categoryOptions}
+                    aria-label="Filter by category"
+                  />
+                </div>
+              )}
+              {view !== 'rankings' && (
                 <div className="w-full sm:w-44">
                   <Select
                     value={sort}
-                    onChange={(e) => setSort(e.target.value as 'newest' | 'rank')}
-                    options={[
-                      { value: 'newest', label: 'Newest first' },
-                      { value: 'rank', label: 'Highest score' },
-                    ]}
+                    onChange={(e) => setSort(e.target.value as SortKey)}
+                    options={SORT_OPTIONS}
                     aria-label="Sort proposals"
                   />
                 </div>
               )}
             </div>
 
-            {view === 'list' && (
+            {view !== 'rankings' && (
               <div className="flex flex-wrap items-center gap-2">
                 {STATUS_FILTERS.map((f) => (
                   <button
@@ -1104,6 +1355,8 @@ export default function ProposalsPage() {
                   </>
                 )}
               </Card>
+            ) : view === 'grouped' ? (
+              <CategorizedBoard rows={filtered} actions={rowActions} />
             ) : (
               <div className="space-y-3">
                 {filtered.map((p, i) => (
@@ -1111,12 +1364,12 @@ export default function ProposalsPage() {
                     key={p.id}
                     p={p}
                     index={i}
-                    activeCategory={category}
-                    onCategoryClick={handleCategoryClick}
-                    onDelete={(id) => deleteMutation.mutate(id)}
-                    deleting={deleteMutation.isPending && deleteMutation.variables === p.id}
-                    onEvaluate={(id, force) => evaluateMutation.mutate({ id, force })}
-                    evaluating={evaluateMutation.isPending && evaluateMutation.variables?.id === p.id}
+                    activeCategory={rowActions.activeCategory}
+                    onCategoryClick={rowActions.onCategoryClick}
+                    onDelete={rowActions.onDelete}
+                    deleting={rowActions.deletingId === p.id}
+                    onEvaluate={rowActions.onEvaluate}
+                    evaluating={rowActions.evaluatingId === p.id}
                   />
                 ))}
               </div>
