@@ -22,7 +22,8 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default so pages get the full width; users can expand anytime.
+  const [collapsed, setCollapsed] = useState(true);
 
   const handleLogout = () => {
     logout();

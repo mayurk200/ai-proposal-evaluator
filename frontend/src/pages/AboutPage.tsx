@@ -634,7 +634,7 @@ const sections: Section[] = [
   },
   {
     id: 'architecture',
-    label: 'Architecture',
+    label: 'Three services, one flow',
     icon: Layers,
     render: () => (
       <>
@@ -715,15 +715,20 @@ export default function AboutPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto flex items-start gap-8">
-        {/* Shortcuts sidebar (left) */}
-        <aside className="hidden md:block w-56 xl:w-64 shrink-0">
+      <div className="max-w-7xl mx-auto flex items-stretch gap-8">
+        {/* Shortcuts sidebar (left) — long, full-height rail that runs the
+            length of the page, with the nav pinned so it follows the scroll. */}
+        <aside className="hidden md:block w-60 xl:w-72 shrink-0">
+          {/* Full-height track: the sticky panel below can travel down it and
+              naturally stops at the last section ("Three services, one flow"),
+              so the rail never extends past the end of the content. */}
+          <div className="h-full">
           <nav
             aria-label="On this page"
             className="sticky top-8 glass-card-static rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-border/60 bg-accent-light/40">
+            <div className="flex items-center justify-between px-4 pt-4 pb-3.5 border-b border-border/60 bg-accent-light/40">
               <span className="inline-flex items-center gap-2">
                 <ListTree className="w-4 h-4 text-primary" />
                 <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
@@ -735,13 +740,14 @@ export default function AboutPage() {
               </span>
             </div>
 
-            {/* Section links with an active-position rail */}
-            <div className="relative flex-1 overflow-y-auto p-2">
+            {/* Section links — single column; the active one tracks (matches)
+                whichever section is currently under the top of the viewport. */}
+            <div className="relative flex-1 min-h-0 overflow-y-auto px-2.5 py-3">
               <div
-                className="absolute left-[13px] top-3 bottom-3 w-px bg-border"
+                className="absolute left-[15px] top-3 bottom-3 w-px bg-border"
                 aria-hidden="true"
               />
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {sections.map((s) => {
                   const active = activeId === s.id;
                   return (
@@ -750,17 +756,17 @@ export default function AboutPage() {
                       onClick={() => goTo(s.id)}
                       aria-current={active ? 'true' : undefined}
                       className={cn(
-                        'relative w-full flex items-center gap-2.5 pl-5 pr-3 py-2 rounded-lg text-sm text-left transition-all duration-200',
+                        'group relative w-full flex items-center gap-3 pl-5 pr-3 py-2.5 rounded-xl text-sm text-left transition-all duration-200',
                         active
-                          ? 'bg-accent-light text-primary font-semibold'
+                          ? 'bg-accent-light text-primary font-semibold shadow-sm'
                           : 'text-text-secondary hover:bg-accent-light/50 hover:text-text hover:translate-x-0.5',
                         !isVisible(s.id) && 'opacity-35 pointer-events-none',
                       )}
                     >
                       <span
                         className={cn(
-                          'absolute left-[5px] top-1/2 -translate-y-1/2 w-[3px] rounded-full transition-all duration-200',
-                          active ? 'h-5 bg-primary' : 'h-1.5 bg-border',
+                          'absolute left-[6px] top-1/2 -translate-y-1/2 w-[3px] rounded-full transition-all duration-200',
+                          active ? 'h-6 bg-primary' : 'h-1.5 bg-border group-hover:h-3 group-hover:bg-primary/40',
                         )}
                         aria-hidden="true"
                       />
@@ -773,15 +779,16 @@ export default function AboutPage() {
             </div>
 
             {/* Footer */}
-            <div className="px-2 py-2 border-t border-border/60">
+            <div className="px-2.5 py-2.5 border-t border-border/60">
               <button
                 onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:bg-accent-light hover:text-primary transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-text-secondary hover:bg-accent-light hover:text-primary transition-colors"
               >
                 <ArrowUp className="w-3.5 h-3.5" /> Back to top
               </button>
             </div>
           </nav>
+          </div>
         </aside>
 
         {/* Main column */}
