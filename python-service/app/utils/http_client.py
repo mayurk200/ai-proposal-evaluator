@@ -5,7 +5,7 @@ Handles file upload forwarding and response mapping.
 
 import httpx
 import io
-from typing import Any, Optional
+from typing import Any
 
 from app.utils.logging import get_logger
 

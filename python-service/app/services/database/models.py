@@ -56,6 +56,10 @@ class EvaluationRecord(Base):
     # Batch grouping
     batch_id = Column(String(36), nullable=True, index=True)
 
+    # Link to the ProposalRecord this evaluation was run for (Phase 2 flow).
+    # Nullable: direct /evaluate uploads have no proposal row.
+    proposal_id = Column(String(36), nullable=True, index=True)
+
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     started_at = Column(DateTime, nullable=True)

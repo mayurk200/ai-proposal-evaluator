@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
 import { proposalApi } from '@/services/proposal.service';
+import { getApiErrorMessage } from '@/utils';
 import { Home } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -38,8 +39,8 @@ export default function RegisterPage() {
       }
 
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }

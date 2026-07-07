@@ -4,6 +4,7 @@ import { StorageProvider } from '../../providers/storage/types';
 import { env } from '../../config/env';
 import {
   categorizeWithPythonService,
+  evaluateWithPythonService,
   listProcessedProposals,
   listProcessedCategories,
   listProcessedSourceKeys,
@@ -294,6 +295,76 @@ export const uploadController = {
         success: false,
         error: `Could not delete proposal: ${err.message}`,
       });
+    }
+  },
+
+  /**
+   * PHASE 2 — Run the full multi-agent evaluation for a processed proposal.
+   *
+   * Downloads the original upload from storage and sends it to the Python
+   * service's /evaluate pipeline with the proposal id attached, so the stored
+   * evaluation is linked to the proposal and the proposal row moves to
+   * status `evaluated`. Idempotent per proposal unless ?force=true.
+   */
+  async evaluateProcessed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const force = req.query.force === 'true' || req.body?.force === true;
+
+      let proposal: Record<string, any>;
+      try {
+        proposal = await getProcessedProposal(id);
+      } catch (err: any) {
+        if (/\(404\)/.test(err.message)) {
+          return res.status(404).json({ success: false, error: 'Proposal not found' });
+        }
+        return res.status(503).json({
+          success: false,
+          error: `Could not fetch the proposal: ${err.message}`,
+        });
+      }
+
+      const sourceKey = proposal.source_key as string | undefined;
+      if (!sourceKey) {
+        return res.status(400).json({
+          success: false,
+          error: 'This proposal has no stored source file to evaluate.',
+        });
+      }
+
+      const provider = getStorage();
+      if (provider.ensureReady) {
+        await provider.ensureReady();
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = await provider.download(sourceKey);
+      } catch (err: any) {
+        return res.status(502).json({
+          success: false,
+          error: `Could not download the source file (${sourceKey}): ${err.message}`,
+        });
+      }
+
+      const filename = (proposal.filename as string) || sourceKey.split('/').pop() || sourceKey;
+      const result = await evaluateWithPythonService(
+        buffer,
+        filename,
+        contentTypeForKey(sourceKey),
+        true,
+        { proposalId: id, force }
+      );
+
+      return res.status(200).json({
+        success: true,
+        proposalId: id,
+        evaluationId: result.evaluation_id ?? null,
+        overallScore: result.evaluation?.overall_score ?? null,
+        recommendation: result.evaluation?.recommendation ?? null,
+      });
+    } catch (err) {
+      next(err);
     }
   },
 

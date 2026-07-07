@@ -2,12 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Copy, Check } from 'lucide-react';
+import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Copy, Check, Brain, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Input, Select, Skeleton, Badge, ScoreBadge, Progress } from '@/components/ui';
 import { uploadApi, type ProcessedProposal } from '@/services/proposal.service';
-import { cn, formatDate } from '@/utils';
+import { cn, formatDate, getApiErrorMessage } from '@/utils';
 
 /** Turn a kebab-case category slug into a readable label. */
 function labelForCategory(slug: string): string {
@@ -19,6 +19,7 @@ function labelForCategory(slug: string): string {
 
 const STATUS_STYLES: Record<string, string> = {
   categorized: 'bg-green-100 text-green-700',
+  evaluated: 'bg-emerald-100 text-emerald-800',
   categorizing: 'bg-blue-100 text-blue-700',
   extracting: 'bg-blue-100 text-blue-700',
   failed: 'bg-red-100 text-red-700',
@@ -47,7 +48,8 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 
 function statusGroup(status?: string): StatusFilter {
   const s = (status || '').toLowerCase();
-  if (s === 'categorized') return 'categorized';
+  // "evaluated" is a categorized proposal that also has a full evaluation.
+  if (s === 'categorized' || s === 'evaluated') return 'categorized';
   if (s === 'categorizing' || s === 'extracting') return 'processing';
   if (s === 'failed') return 'failed';
   return 'all';
@@ -191,7 +193,7 @@ function MoreInfoModal({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="text-center py-8">
               <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
               <p className="text-sm text-red-600">
-                {(error as any)?.response?.data?.error || (error as any)?.message || 'Could not load details.'}
+                {getApiErrorMessage(error, 'Could not load details.')}
               </p>
             </div>
           ) : d ? (
@@ -347,7 +349,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 /** Compact stat chip for the header row (slim version of the Dashboard StatCard). */
 function StatChip({ icon: Icon, label, value, spinning, index }: {
-  icon: any; label: string; value: number; spinning?: boolean; index: number;
+  icon: LucideIcon; label: string; value: number; spinning?: boolean; index: number;
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
@@ -395,17 +397,20 @@ function MeterField({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, deleting }: {
+function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, deleting, onEvaluate, evaluating }: {
   p: ProcessedProposal;
   index: number;
   activeCategory: string;
   onCategoryClick: (slug: string) => void;
   onDelete: (id: string) => void;
   deleting: boolean;
+  onEvaluate: (id: string, force?: boolean) => void;
+  evaluating: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const status = (p.status || '').toLowerCase();
   const detail = p.categorization || null;
   const title = detail?.title || p.filename || 'Untitled proposal';
   const summary = detail?.summary;
@@ -473,6 +478,18 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
             >
               <Info className="w-3.5 h-3.5" /> More info
             </button>
+            {(status === 'categorized' || status === 'evaluated') && (
+              <button
+                onClick={() => onEvaluate(p.id, status === 'evaluated')}
+                disabled={evaluating}
+                title="Run the full multi-agent AI evaluation (takes a few minutes)"
+                className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
+              >
+                {evaluating
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Evaluating…</>
+                  : <><Brain className="w-3.5 h-3.5" /> {status === 'evaluated' ? 'Re-evaluate' : 'Evaluate'}</>}
+              </button>
+            )}
             {confirmDelete ? (
               <span className="inline-flex items-center gap-3 text-xs ml-auto">
                 <span className="text-text-secondary">Delete this proposal and its files?</span>
@@ -581,7 +598,7 @@ function RankingBoard({ search, activeCategory, onCategoryClick }: {
     retry: false,
   });
 
-  const all = data?.proposals ?? [];
+  const all = useMemo(() => data?.proposals ?? [], [data?.proposals]);
   const totalFiles = data?.total ?? all.length;
 
   const standings = useMemo(() => {
@@ -838,6 +855,17 @@ export default function ProposalsPage() {
     },
   });
 
+  // Full multi-agent evaluation (runs 1-3 minutes on the Python service).
+  const evaluateMutation = useMutation({
+    mutationFn: ({ id, force }: { id: string; force?: boolean }) =>
+      uploadApi.evaluateProcessed(id, force),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processed-proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['processed-proposals-rankings'] });
+      queryClient.invalidateQueries({ queryKey: ['evaluation-reports'] });
+    },
+  });
+
   const categoriesQuery = useQuery({
     queryKey: ['processed-categories'],
     queryFn: uploadApi.listCategories,
@@ -855,13 +883,9 @@ export default function ProposalsPage() {
     },
   });
 
-  const errorMessage =
-    (error as any)?.response?.data?.error ||
-    (error as any)?.response?.data?.message ||
-    (error as any)?.message ||
-    'Could not load processed proposals.';
+  const errorMessage = getApiErrorMessage(error, 'Could not load processed proposals.');
 
-  const proposals = data?.proposals ?? [];
+  const proposals = useMemo(() => data?.proposals ?? [], [data?.proposals]);
 
   const stats = useMemo(() => {
     let categorized = 0;
@@ -1040,7 +1064,14 @@ export default function ProposalsPage() {
             {deleteMutation.isError && (
               <div className="rounded-xl border border-red-200 bg-red-50/60 px-4 py-2.5 text-xs text-red-700">
                 Could not delete the proposal:{' '}
-                {(deleteMutation.error as any)?.response?.data?.error || (deleteMutation.error as any)?.message}
+                {getApiErrorMessage(deleteMutation.error, 'Unknown error.')}
+              </div>
+            )}
+
+            {evaluateMutation.isError && (
+              <div className="rounded-xl border border-red-200 bg-red-50/60 px-4 py-2.5 text-xs text-red-700">
+                Evaluation failed:{' '}
+                {getApiErrorMessage(evaluateMutation.error, 'Unknown error.')}
               </div>
             )}
 
@@ -1084,6 +1115,8 @@ export default function ProposalsPage() {
                     onCategoryClick={handleCategoryClick}
                     onDelete={(id) => deleteMutation.mutate(id)}
                     deleting={deleteMutation.isPending && deleteMutation.variables === p.id}
+                    onEvaluate={(id, force) => evaluateMutation.mutate({ id, force })}
+                    evaluating={evaluateMutation.isPending && evaluateMutation.variables?.id === p.id}
                   />
                 ))}
               </div>

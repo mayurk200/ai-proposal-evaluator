@@ -3,8 +3,8 @@ OCR engine for extracting text from images and scanned documents.
 Uses pytesseract (Tesseract OCR) as primary, with easyocr as fallback.
 """
 
+import importlib.util
 import io
-from pathlib import Path
 from typing import Optional
 
 from PIL import Image
@@ -31,12 +31,10 @@ try:
 except Exception as e:
     logger.warning("tesseract_unavailable", error=str(e))
 
-try:
-    import easyocr
-
+if importlib.util.find_spec("easyocr") is not None:
     _easyocr_available = True
     logger.info("easyocr_available")
-except ImportError:
+else:
     logger.warning("easyocr_unavailable")
 
 # Lazy-loaded easyocr reader

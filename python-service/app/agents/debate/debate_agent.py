@@ -7,7 +7,6 @@ adjustments for more precise evaluation.
 """
 
 import time
-from typing import Optional
 
 from app.models.schemas import AgentResult, DebateResult
 from app.services.llm.llm_client import get_llm_client

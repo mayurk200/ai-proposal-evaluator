@@ -388,6 +388,19 @@ export class ProposalService {
     logsSnap.docs.forEach((d: any) => batch2.delete(d.ref));
     await batch2.commit();
 
+    // Best-effort: remove the stored files (original upload, extracted text,
+    // proposal JSON) so deletes don't orphan objects in the bucket.
+    const storageKeys = [data?.filePath, data?.extractedFilePath, data?.jsonFilePath].filter(
+      (k): k is string => typeof k === 'string' && k.length > 0
+    );
+    for (const key of storageKeys) {
+      try {
+        await storageProvider.delete(key);
+      } catch (e: any) {
+        console.warn(`[proposal] Could not delete stored object ${key}: ${e?.message ?? e}`);
+      }
+    }
+
     // Delete proposal
     await collections.proposals.doc(id).delete();
 

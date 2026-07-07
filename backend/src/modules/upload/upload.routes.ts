@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { uploadController } from './upload.controller';
 import { upload } from '../../middleware/upload';
+import { evaluateLimiter } from '../../middleware/rateLimit';
 
 const router = Router();
 
@@ -31,6 +32,10 @@ router.get('/', (req, res, next) => uploadController.listAll(req, res, next));
  * GET  /api/uploads/categories Distinct agri categories with counts.
  */
 router.post('/process', (req, res, next) => uploadController.process(req, res, next));
+// Full multi-agent evaluation for one processed proposal (?force=true re-runs).
+router.post('/processed/:id/evaluate', evaluateLimiter, (req, res, next) =>
+  uploadController.evaluateProcessed(req, res, next)
+);
 router.get('/processed', (req, res, next) => uploadController.listProcessed(req, res, next));
 router.get('/processed/:id', (req, res, next) => uploadController.getProcessed(req, res, next));
 router.delete('/processed/:id', (req, res, next) => uploadController.deleteProcessed(req, res, next));

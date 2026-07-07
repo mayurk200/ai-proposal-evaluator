@@ -1,39 +1,7 @@
 import api from './api';
-import type { ApiResponse, Proposal, PaginatedResponse, Evaluation, DashboardStats, Comparison, StoredFile } from '@/types';
+import type { ApiResponse, Proposal, PaginatedResponse, Evaluation, StoredFile } from '@/types';
 
 export const proposalApi = {
-  evaluateFile: async (file: File, title?: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (title) formData.append('title', title);
-
-    const res = await api.post<ApiResponse<any>>('/proposals/evaluate-file', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return res.data.data;
-  },
-
-  evaluateBatch: async (files: File[]) => {
-    const formData = new FormData();
-    files.forEach((file) => formData.append('files', file));
-
-    const res = await api.post<ApiResponse<any>>('/proposals/evaluate-batch', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return res.data.data;
-  },
-
-  upload: async (file: File, title?: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (title) formData.append('title', title);
-
-    const res = await api.post<ApiResponse<Proposal>>('/proposals/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return res.data.data;
-  },
-
   getAll: async (page = 1, limit = 10) => {
     const res = await api.get<ApiResponse<PaginatedResponse<Proposal>>>(`/proposals?page=${page}&limit=${limit}`);
     return res.data.data;
@@ -41,11 +9,6 @@ export const proposalApi = {
 
   getById: async (id: string) => {
     const res = await api.get<ApiResponse<Proposal>>(`/proposals/${id}`);
-    return res.data.data;
-  },
-
-  delete: async (id: string) => {
-    const res = await api.delete<ApiResponse<{ message: string }>>(`/proposals/${id}`);
     return res.data.data;
   },
 
@@ -211,33 +174,101 @@ export const uploadApi = {
     const res = await api.get<{ success: boolean; categories: CategoryCount[] }>('/uploads/categories');
     return res.data.categories;
   },
+
+  // POST /api/uploads/processed/:id/evaluate — run the full multi-agent
+  // evaluation for a processed proposal (?force=true re-runs an existing one).
+  evaluateProcessed: async (id: string, force = false) => {
+    const res = await api.post<{
+      success: boolean;
+      proposalId: string;
+      evaluationId: string | null;
+      overallScore: number | null;
+      recommendation: string | null;
+    }>(`/uploads/processed/${encodeURIComponent(id)}/evaluate${force ? '?force=true' : ''}`);
+    return res.data;
+  },
+};
+
+// ===== Evaluation reports (full multi-agent results, used by Compare) =====
+
+export interface EvaluationReportSummary {
+  id: string;
+  filename: string;
+  file_storage_url?: string | null;
+  file_size_bytes?: number;
+  overall_score: number;
+  recommendation: string;
+  status: string;
+  proposal_id?: string | null;
+  created_at?: string | null;
+}
+
+/** The `evaluation` object inside a stored report (Python FinalEvaluation). */
+export interface ReportEvaluation {
+  overall_score: number;
+  problem_relevance_score: number;
+  solution_readiness_score: number;
+  pilot_design_score: number;
+  farmer_adoption_score: number;
+  scaleup_score: number;
+  team_capacity_score: number;
+  compliance_score: number;
+  recommendation: string;
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  swot_analysis?: {
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  };
+  investment_readiness?: string;
+  risk_level?: string;
+}
+
+export interface FullReport extends EvaluationReportSummary {
+  evaluation_report?: { evaluation?: ReportEvaluation } | null;
+}
+
+export interface ReportComparison {
+  total_reports: number;
+  overall_scores: Record<string, { filename: string; score: number }>;
+  parameter_scores: Record<string, Record<string, { filename: string; score: number }>>;
+  recommendations: Record<string, { filename: string; recommendation: string }>;
+  ranking: Array<{ rank: number; id: string; filename: string; score: number }>;
+}
+
+export const reportsApi = {
+  // GET /api/reports — list stored evaluation reports.
+  list: async (params: { page?: number; limit?: number; status?: string } = {}) => {
+    const search = new URLSearchParams();
+    if (params.page) search.set('page', String(params.page));
+    if (params.limit) search.set('limit', String(params.limit));
+    if (params.status) search.set('status', params.status);
+    const qs = search.toString() ? `?${search.toString()}` : '';
+    const res = await api.get<{
+      success: boolean;
+      evaluations: EvaluationReportSummary[];
+      total: number;
+    }>(`/reports${qs}`);
+    return res.data;
+  },
+
+  // POST /api/reports/compare — parameter-level comparison of 2-5 reports.
+  compare: async (reportIds: string[]) => {
+    const res = await api.post<{
+      success: boolean;
+      reports: FullReport[];
+      comparison: ReportComparison;
+    }>('/reports/compare', { reportIds });
+    return res.data;
+  },
 };
 
 export const aiApi = {
   evaluate: async (proposalId: string) => {
     const res = await api.post<ApiResponse<Evaluation>>('/ai/evaluate', { proposalId });
-    return res.data.data;
-  },
-
-  compare: async (proposalIds: string[], title: string) => {
-    const res = await api.post<ApiResponse<Comparison>>('/ai/compare', { proposalIds, title });
-    return res.data.data;
-  },
-
-  getDashboard: async () => {
-    const res = await api.get<ApiResponse<DashboardStats>>('/ai/dashboard');
-    return res.data.data;
-  },
-};
-
-export const comparisonApi = {
-  getAll: async () => {
-    const res = await api.get<ApiResponse<Comparison[]>>('/comparisons');
-    return res.data.data;
-  },
-
-  getById: async (id: string) => {
-    const res = await api.get<ApiResponse<Comparison>>(`/comparisons/${id}`);
     return res.data.data;
   },
 };

@@ -14,7 +14,6 @@ from app.models.schemas import (
     FinalEvaluation,
     ParameterResult,
     SWOTAnalysis,
-    SubQuestionResult,
 )
 from app.models.enums import RecommendationLevel, RiskLevel
 from app.services.llm.llm_client import get_llm_client

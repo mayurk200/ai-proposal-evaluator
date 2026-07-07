@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
 import { proposalApi } from '@/services/proposal.service';
+import { getApiErrorMessage } from '@/utils';
 import { Home } from 'lucide-react';
 
 export default function LoginPage() {
@@ -38,8 +39,8 @@ export default function LoginPage() {
       }
       
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }

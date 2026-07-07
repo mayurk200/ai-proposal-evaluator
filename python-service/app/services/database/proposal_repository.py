@@ -6,7 +6,6 @@ its extracted text, and the storage addresses recorded in the JSON manifest.
 """
 
 import json
-import uuid
 from datetime import datetime, timezone
 from typing import Optional
 

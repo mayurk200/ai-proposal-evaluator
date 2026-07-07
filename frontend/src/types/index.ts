@@ -71,6 +71,8 @@ export interface DebateSummary {
     conflict_id: string;
     topic: string;
     resolution: string;
+    position_a?: { agent: string; argument: string; evidence?: string };
+    position_b?: { agent: string; argument: string; evidence?: string };
     score_adjustments: Array<{
       parameter: string;
       sub_question_id: string;
@@ -113,8 +115,8 @@ export interface Evaluation {
   strengths: string[];
   weaknesses: string[];
   swotAnalysis: SwotAnalysis;
-  agentResults: Record<string, any>;
-  rawResponse?: any;
+  agentResults: Record<string, unknown>;
+  rawResponse?: unknown;
 
   // New structured breakdown
   parameterBreakdown?: Record<string, ParameterBreakdown>;
@@ -122,20 +124,6 @@ export interface Evaluation {
 
   createdAt: string;
   updatedAt: string;
-}
-
-// ===== Comparison Types =====
-export interface Comparison {
-  id: string;
-  title: string;
-  summary?: string;
-  result?: any;
-  userId: string;
-  createdAt: string;
-  proposals: {
-    id: string;
-    proposal: Proposal;
-  }[];
 }
 
 // ===== AI Log Types =====
@@ -149,34 +137,6 @@ export interface AiLog {
   duration?: number;
   status: string;
   createdAt: string;
-}
-
-// ===== Dashboard Types =====
-export interface DashboardStats {
-  totalProposals: number;
-  evaluatedProposals: number;
-  pendingProposals: number;
-  averageScore: number;
-  recentProposals: Proposal[];
-  topProposals: (Evaluation & { proposal: Proposal })[];
-  categoryStats: { recommendation: string; _count: number; _avg: { overallScore: number } }[];
-  scoreHistory: {
-    overallScore: number;
-    innovationScore: number;
-    marketScore: number;
-    financialScore: number;
-    sustainabilityScore: number;
-    riskScore: number;
-    // New parameter scores in history
-    problemRelevanceScore?: number;
-    solutionReadinessScore?: number;
-    pilotDesignScore?: number;
-    farmerAdoptionScore?: number;
-    scaleUpScore?: number;
-    teamCapacityScore?: number;
-    complianceScore?: number;
-    createdAt: string;
-  }[];
 }
 
 // ===== AIAIC Parameter Names =====

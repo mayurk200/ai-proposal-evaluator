@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
-  Leaf, Brain, BarChart3, GitCompare, Upload, Shield,
+  Leaf, Brain, BarChart3, GitCompare, Shield,
   Zap, ArrowRight, CheckCircle, Star, Sprout
 } from 'lucide-react';
 import { Button } from '@/components/ui';

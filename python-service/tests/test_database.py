@@ -65,6 +65,23 @@ class TestSaveAndGet:
         record = await repo.get_evaluation("nonexistent-id")
         assert record is None
 
+    @pytest.mark.asyncio
+    async def test_find_by_proposal(self, repo):
+        """Evaluations linked to a proposal are found; only completed ones count."""
+        await repo.save_evaluation(filename="a.pdf", proposal_id="prop-1", status="failed")
+        newest = await repo.save_evaluation(
+            filename="b.pdf", proposal_id="prop-1", status="completed", overall_score=64.0
+        )
+
+        found = await repo.find_by_proposal("prop-1")
+        assert found is not None
+        assert found["id"] == newest
+        assert found["proposal_id"] == "prop-1"
+        assert found["overall_score"] == 64.0
+
+        assert await repo.find_by_proposal("prop-unknown") is None
+        assert await repo.find_by_proposal("") is None
+
 
 # ============================================================================
 # List with Pagination

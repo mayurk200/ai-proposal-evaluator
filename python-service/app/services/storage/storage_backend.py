@@ -5,7 +5,6 @@ Provider is selected via STORAGE_PROVIDER env var (local | s3 | minio).
 MinIO uses the same boto3 S3 SDK with a custom endpoint URL.
 """
 
-import os
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path

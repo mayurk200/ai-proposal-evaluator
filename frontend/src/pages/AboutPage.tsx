@@ -522,8 +522,8 @@ const sections: Section[] = [
         <p className="text-sm text-text-secondary leading-relaxed mt-5">
           The triage score and the evaluation score are different numbers stored in different
           places: the triage score comes from the single categorization call and shows on the
-          Proposals page, while the evaluation overall score comes from the full pipeline and
-          shows on the Dashboard, Analytics and Compare pages.
+          Proposals page, while the evaluation overall score comes from the full pipeline
+          (run it with the Evaluate action on a proposal) and shows on the Compare page.
         </p>
       </>
     ),
@@ -671,11 +671,12 @@ export default function AboutPage() {
   // Search: match against each rendered section's actual text content.
   useEffect(() => {
     const q = query.trim().toLowerCase();
-    if (!q) {
-      setMatchIds(null);
-      return;
-    }
+    // Debounce even the reset so setState never runs synchronously in the effect.
     const timer = setTimeout(() => {
+      if (!q) {
+        setMatchIds(null);
+        return;
+      }
       const ids = new Set<string>();
       for (const s of sections) {
         const el = document.getElementById(s.id);
@@ -683,7 +684,7 @@ export default function AboutPage() {
         if (text.includes(q)) ids.add(s.id);
       }
       setMatchIds(ids);
-    }, 150);
+    }, q ? 150 : 0);
     return () => clearTimeout(timer);
   }, [query]);
 

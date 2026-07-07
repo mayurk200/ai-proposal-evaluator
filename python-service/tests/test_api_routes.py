@@ -274,6 +274,113 @@ class TestEvaluateEndpoint:
         assert data["evaluation_id"] == "eval-id-123"
         assert data["file_url"] == "http://storage/test.pdf"
 
+    @pytest.mark.asyncio
+    @patch("app.api.routes.get_proposal_repository")
+    @patch("app.api.routes.get_repository")
+    @patch("app.api.routes.get_storage_backend")
+    @patch("app.api.routes.AgentOrchestrator")
+    @patch("app.api.routes.process_document")
+    async def test_evaluation_links_proposal(
+        self, mock_process, mock_orch_cls, mock_storage_fn, mock_repo_fn, mock_prop_repo_fn
+    ):
+        """proposal_id: evaluation is linked and the proposal row moves to evaluated."""
+        long_text = " ".join(["word"] * 50)
+        mock_process.return_value = ProcessedDocument(
+            metadata=make_metadata(),
+            full_text=long_text,
+            chunks=[make_chunk(text=long_text)],
+        )
+
+        mock_orch = MagicMock()
+        mock_orch.evaluate = AsyncMock(return_value=EvaluationResponse(
+            status="success",
+            document_metadata=make_metadata(),
+            evaluation=FinalEvaluation(
+                overall_score=70,
+                recommendation="Recommended",
+                summary="Good proposal",
+                risk_level="Low",
+                swot_analysis={"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+                parameter_breakdown={},
+            ),
+            agent_results={},
+            processing_time_seconds=2.5,
+        ))
+        mock_orch_cls.return_value = mock_orch
+
+        mock_storage = AsyncMock()
+        mock_storage.upload.return_value = "http://storage/test.pdf"
+        mock_storage_fn.return_value = mock_storage
+
+        mock_repo = AsyncMock()
+        mock_repo.find_by_proposal.return_value = None
+        mock_repo.save_evaluation.return_value = "eval-id-456"
+        mock_repo_fn.return_value = mock_repo
+
+        mock_prop_repo = AsyncMock()
+        mock_prop_repo.update_proposal.return_value = True
+        mock_prop_repo_fn.return_value = mock_prop_repo
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/evaluate",
+                files={"file": ("test.txt", long_text.encode(), "text/plain")},
+                data={"proposal_id": "prop-1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["evaluation_id"] == "eval-id-456"
+
+        save_kwargs = mock_repo.save_evaluation.call_args.kwargs
+        assert save_kwargs["proposal_id"] == "prop-1"
+        assert save_kwargs["file_hash"]  # SHA-256 of the uploaded bytes
+
+        update_args = mock_prop_repo.update_proposal.call_args
+        assert update_args.args == ("prop-1",)
+        assert update_args.kwargs == {"status": "evaluated"}
+
+    @pytest.mark.asyncio
+    @patch("app.api.routes.get_repository")
+    @patch("app.api.routes.process_document")
+    async def test_evaluation_dedupes_by_proposal(self, mock_process, mock_repo_fn):
+        """Repeat evaluate for the same proposal returns the stored report untouched."""
+        stored_report = EvaluationResponse(
+            status="success",
+            document_metadata=make_metadata(),
+            evaluation=FinalEvaluation(
+                overall_score=81,
+                recommendation="Highly Recommended",
+                summary="Stored",
+                risk_level="Low",
+                swot_analysis={"strengths": [], "weaknesses": [], "opportunities": [], "threats": []},
+                parameter_breakdown={},
+            ),
+            agent_results={},
+            processing_time_seconds=1.0,
+        ).model_dump(mode="json")
+
+        mock_repo = AsyncMock()
+        mock_repo.find_by_proposal.return_value = {
+            "id": "existing-eval",
+            "evaluation_report": stored_report,
+            "file_storage_url": "http://storage/stored.pdf",
+        }
+        mock_repo_fn.return_value = mock_repo
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/evaluate",
+                files={"file": ("test.txt", b"any content here at all", "text/plain")},
+                data={"proposal_id": "prop-1"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["evaluation_id"] == "existing-eval"
+        assert data["evaluation"]["overall_score"] == 81
+        # The pipeline must not re-run for a deduplicated request.
+        mock_process.assert_not_called()
+
 
 # ============================================================================
 # Evaluate chunks endpoint

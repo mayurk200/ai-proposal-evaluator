@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # One-command local development startup for the AI Proposal Evaluator.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
@@ -92,7 +92,7 @@ Step "Checking prerequisites"
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Fail 'prerequisites' 'Docker CLI not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/'
 }
-docker info *> $null
+& { $ErrorActionPreference = 'SilentlyContinue'; docker info *> $null }
 if ($LASTEXITCODE -ne 0) {
     # Engine down - try to launch Docker Desktop ourselves and wait for it.
     $dockerDesktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
@@ -102,11 +102,11 @@ if ($LASTEXITCODE -ne 0) {
         $dockerWait = [System.Diagnostics.Stopwatch]::StartNew()
         while ($dockerWait.Elapsed.TotalSeconds -lt 180) {
             Start-Sleep -Seconds 5
-            docker info *> $null
+            & { $ErrorActionPreference = 'SilentlyContinue'; docker info *> $null }
             if ($LASTEXITCODE -eq 0) { break }
         }
     }
-    docker info *> $null
+    & { $ErrorActionPreference = 'SilentlyContinue'; docker info *> $null }
     if ($LASTEXITCODE -ne 0) {
         Fail 'prerequisites' 'Docker engine is not running (auto-start failed or timed out after 180s). Start Docker Desktop manually and retry.'
     }

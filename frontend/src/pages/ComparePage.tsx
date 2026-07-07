@@ -1,100 +1,213 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { GitCompare, Check, Loader2 } from 'lucide-react';
+import { GitCompare, Check, Brain, Trophy, FileText } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, Button, Input, ScoreBadge } from '@/components/ui';
-import { proposalApi, aiApi } from '@/services/proposal.service';
-import type { Proposal } from '@/types';
+import { Card, Button, ScoreBadge, Skeleton } from '@/components/ui';
+import { reportsApi, type FullReport, type ReportComparison } from '@/services/proposal.service';
+import { formatDate, getApiErrorMessage, getRecommendationColor } from '@/utils';
 
 const COLORS = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#00838F'];
 
+/** The 7 AIAIC parameters compared across reports (keys of FinalEvaluation). */
+const PARAMETERS: { key: string; label: string }[] = [
+  { key: 'problem_relevance_score', label: 'Problem Relevance' },
+  { key: 'solution_readiness_score', label: 'Solution Readiness' },
+  { key: 'pilot_design_score', label: 'Pilot Design' },
+  { key: 'farmer_adoption_score', label: 'Farmer Adoption' },
+  { key: 'scaleup_score', label: 'Scale-up Potential' },
+  { key: 'team_capacity_score', label: 'Team Capacity' },
+  { key: 'compliance_score', label: 'Compliance' },
+];
+
 export default function ComparePage() {
   const [selected, setSelected] = useState<string[]>([]);
-  const [title, setTitle] = useState('');
-  const [result, setResult] = useState<any>(null);
-  const { data } = useQuery({ queryKey: ['proposals', 1], queryFn: () => proposalApi.getAll(1, 50) });
-  const compareMut = useMutation({
-    mutationFn: () => aiApi.compare(selected, title || 'Comparison'),
-    onSuccess: (data) => setResult(data),
+  const [result, setResult] = useState<{ reports: FullReport[]; comparison: ReportComparison } | null>(null);
+
+  // All completed full-evaluation reports (produced via "Evaluate" on the Proposals page).
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['evaluation-reports'],
+    queryFn: () => reportsApi.list({ limit: 100, status: 'completed' }),
+    retry: false,
   });
-  const evaluated = data?.proposals?.filter((p: Proposal) => p.status === 'EVALUATED' && p.evaluation) || [];
-  const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : p.length < 5 ? [...p, id] : p);
-  const selectedProposals = evaluated.filter((p: Proposal) => selected.includes(p.id));
-  const radarData = selectedProposals.length > 0 ? ['Problem Relevance', 'Solution Readiness', 'Pilot Design', 'Farmer Adoption', 'Scale-up Potential', 'Team Capacity', 'Compliance'].map(metric => {
-    const d: any = { metric };
-    selectedProposals.forEach((p: Proposal, i: number) => { if (p.evaluation) {
-      const key = metric;
-      let score = 0;
-      if (key === 'Problem Relevance') score = p.evaluation.problemRelevanceScore || 0;
-      else if (key === 'Solution Readiness') score = p.evaluation.solutionReadinessScore || 0;
-      else if (key === 'Pilot Design') score = p.evaluation.pilotDesignScore || 0;
-      else if (key === 'Farmer Adoption') score = p.evaluation.farmerAdoptionScore || 0;
-      else if (key === 'Scale-up Potential') score = p.evaluation.scaleUpScore || 0;
-      else if (key === 'Team Capacity') score = p.evaluation.teamCapacityScore || 0;
-      else if (key === 'Compliance') score = p.evaluation.complianceScore || 0;
-      d[`p${i}`] = score;
-    }});
-    return d;
-  }) : [];
-  const barData = selectedProposals.map((p: Proposal) => ({
-    name: p.title.slice(0, 20), overall: p.evaluation?.overallScore || 0,
-    problemRelevance: p.evaluation?.problemRelevanceScore || 0, solutionReadiness: p.evaluation?.solutionReadinessScore || 0,
+  const reports = data?.evaluations ?? [];
+
+  const compareMut = useMutation({
+    mutationFn: () => reportsApi.compare(selected),
+    onSuccess: (d) => setResult({ reports: d.reports, comparison: d.comparison }),
+  });
+
+  const toggle = (id: string) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 5 ? [...prev, id] : prev
+    );
+
+  // Order compared reports by the server ranking so colors match positions.
+  const compared = result
+    ? result.comparison.ranking
+        .map((r) => result.reports.find((rep) => rep.id === r.id))
+        .filter((r): r is FullReport => Boolean(r))
+    : [];
+
+  const radarData = compared.length
+    ? PARAMETERS.map(({ key, label }) => {
+        const d: Record<string, string | number> = { metric: label };
+        compared.forEach((rep, i) => {
+          const ev = rep.evaluation_report?.evaluation as Record<string, unknown> | undefined;
+          d[`p${i}`] = typeof ev?.[key] === 'number' ? (ev[key] as number) : 0;
+        });
+        return d;
+      })
+    : [];
+
+  const barData = compared.map((rep) => ({
+    name: rep.filename.slice(0, 22),
+    overall: rep.overall_score ?? 0,
   }));
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <h1 className="text-2xl font-bold text-text">Compare Proposals</h1>
-          <p className="text-sm text-text-muted mt-1">Select 2-5 evaluated proposals to compare</p>
+          <p className="text-sm text-text-muted mt-1">
+            Select 2-5 fully evaluated proposals to compare across the 7 evaluation parameters
+          </p>
         </motion.div>
+
         <div className="grid lg:grid-cols-3 gap-6">
+          {/* ---- Selection panel ---- */}
           <div className="lg:col-span-1 space-y-4">
             <Card hover={false}>
-              <h3 className="text-sm font-semibold mb-3">Select Proposals ({selected.length}/5)</h3>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {evaluated.length === 0 ? <p className="text-sm text-text-muted py-4 text-center">No evaluated proposals</p> : evaluated.map((p: Proposal) => (
-                  <button key={p.id} onClick={() => toggle(p.id)} className={`w-full text-left p-3 rounded-xl border transition-all ${selected.includes(p.id) ? 'border-primary bg-accent-light/50' : 'border-transparent hover:bg-gray-50'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{p.title}</p>
-                        <p className="text-xs text-text-muted mt-0.5">Score: {p.evaluation?.overallScore}</p>
+              <h3 className="text-sm font-semibold mb-3">Evaluated proposals ({selected.length}/5 selected)</h3>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-14 w-full" />
+                  <Skeleton className="h-14 w-full" />
+                  <Skeleton className="h-14 w-full" />
+                </div>
+              ) : isError ? (
+                <p className="text-sm text-red-600 py-4 text-center">
+                  {getApiErrorMessage(error, 'Could not load evaluation reports.')}
+                </p>
+              ) : reports.length === 0 ? (
+                <div className="text-center py-6">
+                  <Brain className="w-10 h-10 text-text-muted mx-auto mb-3" />
+                  <p className="text-sm text-text-secondary">No evaluated proposals yet</p>
+                  <p className="text-xs text-text-muted mt-1 mb-4">
+                    Run &ldquo;Evaluate&rdquo; on a proposal to generate its full AI evaluation.
+                  </p>
+                  <Link to="/proposals">
+                    <Button size="sm" variant="secondary"><FileText className="w-4 h-4" /> Go to Proposals</Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {reports.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => toggle(r.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                        selected.includes(r.id)
+                          ? 'border-primary bg-accent-light/50'
+                          : 'border-transparent hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate" title={r.filename}>{r.filename}</p>
+                          <p className="text-xs text-text-muted mt-0.5">
+                            Score: {Math.round(r.overall_score)}
+                            {r.created_at ? ` · ${formatDate(r.created_at)}` : ''}
+                          </p>
+                        </div>
+                        {selected.includes(r.id) && <Check className="w-5 h-5 text-primary flex-shrink-0" />}
                       </div>
-                      {selected.includes(p.id) && <Check className="w-5 h-5 text-primary flex-shrink-0" />}
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               {selected.length >= 2 && (
-                <div className="mt-4 space-y-3">
-                  <Input placeholder="Comparison title" value={title} onChange={e => setTitle(e.target.value)} />
+                <div className="mt-4">
                   <Button onClick={() => compareMut.mutate()} loading={compareMut.isPending} className="w-full">
                     <GitCompare className="w-4 h-4" /> Compare
                   </Button>
+                  {compareMut.isError && (
+                    <p className="text-xs text-red-600 mt-2">
+                      {getApiErrorMessage(compareMut.error, 'Comparison failed.')}
+                    </p>
+                  )}
                 </div>
               )}
             </Card>
           </div>
+
+          {/* ---- Results ---- */}
           <div className="lg:col-span-2 space-y-6">
-            {selected.length >= 2 && (
+            {result && compared.length >= 2 ? (
               <>
+                {/* Ranking */}
                 <Card hover={false}>
-                  <h3 className="text-base font-semibold mb-4">Score Comparison</h3>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-base font-semibold">Ranking</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {result.comparison.ranking.map((r, i) => {
+                      const rep = compared.find((c) => c.id === r.id);
+                      return (
+                        <div
+                          key={r.id}
+                          className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border/50"
+                          style={{ borderLeftWidth: 4, borderLeftColor: COLORS[i % COLORS.length] }}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-lg font-bold text-text-muted w-6">#{r.rank}</span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate" title={r.filename}>{r.filename}</p>
+                              {rep?.recommendation && (
+                                <span className={`inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border ${getRecommendationColor(rep.recommendation)}`}>
+                                  {rep.recommendation}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <ScoreBadge score={Math.round(r.score)} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+
+                {/* Parameter radar */}
+                <Card hover={false}>
+                  <h3 className="text-base font-semibold mb-4">Parameter Comparison</h3>
+                  <ResponsiveContainer width="100%" height={320}>
                     <RadarChart data={radarData}>
                       <PolarGrid stroke="#E2E8F0" />
                       <PolarAngleAxis dataKey="metric" fontSize={11} stroke="#64748B" />
                       <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                      {selectedProposals.map((_: Proposal, i: number) => (
-                        <Radar key={i} dataKey={`p${i}`} stroke={COLORS[i]} fill={COLORS[i]} fillOpacity={0.1} strokeWidth={2} name={selectedProposals[i]?.title?.slice(0, 15)} />
+                      {compared.map((rep, i) => (
+                        <Radar
+                          key={rep.id}
+                          dataKey={`p${i}`}
+                          stroke={COLORS[i % COLORS.length]}
+                          fill={COLORS[i % COLORS.length]}
+                          fillOpacity={0.1}
+                          strokeWidth={2}
+                          name={rep.filename.slice(0, 18)}
+                        />
                       ))}
                       <Legend />
                     </RadarChart>
                   </ResponsiveContainer>
                 </Card>
+
+                {/* Overall bar */}
                 <Card hover={false}>
-                  <h3 className="text-base font-semibold mb-4">Overall Comparison</h3>
+                  <h3 className="text-base font-semibold mb-4">Overall Scores</h3>
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={barData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
@@ -102,34 +215,40 @@ export default function ComparePage() {
                       <YAxis domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
                       <Tooltip />
                       <Bar dataKey="overall" fill="#2E7D32" radius={[6, 6, 0, 0]} name="Overall" />
-                      <Bar dataKey="problemRelevance" fill="#E11D48" radius={[6, 6, 0, 0]} name="Problem Relevance" />
-                      <Bar dataKey="solutionReadiness" fill="#D97706" radius={[6, 6, 0, 0]} name="Solution Readiness" />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
+
+                {/* Per-report strengths/weaknesses */}
                 <div className="grid md:grid-cols-2 gap-4">
-                  {selectedProposals.map((p: Proposal, i: number) => (
-                    <Card key={p.id} hover={false} className="border-l-4" style={{ borderLeftColor: COLORS[i] }}>
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm font-semibold truncate">{p.title}</p>
-                        <ScoreBadge score={p.evaluation?.overallScore || 0} />
-                      </div>
-                      <p className="text-xs text-text-muted">{p.evaluation?.recommendation}</p>
-                    </Card>
-                  ))}
+                  {compared.map((rep, i) => {
+                    const ev = rep.evaluation_report?.evaluation;
+                    return (
+                      <Card key={rep.id} hover={false} className="border-l-4" style={{ borderLeftColor: COLORS[i % COLORS.length] }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold truncate" title={rep.filename}>{rep.filename}</p>
+                          <ScoreBadge score={Math.round(rep.overall_score ?? 0)} />
+                        </div>
+                        {ev?.summary && <p className="text-xs text-text-secondary line-clamp-3 mb-2">{ev.summary}</p>}
+                        {ev?.strengths?.length ? (
+                          <p className="text-xs text-green-700"><span className="font-semibold">Top strength:</span> {ev.strengths[0]}</p>
+                        ) : null}
+                        {ev?.weaknesses?.length ? (
+                          <p className="text-xs text-red-600 mt-1"><span className="font-semibold">Top weakness:</span> {ev.weaknesses[0]}</p>
+                        ) : null}
+                      </Card>
+                    );
+                  })}
                 </div>
               </>
-            )}
-            {result && (
-              <Card hover={false}>
-                <h3 className="text-base font-semibold mb-3">AI Comparison Summary</h3>
-                <p className="text-sm text-text-secondary leading-relaxed">{result.summary || result.result?.comparison_summary}</p>
-              </Card>
-            )}
-            {selected.length < 2 && (
+            ) : (
               <Card hover={false} className="text-center py-16">
                 <GitCompare className="w-12 h-12 text-text-muted mx-auto mb-3" />
-                <p className="text-text-secondary">Select at least 2 proposals to compare</p>
+                <p className="text-text-secondary">
+                  {reports.length < 2 && !isLoading
+                    ? 'Evaluate at least 2 proposals to enable comparison'
+                    : 'Select at least 2 evaluated proposals, then press Compare'}
+                </p>
               </Card>
             )}
           </div>

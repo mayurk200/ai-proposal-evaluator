@@ -1,5 +1,19 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { isAxiosError } from 'axios';
+
+/**
+ * Extract a human-readable message from an unknown error (axios API errors
+ * expose `error`/`message` in the response body; plain Errors have .message).
+ */
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (isAxiosError(err)) {
+    const data = err.response?.data as { error?: string; message?: string } | undefined;
+    return data?.error || data?.message || err.message || fallback;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

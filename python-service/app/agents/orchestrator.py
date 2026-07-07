@@ -9,14 +9,11 @@ Pipeline:
 """
 
 import time
-from typing import Any, Optional
 
 from app.models.schemas import (
     AgentResult,
-    DocumentChunk,
     DocumentMetadata,
     EvaluationResponse,
-    ExtractedFormFields,
     FinalEvaluation,
     ProcessedDocument,
 )

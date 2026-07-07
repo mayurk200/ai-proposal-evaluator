@@ -88,6 +88,8 @@ async function backoff(attempt: number, label: string, error: Error): Promise<vo
 
 interface PythonEvaluationResponse {
   status: string;
+  evaluation_id?: string;
+  file_url?: string;
   document_metadata: {
     filename: string;
     format: string;
@@ -161,12 +163,16 @@ interface PythonBatchEvaluationResponse {
 
 /**
  * Send a file to the Python service for full AI evaluation.
+ *
+ * `opts.proposalId` links the stored evaluation to a Phase 2 proposal row
+ * (idempotent per proposal unless `opts.force` is set).
  */
 export async function evaluateWithPythonService(
   fileBuffer: Buffer,
   filename: string,
   mimeType: string,
   runOcr: boolean = true,
+  opts: { proposalId?: string; force?: boolean } = {},
 ): Promise<PythonEvaluationResponse> {
   const baseUrl = env.PYTHON_SERVICE_URL;
   const url = `${baseUrl}/api/v1/evaluate`;
@@ -175,6 +181,8 @@ export async function evaluateWithPythonService(
   const blob = new Blob([fileBuffer], { type: mimeType });
   formData.append('file', blob, filename);
   formData.append('run_ocr', String(runOcr));
+  if (opts.proposalId) formData.append('proposal_id', opts.proposalId);
+  if (opts.force) formData.append('force', 'true');
 
   try {
     const response = await fetchWithRetry(() => {
@@ -441,6 +449,84 @@ export async function listProcessedCategories(): Promise<CategoryCount[]> {
 
   const body = await response.json() as { categories?: CategoryCount[] };
   return body.categories ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation reports (full-evaluation results stored by the Python service)
+// ---------------------------------------------------------------------------
+
+export interface EvaluationReportSummary {
+  id: string;
+  filename: string;
+  file_storage_url?: string | null;
+  file_size_bytes?: number;
+  overall_score: number;
+  recommendation: string;
+  status: string;
+  proposal_id?: string | null;
+  batch_id?: string | null;
+  created_at?: string | null;
+}
+
+export interface EvaluationReportList {
+  evaluations: EvaluationReportSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+export interface ReportComparison {
+  reports: Array<Record<string, any>>;
+  comparison: Record<string, any>;
+}
+
+/** List stored evaluation reports (paginated) from the Python service. */
+export async function listEvaluationReports(params: {
+  page?: number;
+  limit?: number;
+  status?: string;
+} = {}): Promise<EvaluationReportList> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.status) query.set('status', params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const url = `${baseUrl}/api/v1/reports${suffix}`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    return {
+      promise: fetch(url, { signal: controller.signal }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python reports');
+
+  return await response.json() as EvaluationReportList;
+}
+
+/** Compare two or more stored evaluation reports via the Python service. */
+export async function compareEvaluationReports(reportIds: string[]): Promise<ReportComparison> {
+  const baseUrl = env.PYTHON_SERVICE_URL;
+  const url = `${baseUrl}/api/v1/reports/compare`;
+
+  const response = await fetchWithRetry(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    return {
+      promise: fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_ids: reportIds }),
+        signal: controller.signal,
+      }),
+      cleanup: () => clearTimeout(timeout),
+    };
+  }, 'Python reports compare');
+
+  return await response.json() as ReportComparison;
 }
 
 /** List MinIO source keys that have already been sent for processing. */

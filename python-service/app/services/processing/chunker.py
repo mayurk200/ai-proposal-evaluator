@@ -19,7 +19,6 @@ from app.utils.logging import get_logger
 from app.utils.text_cleaning import (
     detect_financial_content,
     detect_technical_content,
-    detect_section_headings,
     estimate_token_count,
 )
 

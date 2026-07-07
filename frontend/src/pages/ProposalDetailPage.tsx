@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shield, Sprout, Lightbulb, DollarSign, Target, Bookmark, XCircle, Users, Scale, ChevronDown, ChevronUp } from 'lucide-react';
+import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shield, Sprout, Lightbulb, Target, Bookmark, XCircle, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, Button, Badge, ScoreBadge, Progress, Skeleton } from '@/components/ui';
+import { Card, Button, Badge, Progress, Skeleton } from '@/components/ui';
 import { proposalApi, aiApi } from '@/services/proposal.service';
 import { formatDate, getScoreColor, getRecommendationColor } from '@/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -25,9 +25,9 @@ export default function ProposalDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
   });
   const rejectMut = useMutation({
-    queryFn: () => proposalApi.reject(id!),
+    mutationFn: () => proposalApi.reject(id!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
-  } as any);
+  });
   if (isLoading) return <AppLayout><div className="space-y-6">{[1,2,3].map(i => <Card key={i} hover={false}><Skeleton className="h-32 w-full" /></Card>)}</div></AppLayout>;
   if (!proposal) return <AppLayout><Card hover={false} className="text-center py-16"><p>Proposal not found</p></Card></AppLayout>;
   const ev = proposal.evaluation;
@@ -188,7 +188,7 @@ export default function ProposalDetailPage() {
                             {/* Sub-questions list */}
                             <div className="space-y-4">
                               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sub-Question Rubrics</h4>
-                              {breakdown.sub_questions.map((sq: any, sIdx: number) => (
+                              {breakdown.sub_questions.map((sq, sIdx) => (
                                 <div key={sIdx} className="space-y-2 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
                                   <div className="flex items-start justify-between gap-4">
                                     <div className="space-y-0.5">
@@ -269,8 +269,8 @@ export default function ProposalDetailPage() {
                 </p>
 
                 <div className="space-y-4">
-                  {ev.debateSummary.debates.map((debate: any, dIdx: number) => {
-                    const conflict = ev.debateSummary?.conflicts?.find((c: any) => c.conflict_id === debate.conflict_id);
+                  {ev.debateSummary.debates.map((debate, dIdx) => {
+                    const conflict = ev.debateSummary?.conflicts?.find((c) => c.conflict_id === debate.conflict_id);
                     return (
                       <div key={dIdx} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm space-y-3">
                         <div className="flex items-center justify-between gap-4">
@@ -334,7 +334,7 @@ export default function ProposalDetailPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {debate.score_adjustments.map((adj: any, aIdx: number) => (
+                                  {debate.score_adjustments.map((adj, aIdx) => (
                                     <tr key={aIdx} className="border-b border-slate-50 last:border-0">
                                       <td className="py-2 pr-4 font-medium">{adj.parameter}</td>
                                       <td className="py-2 pr-4 text-slate-500">{adj.sub_question_id.toUpperCase()}</td>

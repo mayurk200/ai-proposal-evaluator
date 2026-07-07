@@ -14,6 +14,7 @@ import {
   type SettingsData,
   type SettingsValue,
 } from '@/services/settings.service';
+import { getApiErrorMessage } from '@/utils';
 
 const GROUP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Sparkles, FileText, ScanLine, HardDrive, Shield, KeyRound, Palette,
@@ -40,7 +41,7 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    company: (user as any)?.company || '',
+    company: user?.company || '',
   });
 
   useEffect(() => {
@@ -55,14 +56,13 @@ export default function SettingsPage() {
         setGroups(schema.groups);
         setFields(schema.fields);
         hydrate(schema.fields, data);
-      } catch (e: any) {
-        if (active) setLoadError(e?.response?.data?.message || 'Failed to load settings.');
+      } catch (e) {
+        if (active) setLoadError(getApiErrorMessage(e, 'Failed to load settings.'));
       } finally {
         if (active) setLoading(false);
       }
     })();
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Populate working + original state from a settings payload. */
@@ -118,8 +118,8 @@ export default function SettingsPage() {
       const updated = await settingsService.updateSettings(patch);
       hydrate(fields, updated);
       setBanner({ type: 'success', message: 'Settings saved. Live changes apply immediately; others on next restart.' });
-    } catch (e: any) {
-      setBanner({ type: 'error', message: e?.response?.data?.message || 'Failed to save settings.' });
+    } catch (e) {
+      setBanner({ type: 'error', message: getApiErrorMessage(e, 'Failed to save settings.') });
     } finally {
       setSaving(false);
     }
@@ -133,8 +133,8 @@ export default function SettingsPage() {
       const defaults = await settingsService.resetSettings();
       hydrate(fields, defaults);
       setBanner({ type: 'success', message: 'Settings reset to defaults.' });
-    } catch (e: any) {
-      setBanner({ type: 'error', message: e?.response?.data?.message || 'Failed to reset settings.' });
+    } catch (e) {
+      setBanner({ type: 'error', message: getApiErrorMessage(e, 'Failed to reset settings.') });
     } finally {
       setSaving(false);
     }

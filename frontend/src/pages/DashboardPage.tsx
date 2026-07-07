@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   FileText, TrendingUp, Loader2, Clock, Award,
-  Sparkles, Leaf, AlertTriangle, Inbox,
+  Sparkles, Leaf, AlertTriangle, Inbox, type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -55,7 +55,7 @@ function titleFor(p: ProcessedProposal): string {
 }
 
 function StatCard({ icon: Icon, label, value, sub, index }: {
-  icon: any; label: string; value: string | number; sub?: string; index: number;
+  icon: LucideIcon; label: string; value: string | number; sub?: string; index: number;
 }) {
   return (
     <motion.div custom={index} initial="hidden" animate="visible" variants={fadeUp}>

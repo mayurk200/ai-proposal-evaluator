@@ -18,8 +18,6 @@ from app.models.schemas import (
     CategorizeResponse,
     CompareRequest,
     CompareResponse,
-    DocumentMetadata,
-    ErrorResponse,
     EvaluateChunksRequest,
     EvaluationResponse,
     HealthResponse,
@@ -82,9 +80,9 @@ async def health_check():
     except Exception as e:
         services["database"] = f"disconnected: {e}"
 
-    # Check storage (hard dependency)
+    # Check storage (hard dependency) — constructing the backend validates config.
     try:
-        storage = get_storage_backend()
+        get_storage_backend()
         services["storage"] = f"{settings.STORAGE_PROVIDER} (ok)"
     except Exception as e:
         services["storage"] = f"unavailable: {e}"
@@ -431,14 +429,33 @@ async def list_proposals_endpoint(
 async def evaluate_document(
     file: UploadFile = File(...),
     run_ocr: bool = Form(default=True),
+    proposal_id: str = Form(default=""),
+    force: bool = Form(default=False),
 ):
     """
     Full evaluation pipeline: process document → run all agents → persist results.
+
+    When `proposal_id` is provided (Phase 2 flow), the stored evaluation is
+    linked to that proposal, the proposal row moves to status `evaluated`, and
+    repeat calls return the existing evaluation unless `force` is true.
 
     Returns the evaluation along with evaluation_id and file_url for later retrieval.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
+
+    # Idempotency: an already-evaluated proposal returns its stored report.
+    if proposal_id and not force:
+        try:
+            existing = await get_repository().find_by_proposal(proposal_id)
+        except Exception as e:
+            logger.warning("evaluation_dedupe_lookup_failed", proposal_id=proposal_id, error=str(e))
+            existing = None
+        if existing and existing.get("evaluation_report"):
+            stored = EvaluationResponse(**existing["evaluation_report"])
+            stored.evaluation_id = existing["id"]
+            stored.file_url = existing.get("file_storage_url") or stored.file_url
+            return stored
 
     ext = Path(file.filename).suffix.lower().lstrip(".")
     if ext not in settings.supported_formats_list:
@@ -510,10 +527,23 @@ async def evaluate_document(
                 evaluation_report=eval_response.model_dump(mode="json"),
                 document_metadata=processed.metadata.model_dump(mode="json"),
                 status="completed",
+                file_hash=hashlib.sha256(file_bytes).hexdigest(),
+                proposal_id=proposal_id or None,
             )
             eval_response.evaluation_id = evaluation_id
         except Exception as e:
             logger.warning("evaluation_persist_failed", error=str(e))
+
+        # Step 5: Phase 2 linkage — mark the proposal row as evaluated.
+        if proposal_id and evaluation_id:
+            try:
+                updated = await get_proposal_repository().update_proposal(
+                    proposal_id, status=ProcessingStatus.EVALUATED.value
+                )
+                if not updated:
+                    logger.warning("evaluated_proposal_not_found", proposal_id=proposal_id)
+            except Exception as e:
+                logger.warning("proposal_status_update_failed", proposal_id=proposal_id, error=str(e))
 
         return eval_response
 

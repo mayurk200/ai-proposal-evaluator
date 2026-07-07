@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, delete as sa_delete
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.config import settings
 from app.services.database.models import Base, EvaluationRecord
@@ -30,10 +30,23 @@ class EvaluationRepository:
         self._engine = create_async_engine(self._url, echo=False, pool_pre_ping=True)
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
 
+    # Columns added after the table may already exist in a running database.
+    # create_all only creates missing tables, so add them idempotently here
+    # (same pattern as ProposalRepository._PHASE2_COLUMNS).
+    _MIGRATION_COLUMNS = (
+        "ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS proposal_id VARCHAR(36)",
+        "CREATE INDEX IF NOT EXISTS ix_evaluations_proposal_id ON evaluations (proposal_id)",
+    )
+
     async def init_tables(self) -> None:
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist, then add any missing columns."""
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            for stmt in self._MIGRATION_COLUMNS:
+                try:
+                    await conn.exec_driver_sql(stmt)
+                except Exception as e:  # pragma: no cover - best effort migration
+                    logger.warning("evaluation_column_migration_failed", stmt=stmt, error=str(e))
         logger.info("database_tables_initialized")
 
     async def close(self) -> None:
@@ -63,6 +76,7 @@ class EvaluationRepository:
         retry_count: int = 0,
         worker_id: Optional[str] = None,
         started_at: Optional[datetime] = None,
+        proposal_id: Optional[str] = None,
     ) -> str:
         """Save an evaluation record and return the generated ID."""
         record_id = str(uuid.uuid4())
@@ -87,6 +101,7 @@ class EvaluationRepository:
             error_code=error_code,
             retry_count=retry_count,
             worker_id=worker_id,
+            proposal_id=proposal_id,
             created_at=utc_now_naive(),
             started_at=started_at,
             completed_at=utc_now_naive() if status == "completed" else None,
@@ -175,6 +190,24 @@ class EvaluationRepository:
                 return None
             return self._record_to_dict(record)
 
+    async def find_by_proposal(self, proposal_id: str) -> Optional[dict]:
+        """Find the most recent completed evaluation for a proposal.
+
+        Used by the Phase 2 flow to make per-proposal evaluation idempotent.
+        """
+        if not proposal_id:
+            return None
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(EvaluationRecord)
+                .where(EvaluationRecord.proposal_id == proposal_id)
+                .where(EvaluationRecord.status == "completed")
+                .order_by(EvaluationRecord.created_at.desc())
+                .limit(1)
+            )
+            record = result.scalar_one_or_none()
+            return self._record_to_dict(record) if record else None
+
     async def get_evaluations_by_batch(self, batch_id: str) -> list[dict]:
         """Get all evaluations for a batch."""
         async with self._session_factory() as session:
@@ -248,6 +281,7 @@ class EvaluationRepository:
             "error_code": record.error_code,
             "retry_count": record.retry_count,
             "worker_id": record.worker_id,
+            "proposal_id": record.proposal_id,
             "created_at": record.created_at.isoformat() if record.created_at else None,
             "started_at": record.started_at.isoformat() if record.started_at else None,
             "completed_at": record.completed_at.isoformat() if record.completed_at else None,
@@ -266,6 +300,7 @@ class EvaluationRepository:
             "processing_stage": record.processing_stage,
             "failure_status": record.failure_status,
             "batch_id": record.batch_id,
+            "proposal_id": record.proposal_id,
             "created_at": record.created_at.isoformat() if record.created_at else None,
         }
 

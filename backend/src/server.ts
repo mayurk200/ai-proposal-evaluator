@@ -10,6 +10,7 @@ import proposalRoutes from './modules/proposal/proposal.routes';
 import uploadRoutes from './modules/upload/upload.routes';
 import aiRoutes from './modules/ai/ai.routes';
 import comparisonRoutes from './modules/comparison/comparison.routes';
+import reportsRoutes from './modules/reports/reports.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { initSettings, runtime } from './modules/settings/settings.service';
 import { connectWithRetry, closePool, isDbReady, isDbConfigured } from './config/pg';
@@ -54,6 +55,7 @@ app.use('/api/proposals', proposalRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/comparisons', comparisonRoutes);
+app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Dependency probes shared by /api/health and the startup readiness summary.

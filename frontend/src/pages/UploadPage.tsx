@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button, Card, Badge } from '@/components/ui';
 import { uploadApi } from '@/services/proposal.service';
-import { formatFileSize, formatDate } from '@/utils';
+import { formatFileSize, formatDate, getApiErrorMessage } from '@/utils';
 
 type Tab = 'upload' | 'files';
 
@@ -52,13 +52,8 @@ export default function UploadPage() {
       queryClient.invalidateQueries({ queryKey: ['stored-files'] });
       setTab('files');
     },
-    onError: (e: any) => {
-      setError(
-        e.response?.data?.error ||
-        e.response?.data?.message ||
-        e.message ||
-        'Upload failed. Please try again.'
-      );
+    onError: (e) => {
+      setError(getApiErrorMessage(e, 'Upload failed. Please try again.'));
     },
   });
 
@@ -72,14 +67,9 @@ export default function UploadPage() {
       queryClient.invalidateQueries({ queryKey: ['stored-files'] });
       queryClient.invalidateQueries({ queryKey: ['processed-proposals'] });
     },
-    onError: (e: any) => {
+    onError: (e) => {
       setProcessInfo(null);
-      setProcessError(
-        e.response?.data?.error ||
-        e.response?.data?.message ||
-        e.message ||
-        'Could not send files for processing.'
-      );
+      setProcessError(getApiErrorMessage(e, 'Could not send files for processing.'));
     },
   });
 
@@ -371,7 +361,7 @@ export default function UploadPage() {
                   <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
                   <p className="text-sm font-semibold text-red-700">Couldn’t load files</p>
                   <p className="text-sm text-red-600 mt-1">
-                    {(filesQuery.error as any)?.message || 'Please check the API and try again.'}
+                    {getApiErrorMessage(filesQuery.error, 'Please check the API and try again.')}
                   </p>
                   <Button variant="secondary" size="sm" className="mt-4" onClick={() => filesQuery.refetch()}>
                     <RefreshCw className="w-4 h-4" /> Retry

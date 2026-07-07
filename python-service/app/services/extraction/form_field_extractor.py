@@ -363,15 +363,7 @@ def reconstruct_team_table(text: str) -> list[dict]:
     """
     team_members = []
 
-    # Pattern: look for name followed by role, qualification, experience
-    # The AIAIC format often has these as labeled blocks
-    name_pattern = re.compile(
-        r"(?:^|\n)([A-Z][a-zA-Z\s\.]+(?:Dr\.?\s+)?[A-Z][a-zA-Z]+)\s*\n"
-        r"(.*?)(?=\n[A-Z][a-zA-Z\s\.]+(?:Dr\.?\s+)?[A-Z][a-zA-Z]+\s*\n|\Z)",
-        re.DOTALL,
-    )
-
-    # Simpler pattern: Look for LinkedIn URLs as anchors for team members
+    # Look for LinkedIn URLs as anchors for team members
     linkedin_pattern = re.compile(r"(https?://(?:www\.)?linkedin\.com/\S+)")
     linkedin_matches = list(linkedin_pattern.finditer(text))
 

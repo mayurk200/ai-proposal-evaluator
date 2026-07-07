@@ -32,15 +32,6 @@ export class AIController {
       next(error);
     }
   }
-
-  async getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-      const stats = await aiService.getDashboardStats(req.userId || null);
-      res.json({ status: 'success', data: stats });
-    } catch (error) {
-      next(error);
-    }
-  }
 }
 
 export const aiController = new AIController();
