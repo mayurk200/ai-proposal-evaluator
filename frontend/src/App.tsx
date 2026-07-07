@@ -15,6 +15,7 @@ const ProposalDetailPage = lazy(() => import('@/pages/ProposalDetailPage'));
 const ComparePage = lazy(() => import('@/pages/ComparePage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AboutPage = lazy(() => import('@/pages/AboutPage'));
+const AboutUsPage = lazy(() => import('@/pages/AboutUsPage'));
 
 function RouteFallback() {
   return (
@@ -52,6 +53,7 @@ function App() {
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/about-us" element={<AboutUsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>

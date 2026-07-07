@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Leaf, Workflow, Fingerprint, Gauge, Trophy, Layers, FileType,
-  Bot, Database, Plug, Cpu, Trash2, ShieldCheck, Info, FolderTree, Search,
+  Leaf, Workflow, Fingerprint, Gauge, Trophy, Layers, FileType, Bot, Database,
+  Plug, Cpu, Trash2, ShieldCheck, Info, FolderTree, Search, ListTree, ArrowUp,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Badge } from '@/components/ui';
@@ -716,6 +716,74 @@ export default function AboutPage() {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto flex items-start gap-8">
+        {/* Shortcuts sidebar (left) */}
+        <aside className="hidden md:block w-56 xl:w-64 shrink-0">
+          <nav
+            aria-label="On this page"
+            className="sticky top-8 glass-card-static rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-border/60 bg-accent-light/40">
+              <span className="inline-flex items-center gap-2">
+                <ListTree className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                  On this page
+                </span>
+              </span>
+              <span className="text-[11px] font-semibold text-text-muted tabular-nums">
+                {matchIds === null ? sections.length : `${visibleCount}/${sections.length}`}
+              </span>
+            </div>
+
+            {/* Section links with an active-position rail */}
+            <div className="relative flex-1 overflow-y-auto p-2">
+              <div
+                className="absolute left-[13px] top-3 bottom-3 w-px bg-border"
+                aria-hidden="true"
+              />
+              <div className="space-y-0.5">
+                {sections.map((s) => {
+                  const active = activeId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => goTo(s.id)}
+                      aria-current={active ? 'true' : undefined}
+                      className={cn(
+                        'relative w-full flex items-center gap-2.5 pl-5 pr-3 py-2 rounded-lg text-sm text-left transition-all duration-200',
+                        active
+                          ? 'bg-accent-light text-primary font-semibold'
+                          : 'text-text-secondary hover:bg-accent-light/50 hover:text-text hover:translate-x-0.5',
+                        !isVisible(s.id) && 'opacity-35 pointer-events-none',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute left-[5px] top-1/2 -translate-y-1/2 w-[3px] rounded-full transition-all duration-200',
+                          active ? 'h-5 bg-primary' : 'h-1.5 bg-border',
+                        )}
+                        aria-hidden="true"
+                      />
+                      <s.icon className={cn('w-4 h-4 shrink-0', active && 'text-primary')} />
+                      <span className="truncate">{s.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-2 py-2 border-t border-border/60">
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:bg-accent-light hover:text-primary transition-colors"
+              >
+                <ArrowUp className="w-3.5 h-3.5" /> Back to top
+              </button>
+            </div>
+          </nav>
+        </aside>
+
         {/* Main column */}
         <div className="flex-1 min-w-0 space-y-6 pb-24">
           {/* Header */}
@@ -783,35 +851,6 @@ export default function AboutPage() {
           ))}
         </div>
 
-        {/* Shortcuts sidebar */}
-        <aside className="hidden md:block w-56 xl:w-64 shrink-0">
-          <nav
-            aria-label="On this page"
-            className="sticky top-8 glass-card-static rounded-2xl p-3 max-h-[calc(100vh-4rem)] overflow-y-auto"
-          >
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide px-3 pt-1 pb-2">
-              On this page
-            </p>
-            <div className="space-y-0.5">
-              {sections.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => goTo(s.id)}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors',
-                    activeId === s.id
-                      ? 'bg-accent-light text-primary font-semibold'
-                      : 'text-text-secondary hover:bg-accent-light/50 hover:text-text',
-                    !isVisible(s.id) && 'opacity-35 pointer-events-none',
-                  )}
-                >
-                  <s.icon className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{s.label}</span>
-                </button>
-              ))}
-            </div>
-          </nav>
-        </aside>
       </div>
     </AppLayout>
   );
