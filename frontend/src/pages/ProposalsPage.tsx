@@ -461,7 +461,83 @@ function MeterField({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, deleting, onEvaluate, evaluating }: {
+// Multi-agent evaluation is a single long-running request with no server-side
+// progress stream, so the bar is a time-based *estimate*: it eases toward ~96%
+// and only snaps to done when the request actually resolves (the row refetches
+// to "evaluated" and this unmounts). The elapsed seconds shown are real.
+const EVAL_ESTIMATE_SEC = 90;
+const EVAL_STAGES: { at: number; label: string }[] = [
+  { at: 0, label: 'Extracting document text…' },
+  { at: 6, label: 'Running multi-agent analysis…' },
+  { at: 20, label: 'Scoring evaluation parameters…' },
+  { at: 45, label: 'Cross-agent debate & synthesis…' },
+  { at: 70, label: 'Finalizing evaluation…' },
+];
+
+/**
+ * Inline evaluation feedback for one proposal row: an animated progress bar
+ * while the evaluation runs, or an error message with a Retry button if it
+ * failed. Shown only while `evaluating` or after a failure.
+ */
+function EvaluationProgress({ error, onRetry, onDismiss }: {
+  error: string | null;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (error) return; // Stop the clock once it has failed.
+    setElapsed(0);
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [error]);
+
+  if (error) {
+    return (
+      <div className="mt-3 rounded-xl border border-red-200 bg-red-50/70 px-4 py-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-red-800">Evaluation failed</p>
+            <p className="text-xs text-red-700 mt-0.5 break-words">{error}</p>
+            <div className="flex items-center gap-4 mt-2.5">
+              <button
+                onClick={onRetry}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 hover:underline"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Retry
+              </button>
+              <button onClick={onDismiss} className="text-xs font-medium text-text-muted hover:underline">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const pct = Math.min(96, Math.round((1 - Math.exp(-elapsed / EVAL_ESTIMATE_SEC)) * 100));
+  const stage = [...EVAL_STAGES].reverse().find((s) => elapsed >= s.at)?.label ?? EVAL_STAGES[0].label;
+
+  return (
+    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> {stage}
+        </span>
+        <span className="text-[11px] text-emerald-700 tabular-nums whitespace-nowrap">
+          {elapsed}s · usually 1–3 min
+        </span>
+      </div>
+      <Progress value={pct} color="bg-emerald-500" />
+    </div>
+  );
+}
+
+function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, deleting, onEvaluate, evaluating, evalBusy, evalError, onDismissEvalError }: {
   p: ProcessedProposal;
   index: number;
   activeCategory: string;
@@ -470,6 +546,9 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
   deleting: boolean;
   onEvaluate: (id: string, force?: boolean) => void;
   evaluating: boolean;
+  evalBusy: boolean;
+  evalError: string | null;
+  onDismissEvalError: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -546,7 +625,7 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
             {(status === 'categorized' || status === 'evaluated') && (
               <button
                 onClick={() => onEvaluate(p.id, status === 'evaluated')}
-                disabled={evaluating}
+                disabled={evalBusy}
                 title="Run the full multi-agent AI evaluation (takes a few minutes)"
                 className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline disabled:opacity-50"
               >
@@ -583,6 +662,15 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
               </button>
             )}
           </div>
+
+          {(evaluating || evalError) && (
+            <EvaluationProgress
+              error={evalError}
+              onRetry={() => onEvaluate(p.id, status === 'evaluated')}
+              onDismiss={onDismissEvalError}
+            />
+          )}
+
           {open && detail && (
             <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
               {detail.problem_statement && (
@@ -651,6 +739,14 @@ interface RowActions {
   deletingId: string | null;
   onEvaluate: (id: string, force?: boolean) => void;
   evaluatingId: string | null;
+  evalErrorId: string | null;
+  evalErrorMessage: string | null;
+  onDismissEvalError: () => void;
+}
+
+/** True while any evaluation is in flight (evaluations run one at a time). */
+function isEvalBusy(actions: RowActions): boolean {
+  return actions.evaluatingId !== null;
 }
 
 /** One collapsible category section in the grouped view. */
@@ -702,6 +798,9 @@ function CategoryGroupSection({ slug, rows, actions, open, onToggle }: {
               deleting={actions.deletingId === p.id}
               onEvaluate={actions.onEvaluate}
               evaluating={actions.evaluatingId === p.id}
+              evalBusy={isEvalBusy(actions)}
+              evalError={actions.evalErrorId === p.id ? actions.evalErrorMessage : null}
+              onDismissEvalError={actions.onDismissEvalError}
             />
           ))}
         </div>
@@ -1157,6 +1256,11 @@ export default function ProposalsPage() {
     deletingId: deleteMutation.isPending ? deleteMutation.variables ?? null : null,
     onEvaluate: (id, force) => evaluateMutation.mutate({ id, force }),
     evaluatingId: evaluateMutation.isPending ? evaluateMutation.variables?.id ?? null : null,
+    evalErrorId: evaluateMutation.isError ? evaluateMutation.variables?.id ?? null : null,
+    evalErrorMessage: evaluateMutation.isError
+      ? getApiErrorMessage(evaluateMutation.error, 'Evaluation failed. Please try again.')
+      : null,
+    onDismissEvalError: () => evaluateMutation.reset(),
   };
 
   const categoryOptions = [
@@ -1319,13 +1423,6 @@ export default function ProposalsPage() {
               </div>
             )}
 
-            {evaluateMutation.isError && (
-              <div className="rounded-xl border border-red-200 bg-red-50/60 px-4 py-2.5 text-xs text-red-700">
-                Evaluation failed:{' '}
-                {getApiErrorMessage(evaluateMutation.error, 'Unknown error.')}
-              </div>
-            )}
-
             {view === 'rankings' ? (
               <RankingBoard
                 search={search}
@@ -1370,6 +1467,9 @@ export default function ProposalsPage() {
                     deleting={rowActions.deletingId === p.id}
                     onEvaluate={rowActions.onEvaluate}
                     evaluating={rowActions.evaluatingId === p.id}
+                    evalBusy={isEvalBusy(rowActions)}
+                    evalError={rowActions.evalErrorId === p.id ? rowActions.evalErrorMessage : null}
+                    onDismissEvalError={rowActions.onDismissEvalError}
                   />
                 ))}
               </div>

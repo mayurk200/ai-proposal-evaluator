@@ -4,6 +4,9 @@ import path from 'path';
 import fs from 'fs';
 import { env } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
+import { notFoundHandler } from './middleware/notFound';
+import { requestContext } from './middleware/requestContext';
+import { logger } from './utils/logger';
 import { generalLimiter } from './middleware/rateLimit';
 import authRoutes from './modules/auth/auth.routes';
 import proposalRoutes from './modules/proposal/proposal.routes';
@@ -19,6 +22,10 @@ import { createStorageProvider } from './providers/storage/factory';
 import { StorageProvider } from './providers/storage/types';
 
 const app = express();
+
+// Assign a correlation id to every request and bind the async logging context.
+// Must run before any route so all downstream logs carry the requestId.
+app.use(requestContext);
 
 // Ensure upload directory exists
 const uploadDir = path.resolve(env.UPLOAD_DIR);
@@ -92,8 +99,24 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-// Error handler
+// Unmatched routes → structured 404 (must precede the error handler).
+app.use(notFoundHandler);
+
+// Error handler (last middleware).
 app.use(errorHandler);
+
+// Last-resort process guards: log the fatal error with full context instead of
+// letting Node print a bare stack and exit silently. An uncaught exception
+// leaves the process in an undefined state, so we exit after logging so the
+// supervisor (Docker/npm) can restart cleanly; unhandled rejections are logged
+// but not fatal.
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandled_rejection', { reason: reason instanceof Error ? reason.stack : String(reason) });
+});
+process.on('uncaughtException', (err) => {
+  logger.error('uncaught_exception', { stack: err.stack, message: err.message });
+  process.exit(1);
+});
 
 // Start server
 const PORT = parseInt(env.PORT);

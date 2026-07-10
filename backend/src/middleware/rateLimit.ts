@@ -7,15 +7,25 @@
  */
 
 import rateLimit from 'express-rate-limit';
+import { ErrorCode } from '../errors';
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+// 429 responses are emitted by express-rate-limit directly, so they carry the
+// same unified error contract (status/code/message/error) as everything else.
+const rateLimitBody = (message: string) => ({
+  status: 'error' as const,
+  code: ErrorCode.RATE_LIMITED,
+  message,
+  error: message,
+});
 
 export const generalLimiter = rateLimit({
   windowMs: FIFTEEN_MINUTES,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { status: 'error', message: 'Too many requests, please try again later.' },
+  message: rateLimitBody('Too many requests, please try again later.'),
 });
 
 export const evaluateLimiter = rateLimit({
@@ -23,8 +33,5 @@ export const evaluateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    status: 'error',
-    message: 'Too many evaluation requests, please try again later.',
-  },
+  message: rateLimitBody('Too many evaluation requests, please try again later.'),
 });
