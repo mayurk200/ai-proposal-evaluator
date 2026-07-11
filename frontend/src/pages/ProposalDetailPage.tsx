@@ -6,7 +6,7 @@ import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shiel
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Badge, Progress, Skeleton } from '@/components/ui';
-import { proposalApi, aiApi } from '@/services/proposal.service';
+import { proposalApi } from '@/services/proposal.service';
 import { formatDate, getScoreColor, getRecommendationColor } from '@/utils';
 import { useAuthStore } from '@/store/authStore';
 
@@ -19,10 +19,6 @@ export default function ProposalDetailPage() {
 
   const { data: proposal, isLoading } = useQuery({
     queryKey: ['proposal', id], queryFn: () => proposalApi.getById(id!), enabled: !!id,
-  });
-  const evalMut = useMutation({
-    mutationFn: () => aiApi.evaluate(id!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
   });
   const rejectMut = useMutation({
     mutationFn: () => proposalApi.reject(id!),
@@ -72,11 +68,6 @@ export default function ProposalDetailPage() {
             {!isAuthenticated && (
               <Button variant="secondary" onClick={() => navigate(`/login?claimId=${id}`)}>
                 <Bookmark className="w-4 h-4 mr-2" /> Save to Dashboard
-              </Button>
-            )}
-            {!ev && proposal.status !== 'EVALUATING' && proposal.status !== 'EXTRACTING' && proposal.status !== 'REJECTED' && (
-              <Button onClick={() => evalMut.mutate()} loading={evalMut.isPending}>
-                <Brain className="w-4 h-4 mr-2" /> Run AI Evaluation
               </Button>
             )}
             {(proposal.status === 'EVALUATING' || proposal.status === 'EXTRACTING') && (
@@ -409,8 +400,7 @@ export default function ProposalDetailPage() {
           <Card hover={false} className="text-center py-16">
             <Brain className="w-14 h-14 text-text-muted mx-auto mb-4" />
             <h3 className="text-lg font-semibold">Not Evaluated Yet</h3>
-            <p className="text-sm text-text-muted mt-1 mb-4">Run AI evaluation to analyze this proposal</p>
-            <Button onClick={() => evalMut.mutate()} loading={evalMut.isPending}><Brain className="w-4 h-4" /> Run Evaluation</Button>
+            <p className="text-sm text-text-muted mt-1">Run the AI evaluation from the Proposals page to analyze this proposal</p>
           </Card>
         )}
       </div>

@@ -1,12 +1,7 @@
 import api from './api';
-import type { ApiResponse, Proposal, PaginatedResponse, Evaluation, StoredFile } from '@/types';
+import type { ApiResponse, Proposal, StoredFile } from '@/types';
 
 export const proposalApi = {
-  getAll: async (page = 1, limit = 10) => {
-    const res = await api.get<ApiResponse<PaginatedResponse<Proposal>>>(`/proposals?page=${page}&limit=${limit}`);
-    return res.data.data;
-  },
-
   getById: async (id: string) => {
     const res = await api.get<ApiResponse<Proposal>>(`/proposals/${id}`);
     return res.data.data;
@@ -263,12 +258,5 @@ export const reportsApi = {
       comparison: ReportComparison;
     }>('/reports/compare', { reportIds });
     return res.data;
-  },
-};
-
-export const aiApi = {
-  evaluate: async (proposalId: string) => {
-    const res = await api.post<ApiResponse<Evaluation>>('/ai/evaluate', { proposalId });
-    return res.data.data;
   },
 };

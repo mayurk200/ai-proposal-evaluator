@@ -11,8 +11,6 @@ import { generalLimiter } from './middleware/rateLimit';
 import authRoutes from './modules/auth/auth.routes';
 import proposalRoutes from './modules/proposal/proposal.routes';
 import uploadRoutes from './modules/upload/upload.routes';
-import aiRoutes from './modules/ai/ai.routes';
-import comparisonRoutes from './modules/comparison/comparison.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { initSettings, runtime } from './modules/settings/settings.service';
@@ -60,8 +58,6 @@ app.use('/api', generalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/proposals', proposalRoutes);
 app.use('/api/uploads', uploadRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/comparisons', comparisonRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
 

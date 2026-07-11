@@ -143,23 +143,6 @@ interface PythonEvaluationResponse {
   processing_time_seconds: number;
 }
 
-interface PythonBatchEvaluationResponse {
-  status: string;
-  batch_id: string;
-  total_files: number;
-  completed: number;
-  failed: number;
-  results: Array<{
-    evaluation_id?: string;
-    filename: string;
-    status: string;
-    overall_score?: number;
-    recommendation?: string;
-    file_url?: string;
-    processing_time_seconds?: number;
-    error?: string;
-  }>;
-}
 
 /**
  * Send a file to the Python service for full AI evaluation.
@@ -201,86 +184,6 @@ export async function evaluateWithPythonService(
     }
     throw new Error(`Python service communication failed: ${error.message}`);
   }
-}
-
-/**
- * Send multiple files to the Python service for sequential batch evaluation.
- */
-export async function evaluateBatchWithPythonService(
-  files: Array<{ buffer: Buffer; originalname: string; mimetype: string }>,
-): Promise<PythonBatchEvaluationResponse> {
-  const baseUrl = env.PYTHON_SERVICE_URL;
-  const url = `${baseUrl}/api/v1/evaluate-batch`;
-
-  const formData = new FormData();
-  for (const file of files) {
-    const blob = new Blob([file.buffer], { type: file.mimetype });
-    formData.append('files', blob, file.originalname);
-  }
-
-  const timeoutMs = Math.max(300_000, files.length * 300_000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Python batch service error (${response.status}): ${errorBody}`);
-    }
-
-    return await response.json() as PythonBatchEvaluationResponse;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error(`Python batch evaluation timed out after ${Math.round(timeoutMs / 60000)} minutes`);
-    }
-    throw new Error(`Python batch service communication failed: ${error.message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Map the Python service evaluation response to the format expected
- * by the existing Node.js backend and frontend.
- */
-export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
-  const evaluation = response.evaluation;
-
-  return {
-    finalScore: {
-      overall_score: evaluation.overall_score,
-      problem_relevance_score: evaluation.problem_relevance_score,
-      solution_readiness_score: evaluation.solution_readiness_score,
-      pilot_design_score: evaluation.pilot_design_score,
-      farmer_adoption_score: evaluation.farmer_adoption_score,
-      scaleup_score: evaluation.scaleup_score,
-      team_capacity_score: evaluation.team_capacity_score,
-      compliance_score: evaluation.compliance_score,
-      innovation_score: evaluation.innovation_score,
-      market_score: evaluation.market_score,
-      agriculture_score: evaluation.agriculture_score,
-      financial_score: evaluation.financial_score,
-      scalability_score: evaluation.scalability_score,
-      sustainability_score: evaluation.sustainability_score,
-      risk_score: evaluation.risk_score,
-      recommendation: evaluation.recommendation,
-      summary: evaluation.summary,
-      strengths: evaluation.strengths,
-      weaknesses: evaluation.weaknesses,
-      swot_analysis: evaluation.swot_analysis,
-      investment_readiness: evaluation.investment_readiness,
-      key_action_items: evaluation.key_action_items,
-      parameter_breakdown: evaluation.parameter_breakdown,
-      debate_summary: evaluation.debate_summary,
-    },
-    agentResults: response.agent_results,
-  };
 }
 
 // ---------------------------------------------------------------------------

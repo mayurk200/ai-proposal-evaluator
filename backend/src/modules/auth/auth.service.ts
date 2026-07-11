@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { collections } from '../../config/database';
 import { env } from '../../config/env';
 import { RegisterInput, LoginInput } from './auth.schema';
@@ -15,7 +15,7 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 12);
-    const id = uuidv4();
+    const id = randomUUID();
     const now = new Date().toISOString();
 
     const userData = {

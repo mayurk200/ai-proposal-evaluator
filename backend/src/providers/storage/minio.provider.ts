@@ -9,7 +9,7 @@ import {
   CreateBucketCommand,
   PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import { StorageProvider, StoredObject } from './types';
 import { env } from '../../config/env';
@@ -117,7 +117,7 @@ export class MinIOStorageProvider implements StorageProvider {
   async upload(file: Express.Multer.File): Promise<string> {
     await this.ensureReady();
     const ext = path.extname(file.originalname);
-    const key = `proposals/${uuidv4()}${ext}`;
+    const key = `proposals/${randomUUID()}${ext}`;
 
     await this.client.send(
       new PutObjectCommand({

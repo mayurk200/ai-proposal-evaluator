@@ -24,8 +24,5 @@ export const ALLOWED_MIME_TYPES = [
 /** Human-readable list of supported types, used in upload error messages. */
 export const ALLOWED_TYPES_LABEL = 'PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, TIFF, BMP';
 
-/** Max upload size (bytes) for the in-memory instant/batch evaluation routes (50 MB). */
-export const INSTANT_EVALUATE_MAX_SIZE = 52428800;
-
 /** Standard invalid-file-type error message. */
 export const INVALID_FILE_TYPE_MESSAGE = `Invalid file type. Supported: ${ALLOWED_TYPES_LABEL}.`;

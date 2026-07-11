@@ -1,6 +1,6 @@
 """
 Unit tests for newly introduced components: Form Field Extractor, Parameter Agents,
-Debate Agent, Final Scoring Agent, and PythonServiceClient proxy client.
+Debate Agent and Final Scoring Agent.
 """
 
 import pytest
@@ -11,7 +11,6 @@ from app.services.extraction.form_field_extractor import extract_form_fields
 from app.agents.problem_relevance.problem_relevance_agent import ProblemRelevanceAgent
 from app.agents.debate.debate_agent import DebateAgent
 from app.agents.scoring.scoring_agent import ScoringAgent
-from app.utils.http_client import PythonServiceClient
 from app.models.schemas import (
     AgentResult,
     SubQuestionResult,
@@ -473,65 +472,3 @@ class TestFinalScoringAgent:
         assert len(final_eval.debate_summary.adjusted_scores) == 1
 
 
-# ============================================================================
-# PythonServiceClient Tests
-# ============================================================================
-
-class TestPythonServiceClient:
-    @pytest.mark.asyncio
-    async def test_evaluate_file(self):
-        client = PythonServiceClient(base_url="http://localhost:8000")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "success", "overall_score": 85}
-        
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
-            
-            result = await client.evaluate_file(
-                file_bytes=b"test PDF file content",
-                filename="proposal.pdf",
-                run_ocr=True
-            )
-            
-            mock_post.assert_called_once()
-            assert result["status"] == "success"
-            assert result["overall_score"] == 85
-
-    @pytest.mark.asyncio
-    async def test_process_document(self):
-        client = PythonServiceClient(base_url="http://localhost:8000")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "success", "text_length": 1000}
-        
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
-            
-            result = await client.process_document(
-                file_bytes=b"test docx file content",
-                filename="proposal.docx",
-                run_ocr=False,
-                generate_summary=True
-            )
-            
-            mock_post.assert_called_once()
-            assert result["status"] == "success"
-
-    @pytest.mark.asyncio
-    async def test_health_check(self):
-        client = PythonServiceClient(base_url="http://localhost:8000")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "ok"}
-        
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-            
-            result = await client.health_check()
-            
-            mock_get.assert_called_once()
-            assert result["status"] == "ok"

@@ -102,7 +102,7 @@ export const uploadController = {
         await provider.ensureReady();
       }
 
-      // Providers without a native listing (e.g. cloudinary) just report empty.
+      // Providers without a native listing just report empty.
       if (!provider.list) {
         return res.status(200).json({
           success: true,

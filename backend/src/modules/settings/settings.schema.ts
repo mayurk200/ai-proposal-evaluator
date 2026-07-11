@@ -65,9 +65,7 @@ const PROVIDER_OPTIONS = [
 
 const STORAGE_OPTIONS = [
   { value: 'local', label: 'Local disk' },
-  { value: 's3', label: 'AWS S3' },
   { value: 'minio', label: 'MinIO' },
-  { value: 'cloudinary', label: 'Cloudinary' },
 ];
 
 const THEME_OPTIONS = [
@@ -119,9 +117,6 @@ export const SETTINGS_FIELDS: SettingsField[] = [
   { id: 'secrets.geminiApiKey', group: 'secrets', key: 'geminiApiKey', label: 'Gemini API Key', type: 'secret', secret: true, appliesLive: true, consumedBy: 'both' },
   { id: 'secrets.awsAccessKeyId', group: 'secrets', key: 'awsAccessKeyId', label: 'AWS / S3 Access Key ID', type: 'secret', secret: true, appliesLive: false, consumedBy: 'both' },
   { id: 'secrets.awsSecretAccessKey', group: 'secrets', key: 'awsSecretAccessKey', label: 'AWS / S3 Secret Access Key', type: 'secret', secret: true, appliesLive: false, consumedBy: 'both' },
-  { id: 'secrets.cloudinaryCloudName', group: 'secrets', key: 'cloudinaryCloudName', label: 'Cloudinary Cloud Name', type: 'secret', secret: true, appliesLive: false, consumedBy: 'backend' },
-  { id: 'secrets.cloudinaryApiKey', group: 'secrets', key: 'cloudinaryApiKey', label: 'Cloudinary API Key', type: 'secret', secret: true, appliesLive: false, consumedBy: 'backend' },
-  { id: 'secrets.cloudinaryApiSecret', group: 'secrets', key: 'cloudinaryApiSecret', label: 'Cloudinary API Secret', type: 'secret', secret: true, appliesLive: false, consumedBy: 'backend' },
   { id: 'secrets.databaseUrl', group: 'secrets', key: 'databaseUrl', label: 'Database URL', type: 'secret', secret: true, appliesLive: false, consumedBy: 'python', description: 'PostgreSQL connection string for the Python service.' },
   { id: 'secrets.jwtSecret', group: 'secrets', key: 'jwtSecret', label: 'JWT Secret', type: 'secret', secret: true, appliesLive: false, consumedBy: 'backend', danger: true, description: 'Rotating this invalidates all existing login sessions.' },
 
@@ -191,9 +186,6 @@ export function buildDefaults(): Settings {
       geminiApiKey: env.GEMINI_API_KEY ?? '',
       awsAccessKeyId: env.AWS_ACCESS_KEY_ID ?? '',
       awsSecretAccessKey: env.AWS_SECRET_ACCESS_KEY ?? '',
-      cloudinaryCloudName: env.CLOUDINARY_CLOUD_NAME ?? '',
-      cloudinaryApiKey: env.CLOUDINARY_API_KEY ?? '',
-      cloudinaryApiSecret: env.CLOUDINARY_API_SECRET ?? '',
       databaseUrl: '',
       jwtSecret: '',
     },

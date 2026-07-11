@@ -43,7 +43,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
   
   // Storage Provider
-  STORAGE_PROVIDER: z.enum(['local', 's3', 'minio', 'cloudinary']).default('local'),
+  STORAGE_PROVIDER: z.enum(['local', 'minio']).default('local'),
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE: z.string().default('10485760'),
   
@@ -55,11 +55,6 @@ const envSchema = z.object({
   MINIO_ENDPOINT: z.string().optional(),
   // Public (host-reachable) MinIO endpoint used to build browser-openable URLs.
   MINIO_PUBLIC_ENDPOINT: z.string().optional(),
-
-  // Cloudinary
-  CLOUDINARY_CLOUD_NAME: z.string().optional(),
-  CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

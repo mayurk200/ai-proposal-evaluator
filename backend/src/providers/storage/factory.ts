@@ -9,17 +9,9 @@ export function createStorageProvider(): StorageProvider {
       const { LocalStorageProvider } = require('./local.provider');
       return new LocalStorageProvider();
     }
-    case 's3': {
-      const { S3StorageProvider } = require('./s3.provider');
-      return new S3StorageProvider();
-    }
     case 'minio': {
       const { MinIOStorageProvider } = require('./minio.provider');
       return new MinIOStorageProvider();
-    }
-    case 'cloudinary': {
-      const { CloudinaryStorageProvider } = require('./cloudinary.provider');
-      return new CloudinaryStorageProvider();
     }
     default:
       throw new Error(`Unsupported storage provider: ${provider}`);
