@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
 import { proposalApi } from '@/services/proposal.service';
+import { APP_VERSION } from '@/version';
 import { getApiErrorMessage } from '@/utils';
 import { Home } from 'lucide-react';
 
@@ -63,16 +64,17 @@ export default function LoginPage() {
             Welcome back to
             <br />
             <span className="text-gradient">AgriEval</span>
+            <span className="ml-2 inline-block align-middle rounded-md bg-accent/60 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-primary">Beta v{APP_VERSION}</span>
           </h1>
           <p className="mt-4 text-text-secondary text-lg leading-relaxed">
             Continue evaluating agriculture startup proposals with our AI-powered platform.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-4">
             {[
-              { value: '7', label: 'AI Agents' },
-              { value: '98%', label: 'Accuracy' },
-              { value: '<5min', label: 'Avg Time' },
-              { value: '24/7', label: 'Available' },
+              { value: '7', label: 'Evaluation Parameters' },
+              { value: '10', label: 'AI Agents' },
+              { value: '0–100', label: 'Weighted Score' },
+              { value: '4', label: 'Recommendation Levels' },
             ].map((stat) => (
               <div key={stat.label} className="glass-card-static p-4 text-center">
                 <p className="text-2xl font-bold text-primary">{stat.value}</p>
@@ -99,7 +101,10 @@ export default function LoginPage() {
               <div className="lg:hidden w-12 h-12 mx-auto rounded-xl gradient-primary flex items-center justify-center mb-4">
                 <Leaf className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-text">Sign in</h2>
+              <h2 className="text-2xl font-bold text-text">
+                Sign in
+                <span className="ml-2 inline-block align-middle rounded-md bg-accent/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">Beta v{APP_VERSION}</span>
+              </h2>
               <p className="text-sm text-text-muted mt-1">Enter your credentials to continue</p>
             </div>
 

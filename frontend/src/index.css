@@ -21,7 +21,25 @@
   --color-danger: #EF4444;
   --color-info: #3B82F6;
 
+  /* Landing page redesign tokens (surveyor's-ledger theme) */
+  --color-paper: #F6F5EE;
+  --color-paper-2: #EFEDE2;
+  --color-surface-2: #FBFAF4;
+  --color-ink: #17241C;
+  --color-ink-soft: #5A6B60;
+  --color-ink-faint: #8A978D;
+  --color-pine: #1E5631;
+  --color-pine-deep: #143B22;
+  --color-harvest: #BE7C2C;
+  --color-harvest-soft: #E8D3A8;
+  --color-line: rgba(30, 86, 49, 0.14);
+  --color-line-soft: rgba(30, 86, 49, 0.08);
+  --color-chart-1: #2E8B44; /* validated for charts on white (dataviz palette check) */
+  --color-chart-2: #C07A28;
+
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', 'Nimbus Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
 
   --shadow-glass: 0 8px 32px rgba(46, 125, 50, 0.08);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(46, 125, 50, 0.06);

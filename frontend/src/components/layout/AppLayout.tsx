@@ -6,6 +6,7 @@ import {
   Settings, LogOut, Leaf, Menu, X, ChevronRight, Info
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { APP_VERSION } from '@/version';
 
 
 
@@ -50,8 +51,11 @@ export function Sidebar() {
               exit={{ opacity: 0, x: -10 }}
               className="overflow-hidden"
             >
-              <h1 className="text-lg font-bold text-gradient whitespace-nowrap">AgriEval</h1>
-              <p className="text-[10px] text-text-muted whitespace-nowrap">AI Proposal Platform</p>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-lg font-bold text-gradient whitespace-nowrap">AgriEval</h1>
+                <span className="rounded-md bg-accent/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary">Beta</span>
+              </div>
+              <p className="text-[10px] text-text-muted whitespace-nowrap">AI Proposal Platform · v{APP_VERSION}</p>
             </motion.div>
           )}
         </AnimatePresence>

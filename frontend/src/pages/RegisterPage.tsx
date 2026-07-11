@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
 import { proposalApi } from '@/services/proposal.service';
+import { APP_VERSION } from '@/version';
 import { getApiErrorMessage } from '@/utils';
 import { Home } from 'lucide-react';
 
@@ -63,6 +64,7 @@ export default function RegisterPage() {
             Join
             <br />
             <span className="text-gradient">AgriEval</span>
+            <span className="ml-2 inline-block align-middle rounded-md bg-accent/60 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-primary">Beta v{APP_VERSION}</span>
           </h1>
           <p className="mt-4 text-text-secondary text-lg leading-relaxed">
             Start evaluating agriculture startup proposals with our AI-powered platform. Free to get started.
@@ -86,7 +88,10 @@ export default function RegisterPage() {
               <div className="lg:hidden w-12 h-12 mx-auto rounded-xl gradient-primary flex items-center justify-center mb-4">
                 <Leaf className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-text">Create account</h2>
+              <h2 className="text-2xl font-bold text-text">
+                Create account
+                <span className="ml-2 inline-block align-middle rounded-md bg-accent/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">Beta v{APP_VERSION}</span>
+              </h2>
               <p className="text-sm text-text-muted mt-1">Get started with free evaluation</p>
             </div>
 
