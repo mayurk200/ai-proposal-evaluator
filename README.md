@@ -11,14 +11,13 @@
   <img src="https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/LLM-Groq_LLaMA_3.3_70B-F55036?style=flat-square&logo=meta&logoColor=white" alt="Groq" />
-  <img src="https://img.shields.io/badge/Tests-400_passing-brightgreen?style=flat-square" alt="Tests" />
-  <img src="https://img.shields.io/badge/Coverage-92%25-brightgreen?style=flat-square" alt="Coverage" />
+  <img src="https://img.shields.io/badge/Tests-398_passing-brightgreen?style=flat-square" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
 </p>
 
 ---
 
-A production-grade platform that evaluates agriculture startup proposals using **9 specialized AI agents** powered by Groq (LLaMA 3.3 70B). Upload a PDF, PPTX, DOCX, or image — the system extracts text (with OCR for scanned documents), chunks it intelligently, and runs a multi-agent evaluation pipeline that scores the proposal across innovation, financials, risk, sustainability, and more.
+A platform that evaluates agriculture startup proposals using a **multi-agent AI pipeline** powered by Groq (LLaMA 3.3 70B). Upload a PDF, PPTX, DOCX, or image — the system extracts text (with OCR for scanned documents), chunks it intelligently, and scores the proposal against the 7 AIAIC parameters: Problem Relevance, Solution Readiness, Pilot Design, Farmer Adoption, Scale-up Potential, Team Capacity, and Compliance.
 
 ## How It Works
 
@@ -32,8 +31,9 @@ User uploads file → Node.js Backend → Python AI Service
           3. Table & image extraction
           4. Section-aware strategic chunking
           5. Executive summary generation (LLM)
-          6. 9 AI agents evaluate sequentially
-          7. Weighted final score + SWOT analysis
+          6. 7 parameter agents evaluate (AIAIC rubric)
+          7. Debate agent resolves scoring conflicts
+          8. Scoring agent → final score + SWOT analysis
                     │
                     ▼
           Results rendered: scores, charts, recommendations
@@ -43,13 +43,12 @@ User uploads file → Node.js Backend → Python AI Service
 
 - **Multi-format support** — PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, JPEG, TIFF, BMP
 - **Intelligent OCR** — Detects scanned PDFs and images, applies Tesseract with EasyOCR fallback
-- **9-agent AI pipeline** — Extraction, Technical, Financial, Risk, Innovation, Feasibility, Compliance, Sustainability, Final Scoring
+- **Multi-agent AI pipeline** — Extraction, 7 AIAIC parameter agents, Debate, Scoring (plus a Categorization agent at intake)
 - **Section-aware chunking** — Splits on headings, not arbitrary token counts
 - **SWOT analysis** — Auto-generated strengths, weaknesses, opportunities, threats
 - **Radar & bar charts** — Visual score breakdowns with Recharts
 - **JWT authentication** — Register, login, claim proposals
-<!-- - **Comparison view** — Side-by-side evaluation of multiple proposals -->
-- **Resilient fallback** — If Python service is down, Node.js runs a 4-agent fallback pipeline (will be removed soon and only python service will be used by making it fault tolerant)
+- **Report comparison** — Parameter-level comparison of 2–5 evaluation reports
 
 ## Tech Stack
 
@@ -66,7 +65,41 @@ User uploads file → Node.js Backend → Python AI Service
 | **Database** | PostgreSQL (Docker; local JSON fallback for zero-config dev) |
 | **Object Storage** | MinIO (S3-compatible, Docker) |
 | **Auth** | JWT + bcrypt |
-| **Testing** | pytest (Python), Vitest (Node.js) — 319 tests |
+| **Testing** | pytest (Python), Vitest (Node.js) — 398 tests |
+
+## Run the App
+
+### Fastest — one command (Windows)
+
+From the repo root, double-click **`run.cmd`** (or run it from a terminal):
+
+```bat
+run.cmd
+```
+
+This launches the whole stack in order and opens the app in your browser:
+
+1. Starts Docker Desktop (if not already running)
+2. Brings up PostgreSQL + MinIO containers (with health checks)
+3. Starts the Python AI service → http://localhost:8000
+4. Starts the Node backend → http://localhost:3001
+5. Starts the React frontend → http://localhost:5173
+
+Under the hood it runs `scripts\dev.ps1`, which verifies prerequisites, self-heals the Postgres password, validates/recreates the Python venv (uv, Python 3.11), installs any missing `node_modules`, and health-gates each service on the previous one. You can also run it directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
+```
+
+**Stop everything:** `scripts\stop.ps1`
+
+Open http://localhost:5173 → Register → Upload a proposal → click **Evaluate**.
+
+> Full run order, per-service health verification, and troubleshooting: **[docs/RUN.md](docs/RUN.md)**. First-time setup and `.env` layout: **[docs/setup.md](docs/setup.md)**.
+
+### Manual setup
+
+If you prefer to start each service yourself, follow the steps below.
 
 ## Quick Setup
 
@@ -153,12 +186,12 @@ VITE_API_URL=http://localhost:3001/api
 ## Running Tests
 
 ```bash
-# Python service — 350 tests
+# Python service — 359 tests
 cd python-service
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pytest tests/ --cov=app --cov-report=term-missing
 
-# Node.js backend — 50 tests
+# Node.js backend — 39 tests
 cd backend
 npm test
 ```
@@ -173,19 +206,21 @@ npm test
 | Plain Text | `.txt` | Direct read |
 | Images | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp` | Full OCR via Tesseract/EasyOCR |
 
-## AI Agents*
+## AI Agents
 
-| # | Agent | What It Evaluates |
+| # | Agent | Role |
 |---|---|---|
-| 1 | **Extraction** | Structured data: team, funding, timeline, market |
-| 2 | **Technical** | Architecture, tech stack, scalability |
-| 3 | **Financial** | Revenue model, unit economics, ROI |
-| 4 | **Risk** | 9-dimensional risk assessment |
-| 5 | **Innovation** | Novelty, IP potential, disruption score |
-| 6 | **Feasibility** | Team capability, timeline realism, market fit |
-| 7 | **Compliance** | Governance, data privacy, regulatory readiness |
-| 8 | **Sustainability** | Environmental, social, economic sustainability |
-| 9 | **Final Scoring** | Cross-agent synthesis, weighted score, SWOT |
+| 1 | **Categorization** | Agri category detection at intake (process step) |
+| 2 | **Extraction** | Structured data: team, funding, timeline, market |
+| 3 | **Problem Relevance** | Farming challenges, direct farmer pain points |
+| 4 | **Solution Readiness** | Technology Readiness Level (TRL 5–9), innovativeness |
+| 5 | **Pilot Design** | Schedule, milestones, testing scope viability |
+| 6 | **Farmer Adoption** | Incentives, usability, youth/gender parity |
+| 7 | **Scale-up Potential** | Revenue streams, market scale strategy |
+| 8 | **Team Capacity** | Technical, agronomic, and business experience |
+| 9 | **Compliance** | Regulations, environmental certifications, standards |
+| 10 | **Debate** | Resolves high-severity scoring conflicts between agents |
+| 11 | **Scoring** | Final score synthesis, recommendation, SWOT |
 
 ## API Endpoints
 
@@ -195,11 +230,14 @@ npm test
 | `GET` | `/api/v1/supported-formats` | List supported file formats |
 | `POST` | `/api/v1/process-document` | Extract & chunk a document |
 | `POST` | `/api/v1/evaluate` | Full evaluation pipeline |
-| `POST` | `/api/proposals/evaluate-file` | Upload + evaluate (via backend) |
+| `POST` | `/api/uploads` | Upload files to object storage (via backend) |
+| `POST` | `/api/uploads/process` | Extract + categorize stored files |
+| `POST` | `/api/uploads/processed/:id/evaluate` | Run the full multi-agent evaluation |
 | `POST` | `/api/auth/register` | Register user |
 | `POST` | `/api/auth/login` | Login user |
-| `GET` | `/api/proposals` | List proposals |
-| `GET` | `/api/proposals/:id` | Get proposal detail |
+| `GET` | `/api/reports` | List evaluation reports |
+
+> Full endpoint list: [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
 
 ## Docker
 
@@ -217,6 +255,7 @@ docker-compose up --build
 | [RUN.md](docs/RUN.md) | Full-stack run order and per-service health verification |
 | [QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup with screenshots and troubleshooting |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow diagrams, scoring weights, file structure |
+| [API_REFERENCE.md](docs/API_REFERENCE.md) | All backend + Python service endpoints, scoring rubric, frontend pages |
 | [ranking.md](docs/ranking.md) | How the proposal triage rank (0–100) is produced and how the Rankings view orders proposals |
 
 ## Project Structure
@@ -225,7 +264,7 @@ docker-compose up --build
 ai-proposal-evaluator/
 ├── frontend/              React + Vite + TailwindCSS v4
 ├── backend/               Node.js + Express + TypeScript
-├── python-service/        FastAPI + 9 AI agents + OCR
+├── python-service/        FastAPI + multi-agent pipeline + OCR
 ├── docs/                  Architecture & quickstart guides
 ├── scripts/               Utility scripts
 └── docker-compose.yml     Full-stack containerization

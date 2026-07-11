@@ -44,13 +44,14 @@ graph LR
 
 - Frontend talks to **Node** (`:3001`) only. Node proxies AI work to the **Python
   service** (`:8000`) via `backend/src/utils/pythonProxy.ts`.
-- Node's own store is Firestore/local-JSON; the **Python service owns Postgres** (the
-  `proposals` table). All categorization data lives in Postgres.
+- Node's own store is Postgres/local-JSON (`pgStore.ts`/`localStore.ts`); the **Python
+  service owns its own Postgres tables** (e.g. `proposals`). All categorization data
+  lives in Python's Postgres.
 - Correlation handle: the MinIO object key is stored on the Python row as `source_key`.
   The original file is **not** re-uploaded to Python storage — `source_key`/`source_url`
   reference the existing MinIO object.
-- **Hard dependency:** categorization exists only in Python (no Node fallback like
-  evaluate has), so Phase 2 requires the Python service running — surfaced as a **503**.
+- **Hard dependency:** all processing and evaluation happens in Python (no Node
+  fallback), so Phase 2 requires the Python service running — surfaced as a **503**.
 
 ---
 
@@ -181,5 +182,6 @@ referenced by `source_key`.
 - Category filter uses a JSON-text `LIKE` (fine at this scale; revisit if volume grows).
 - Processing is **idempotent** — the same `source_key` (or identical file hash) returns the
   existing row instead of reprocessing.
-- The old Firestore-backed `ProposalDetailPage` is intentionally **not** linked from
-  categorized cards this phase (different datastore); detail is shown inline instead.
+- The legacy `ProposalDetailPage` (backed by Node's document store) is intentionally
+  **not** linked from categorized cards this phase (different datastore); detail is
+  shown inline instead.

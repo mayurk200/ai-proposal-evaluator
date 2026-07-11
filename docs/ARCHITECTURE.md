@@ -19,54 +19,44 @@ The platform evaluates startup/agriculture proposals using AI. It has **three se
 | Service | Stack | Port | Role |
 |---------|-------|------|------|
 | **Frontend** | React 19, Vite, TailwindCSS v4 | 5173 | Upload UI, dashboards, score visualizations |
-| **Backend** | Node.js, Express, TypeScript | 3001 | Auth (JWT), file upload, API gateway, Firestore/local JSON persistence |
+| **Backend** | Node.js, Express, TypeScript | 3001 | Auth (JWT), file upload to object storage, API gateway, PostgreSQL/local JSON persistence |
 | **Python Service** | FastAPI, Python 3.11 | 8000 | Document processing (OCR, extraction, chunking) + AIAIC 7-agent evaluation, debate, and scoring |
 
 ---
 
 ## How an Evaluation Works (End-to-End)
 
-When a user uploads a proposal file on the frontend, this is the exact sequence:
+The flow has three user-facing steps — upload, process, evaluate:
 
 ```
-User clicks "Evaluate" on frontend
+User uploads files → later clicks "Evaluate" on a processed proposal
           │
           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 1. Frontend sends POST /api/proposals/evaluate-file          │
-│    with multipart form data (file + optional title)          │
-│    The request goes to localhost:5173, which Vite proxies    │
-│    to localhost:3001                                         │
+│ 1. Upload: POST /api/uploads (multipart, field "files")      │
+│    Multer validates type & size (PDF, DOCX, DOC, PPTX, PPT, │
+│    TXT, PNG, JPG, TIFF, BMP — max 50MB), then the backend    │
+│    stores each file in object storage (MinIO or local disk). │
 └──────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 2. Node.js Backend receives the request                      │
-│                                                              │
-│    a. Multer middleware validates file type & size            │
-│       Allows: PDF, DOCX, DOC, PPTX, PPT, TXT,               │
-│       PNG, JPG, TIFF, BMP                                    │
-│       Max size: 50MB                                         │
-│                                                              │
-│    b. ProposalController.evaluateFile() runs                 │
+│ 2. Process: POST /api/uploads/process { files: [{key,name}] }│
+│    Backend downloads each object and forwards it to the      │
+│    Python service for extraction + agri categorization.      │
+│    Requires Python to be up (503 otherwise — no Node         │
+│    fallback pipeline).                                       │
 └──────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 3. Backend checks: "Is Python service alive?"                │
-│                                                              │
-│    Calls GET http://localhost:8000/api/v1/health              │
-│    with a 5-second timeout                                   │
-│                                                              │
-│    ┌─────────────────┐     ┌──────────────────────────────┐  │
-│    │ Python is UP?   │─Yes─▶  Forward file to Python      │  │
-│    │                 │     │  POST /api/v1/evaluate        │  │
-│    │                 │─No──▶  Use Node.js fallback         │  │
-│    │                 │     │  (old 4-agent pipeline)       │  │
-│    └─────────────────┘     └──────────────────────────────┘  │
+│ 3. Evaluate: POST /api/uploads/processed/:id/evaluate        │
+│    Backend downloads the original upload from storage and    │
+│    sends it to POST /api/v1/evaluate with the proposal id    │
+│    attached. Idempotent per proposal unless ?force=true.     │
 └──────────────────────────────────────────────────────────────┘
           │
-          ▼ (if Python is available)
+          ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ 4. Python Service receives the file                          │
 │                                                              │
@@ -134,35 +124,14 @@ User clicks "Evaluate" on frontend
 ┌──────────────────────────────────────────────────────────────┐
 │ 5. Response flows back                                       │
 │                                                              │
-│    Python → Node.js: Full evaluation JSON                    │
-│    Node.js maps Python response to frontend-expected format  │
-│    Node.js → Frontend: { status: 'success', data: {...} }    │
-│                                                              │
-│    Frontend renders: scores, SWOT, recommendations, charts   │
+│    Python stores the evaluation report and marks the         │
+│    proposal `evaluated`; Node.js returns the score +         │
+│    recommendation; the frontend then fetches the full        │
+│    report and renders scores, SWOT, debate, charts           │
 └──────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## The Fallback Mechanism
-
-If the Python service is **not running** or **fails mid-evaluation**, the backend falls back to its original Node.js pipeline:
-
-```
-Node.js Fallback (Legacy)
-├── extractTextFromBuffer() — basic PDF/DOCX text extraction (no OCR, no chunking)
-└── aiOrchestrator.evaluate() — 4 simpler agents (not 9)
-    ├── Extraction Agent
-    ├── Agriculture Analysis Agent
-    ├── Financial Analysis Agent
-    └── Final Scoring Agent
-```
-
-The Node.js pipeline is simpler:
-- **No OCR** — can't read scanned PDFs or images
-- **No smart chunking** — sends raw text to the LLM
-- **4 agents** instead of 9 — less comprehensive analysis
-- **No table/image extraction**
+There is **no Node.js fallback pipeline** — all extraction and evaluation happens in the Python service. If it is down, processing/evaluation endpoints return 503.
 
 ---
 
@@ -172,14 +141,14 @@ The Node.js pipeline is simpler:
 
 **File:** `python-service/app/agents/orchestrator.py`
 
-The free Groq tier has strict rate limits. Running 9 agents + summary = ~10-11 LLM calls in sequence.
+The free Groq tier has strict rate limits. One evaluation (extraction + 7 parameter agents + debate + scoring + summary) makes ~10–12 LLM calls in sequence.
 With only a 3-second gap between agents, the rate limiter may trigger `RateLimitError`.
 
 Each agent has retry logic (3 attempts with exponential backoff) to handle transient rate limit errors.
 
-### 2. Firebase Service Account
+### 2. Persistence
 
-The backend tries to connect to Firebase Firestore but falls back to a local JSON file store when credentials are missing. The local store works correctly for all operations (CRUD, count, pagination, queries).
+The backend uses PostgreSQL (Docker) through a Firestore-like document store (`pgStore.ts`), and falls back to a local JSON file store (`localStore.ts`) when Postgres is unreachable — zero-config dev works with no containers running.
 
 ---
 
@@ -202,23 +171,20 @@ ai-proposal-evaluator/
 │   ├── src/
 │   │   ├── config/
 │   │   │   ├── env.ts                 # Zod-validated env vars
-│   │   │   ├── database.ts           # Firebase or local JSON store
-│   │   │   └── localStore.ts          # Firestore-compatible JSON fallback
+│   │   │   ├── database.ts            # Picks Postgres or local JSON store
+│   │   │   ├── pgStore.ts             # Firestore-like Postgres document store
+│   │   │   └── localStore.ts          # JSON-file fallback (zero-config dev)
 │   │   ├── modules/
-│   │   │   ├── proposal/
-│   │   │   │   ├── proposal.routes.ts      # Multer + route definitions
-│   │   │   │   ├── proposal.controller.ts  # Python-first, Node.js fallback
-│   │   │   │   └── proposal.service.ts     # CRUD operations
-│   │   │   └── ai/
-│   │   │       ├── ai.service.ts           # Stored proposal evaluation
-│   │   │       ├── orchestrator.ts         # Legacy 4-agent pipeline
-│   │   │       └── agents/                 # Node.js agent implementations
+│   │   │   ├── upload/                # Primary flow: upload/process/evaluate
+│   │   │   ├── reports/               # Report listing + comparison
+│   │   │   ├── proposal/              # Legacy proposal records (CRUD)
+│   │   │   ├── auth/                  # Register/login/profile
+│   │   │   └── settings/              # Settings registry + API
 │   │   ├── utils/
-│   │   │   ├── pythonProxy.ts         # HTTP bridge to Python service
-│   │   │   └── textExtractor.ts       # Basic text extraction (fallback)
+│   │   │   └── pythonProxy.ts         # HTTP bridge to Python service
 │   │   └── middleware/
 │   │       ├── auth.ts                # JWT authentication
-│   │       └── upload.ts              # Disk-based multer for /upload
+│   │       └── upload.ts              # In-memory multer for /api/uploads
 │   └── .env
 │
 ├── python-service/                    # FastAPI + Python 3.11
@@ -289,10 +255,10 @@ Each parameter score is calculated as the average of its sub-question scores (1-
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `JWT_SECRET` | ✅ | — | JWT signing key |
-| `GROQ_API_KEY` | ✅ | — | Groq LLM API key (for fallback) |
 | `PYTHON_SERVICE_URL` | ❌ | `http://localhost:8000` | Python service address |
-| `LLM_PROVIDER` | ❌ | `groq` | LLM provider for Node.js fallback |
-| `FIREBASE_PROJECT_ID` | ❌ | — | Firebase project (uses local JSON if absent) |
+| `STORAGE_PROVIDER` | ❌ | `local` | Object storage: `local` or `minio` |
+| `DATABASE_URL` | ❌ | — | Postgres connection (local JSON store if unreachable) |
+| `GROQ_API_KEY` | ❌ | — | Surfaced via the Settings UI for the Python service |
 
 ### Python Service (`python-service/.env`)
 | Variable | Required | Default | Description |
@@ -315,12 +281,10 @@ sequenceDiagram
     participant P as Python Service :8000
     participant G as Groq API
 
-    U->>F: Upload file + click Evaluate
-    F->>B: POST /api/proposals/evaluate-file (multipart)
-    B->>B: Multer validates file type
-    B->>P: GET /api/v1/health (is Python alive?)
-    P-->>B: 200 OK
-    B->>P: POST /api/v1/evaluate (forward file)
+    U->>F: Click Evaluate on a processed proposal
+    F->>B: POST /api/uploads/processed/:id/evaluate
+    B->>B: Download original file from object storage
+    B->>P: POST /api/v1/evaluate (forward file + proposal id)
     P->>P: Extract text (PyMuPDF/python-docx)
     P->>P: OCR scanned pages (Tesseract)
     P->>P: Extract images & tables
@@ -338,9 +302,9 @@ sequenceDiagram
     end
     P->>G: Scoring Agent: Consolidate scores, generate SWOT & final summary
     G-->>P: Consolidated evaluation JSON
+    P->>P: Store evaluation report, mark proposal evaluated
     P-->>B: Full evaluation response
-    B->>B: Store proposal & map details
-    B-->>F: { status: 'success', data: evaluation }
+    B-->>F: { success: true, overallScore, recommendation }
     F-->>U: Render 7 scores, SWOT, debate adjustments, and accordion evidence
 ```
 

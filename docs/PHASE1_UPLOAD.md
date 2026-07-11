@@ -121,7 +121,7 @@ The backend selects storage via `STORAGE_PROVIDER`. Docker Compose sets it to
 
 | Var | Value (compose) | Notes |
 |-----|-----------------|-------|
-| `STORAGE_PROVIDER` | `minio` | switch to `local`/`s3`/`cloudinary` to change backend |
+| `STORAGE_PROVIDER` | `minio` | switch to `local` for disk storage |
 | `MINIO_ENDPOINT` | `http://minio:9000` | S3 API endpoint used **inside** the network |
 | `MINIO_PUBLIC_ENDPOINT` | `http://localhost:9000` | used to build browser-openable URLs |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `minioadmin` / `minioadmin` | MinIO root creds |

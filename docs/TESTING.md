@@ -2,11 +2,11 @@
 
 ## Overview
 
-| Service | Framework | Tests | Coverage |
-|---|---|---|---|
-| Python AI Service | pytest + pytest-cov | 281 | 88.35% |
-| Node.js Backend | Vitest | 49 | — |
-| **Total** | | **330** | |
+| Service | Framework | Tests |
+|---|---|---|
+| Python AI Service | pytest + pytest-cov | 359 |
+| Node.js Backend | Vitest | 39 |
+| **Total** | | **398** |
 
 ---
 
@@ -33,26 +33,29 @@ pytest tests/ -k "test_debate"
 
 ### Test Files
 
-| File | Module Under Test | Tests | Coverage |
-|---|---|---|---|
-| `test_text_cleaning.py` | `utils/text_cleaning.py` | 50 | 99% |
-| `test_schemas.py` | `models/schemas.py` + `enums.py` | 25 | 100% |
-| `test_config.py` | `config.py` | 5 | 100% |
-| `test_llm_client.py` | `services/llm/llm_client.py` | 15 | 89% |
-| `test_chunker.py` | `services/processing/chunker.py` | 22 | 96% |
-| `test_base_agent.py` | `agents/base_agent.py` | 12 | 100% |
-| `test_orchestrator.py` | `agents/orchestrator.py` | 6 | 88% |
-| `test_summarizer.py` | `services/processing/summarizer.py` | 6 | 100% |
-| `test_api_routes.py` | `api/routes.py` | 10 | 82% |
-| `test_text_extractor.py` | `services/extraction/text_extractor.py` | 15 | 95% |
-| `test_ocr_engine.py` | `services/ocr/ocr_engine.py` | 17 | 87% |
-| `test_extractors.py` | `extraction/image_extractor.py` + `table_extractor.py` | 12 | — |
-| `test_image_extractor.py` | `extraction/image_extractor.py` | 4 | 87% |
-| `test_table_extractor.py` | `extraction/table_extractor.py` | 5 | 89% |
-| `test_http_client.py` | `utils/http_client.py` | 3 | 100% |
-| `test_document_processor.py` | `processing/document_processor.py` | 6 | 91% |
-| `test_format_support.py` | All format routing (PPT/PPTX/images) | 16 | — |
-| `test_new_components.py` | All 7 Parameter Agents, Debate Agent, and form extraction | 64 | 92% |
+| File | Module Under Test | Tests |
+|---|---|---|
+| `test_text_cleaning.py` | `utils/text_cleaning.py` | 52 |
+| `test_chunker.py` | `services/processing/chunker.py` | 38 |
+| `test_api_routes.py` | `api/routes.py` | 32 |
+| `test_schemas.py` | `models/schemas.py` + `enums.py` | 25 |
+| `test_text_extractor.py` | `services/extraction/text_extractor.py` | 24 |
+| `test_storage.py` | `services/storage` | 22 |
+| `test_ocr_engine.py` | `services/ocr/ocr_engine.py` | 19 |
+| `test_base_agent.py` | `agents/base_agent.py` | 19 |
+| `test_llm_client.py` | `services/llm/llm_client.py` | 17 |
+| `test_database.py` | `db` layer | 17 |
+| `test_format_support.py` | All format routing (PPT/PPTX/images) | 16 |
+| `test_extractors.py` | `extraction/image_extractor.py` + `table_extractor.py` | 14 |
+| `test_new_components.py` | 7 parameter agents, debate agent, form extraction | 12 |
+| `test_chunk_router.py` | `agents/chunk_router` | 12 |
+| `test_orchestrator.py` | `agents/orchestrator.py` | 8 |
+| `test_summarizer.py` | `services/processing/summarizer.py` | 7 |
+| `test_document_processor.py` | `processing/document_processor.py` | 6 |
+| `test_table_extractor.py` | `extraction/table_extractor.py` | 5 |
+| `test_config.py` | `config.py` | 5 |
+| `test_batch_processor.py` | batch processing | 5 |
+| `test_image_extractor.py` | `extraction/image_extractor.py` | 4 |
 
 ### Test Design
 
@@ -89,16 +92,16 @@ npx vitest run tests/auth.test.ts
 | File | Module Under Test | Tests |
 |---|---|---|
 | `auth.test.ts` | `middleware/auth.ts` | 8 |
-| `pythonProxy.test.ts` | `utils/pythonProxy.ts` | 11 |
+| `pythonProxy.test.ts` | `utils/pythonProxy.ts` | 10 |
 | `localStore.test.ts` | `config/localStore.ts` | 20 |
-| `formatSupport.test.ts` | `middleware/upload.ts` + `utils/textExtractor.ts` | 10 |
+| `formatSupport.test.ts` | `middleware/upload.ts` | 1 |
 
 ### Key Scenarios
 
 - **Auth middleware**: Valid/invalid/expired JWT, missing Bearer prefix, optional auth passthrough
-- **Python proxy**: Response mapping, health checks, timeout handling, error propagation
+- **Python proxy**: Health checks, timeout handling, error propagation
 - **Local store**: Full CRUD, `where` queries (==, !=, >, <, >=, <=, in, array-contains), `orderBy`, `limit`, `offset`, `count`, batch ops
-- **Format support**: PPT/PPTX/image MIME types accepted by multer, descriptive errors for Python-only formats in Node.js fallback
+- **Format support**: Upload middleware (multer) loads with the expected format allowlist
 
 ---
 

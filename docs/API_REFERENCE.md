@@ -9,7 +9,7 @@ Base URL: `http://localhost:8000/api/v1`
 | `GET` | `/health` | Service health check (LLM, Tesseract status) |
 | `GET` | `/supported-formats` | List supported file formats and max size |
 | `POST` | `/process-document` | Upload & process a document (extraction + chunking) |
-| `POST` | `/evaluate` | Full evaluation pipeline (process + 9 agents) |
+| `POST` | `/evaluate` | Full evaluation pipeline (process + multi-agent evaluation) |
 | `POST` | `/evaluate-chunks` | Evaluate pre-processed chunks (no file upload) |
 
 ### POST /evaluate
@@ -120,31 +120,44 @@ Base URL: `http://localhost:3001/api`
 | `POST` | `/auth/login` | Login and receive JWT token |
 | `GET` | `/auth/profile` | Get current user profile (requires auth) |
 
-### Proposals
+### Uploads & Evaluation (primary flow)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/proposals/evaluate-file` | Upload file → AI evaluation (primary endpoint) |
-| `POST` | `/proposals/upload` | Upload proposal for storage |
-| `GET` | `/proposals` | List all proposals (paginated) |
+| `POST` | `/uploads` | Upload one or many files to object storage (multipart, field `files`) |
+| `GET` | `/uploads` | List everything currently in storage |
+| `POST` | `/uploads/process` | Send stored files for extraction + agri categorization (`{ files: [{ key, name }] }`) |
+| `GET` | `/uploads/processed` | List categorized proposals (`?category`, `?status`, `?page`, `?limit`) |
+| `GET` | `/uploads/processed/:id` | Full record for one processed proposal |
+| `POST` | `/uploads/processed/:id/evaluate` | Run the full multi-agent evaluation (`?force=true` re-runs) |
+| `DELETE` | `/uploads/processed/:id` | Delete a proposal (DB row + stored files) |
+| `GET` | `/uploads/categories` | Distinct agri categories with counts |
+
+### Reports
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/reports` | List stored evaluation reports (`?page`, `?limit`, `?status`) |
+| `POST` | `/reports/compare` | Parameter-level comparison of 2–5 reports (`{ reportIds: [] }`) |
+
+### Proposals (legacy records)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/proposals` | List proposals (paginated) |
 | `GET` | `/proposals/:id` | Get proposal details |
-| `DELETE` | `/proposals/:id` | Delete a proposal |
 | `POST` | `/proposals/:id/claim` | Claim a proposal (requires auth) |
 | `PATCH` | `/proposals/:id/reject` | Reject a proposal |
+| `DELETE` | `/proposals/:id` | Delete a proposal |
 
-### AI (Legacy)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/ai/evaluate` | Run AI evaluation (Node.js pipeline) |
-| `POST` | `/ai/compare` | Compare two proposals |
-| `GET` | `/ai/dashboard` | Dashboard statistics |
-
-### Comparisons
+### Settings
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/comparisons` | List all comparisons |
+| `GET` | `/settings/schema` | Field registry driving the Settings UI (requires auth) |
+| `GET` | `/settings` | Current effective settings (requires auth) |
+| `PUT` | `/settings` | Update settings (admin) |
+| `POST` | `/settings/reset` | Reset overrides to defaults (admin) |
 
 ---
 
@@ -178,5 +191,6 @@ Each parameter is calculated as the average score of its sub-questions (on a 1 t
 | Proposals | `/proposals` | List with search & pagination |
 | Proposal Detail | `/proposals/:id` | Scores, charts, SWOT, agent results |
 | Compare | `/compare` | Side-by-side with radar & bar charts |
-| Analytics | `/analytics` | Trends, distribution, categories |
 | Settings | `/settings` | Profile, notifications, API config |
+| About | `/about` | Platform & pipeline documentation |
+| About Us | `/about-us` | Team and initiative background |

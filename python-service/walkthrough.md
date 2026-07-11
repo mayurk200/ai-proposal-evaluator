@@ -77,8 +77,7 @@ python-service/
 │   │   └── document_processor.py  # Full pipeline orchestrator
 │   └── utils/
 │       ├── text_cleaning.py    # Unicode, OCR artifacts, section detection
-│       ├── logging.py          # Structured logging (structlog)
-│       └── http_client.py      # Internal HTTP client
+│       └── logging.py          # Structured logging (structlog)
 ├── .env                        # Configuration (Groq key)
 ├── .env.example
 ├── Dockerfile
@@ -95,7 +94,7 @@ python-service/
 | `/api/v1/health` | GET | Health check (LLM, OCR status) |
 | `/api/v1/supported-formats` | GET | List supported file formats |
 | `/api/v1/process-document` | POST | Extract text, images, tables, chunk |
-| `/api/v1/evaluate` | POST | Full pipeline: process + 9-agent evaluation |
+| `/api/v1/evaluate` | POST | Full pipeline: process + multi-agent evaluation |
 | `/api/v1/evaluate-chunks` | POST | Evaluate pre-processed chunks |
 | `/docs` | GET | Interactive Swagger documentation |
 
@@ -110,7 +109,7 @@ python-service/
 - **Metadata-rich chunks** — each chunk tagged with financial/technical flags, page numbers, section titles
 
 ### AI Evaluation
-- **9 sequential agents** (not parallel) to respect Groq rate limits
+- **Sequential agents** (extraction → 7 parameter agents → debate → scoring, not parallel) to respect Groq rate limits
 - **Extraction → Analysis → Scoring** pipeline where extraction results feed into all subsequent agents
 - **Cross-agent reasoning** in the final scoring agent detects contradictions between agents
 - **Weighted scoring**: Innovation 15%, Market 15%, Technical 15%, Financial 15%, Feasibility 15%, Risk 10%, Sustainability 5%, Compliance 5%, Agriculture 5%

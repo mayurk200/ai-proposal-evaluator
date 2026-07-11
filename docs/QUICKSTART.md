@@ -12,7 +12,7 @@ This guide walks you through starting all 3 services and evaluating your first p
 | **Python** | ≥ 3.10 | `python3 --version` |
 | **Tesseract OCR** | ≥ 4.0 | `tesseract --version` |
 | **Groq API Key** | — | [Get one here](https://console.groq.com/keys) |
-| **Firebase Service Account** | — | Place `firebase-service-account.json` in `backend/` |
+| **Docker** (optional) | — | For PostgreSQL + MinIO; without it the backend falls back to local JSON + disk storage |
 
 ### Install System Dependencies (OCR)
 
@@ -87,15 +87,12 @@ npm install
 cp .env.example .env
 ```
 
-Edit `backend/.env` — set your Groq key and Python service URL:
+Edit `backend/.env` — set your JWT secret and Python service URL:
 
 ```env
-GROQ_API_KEY="gsk_your_groq_api_key_here"
+JWT_SECRET=your-secret-key-min-10-chars
 PYTHON_SERVICE_URL=http://localhost:8000
-FIREBASE_PROJECT_ID=project1-b1218
 ```
-
-> **Note:** Ensure `firebase-service-account.json` exists in `backend/`.
 
 Start the backend:
 
@@ -207,7 +204,7 @@ curl -X POST http://localhost:8000/api/v1/process-document \
   -F "file=@AI_Proposal_Scrutiny_Use_Case_Document.docx" \
   -F "generate_summary=false"
 
-# Full evaluation (extraction + chunking + 9 agents)
+# Full evaluation (extraction + chunking + multi-agent pipeline)
 curl -X POST http://localhost:8000/api/v1/evaluate \
   -F "file=@your_proposal.pdf"
 ```
@@ -225,11 +222,11 @@ curl -X POST http://localhost:8000/api/v1/evaluate \
 ### Frontend shows blank page or CORS errors
 → Ensure all 3 services are running. The frontend proxies `/api` → `localhost:3001`.
 
-### Backend says "Python service unavailable, using Node.js fallback"
-→ Python service on port 8000 isn't running. Start it first. The backend will still work using its legacy pipeline, but without OCR, chunking, or the expanded 9-agent evaluation.
+### Backend returns 503 "Processing service is unavailable"
+→ Python service on port 8000 isn't running. Start it first — there is no Node.js fallback; processing and evaluation require the Python service.
 
 ### Evaluation takes too long
-→ Groq free tier has rate limits. The 9 agents run sequentially with delays. For large documents, expect 60–120 seconds.
+→ Groq free tier has rate limits. The agents run sequentially with delays. For large documents, expect 60–120 seconds.
 
 ### "Could not extract sufficient text from the file"
 → The document has very little readable text. Try a different file, or ensure OCR is working for scanned PDFs.
