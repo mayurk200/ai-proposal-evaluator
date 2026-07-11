@@ -3,10 +3,13 @@ import { motion } from 'framer-motion';
 import {
   Leaf, Workflow, Fingerprint, Gauge, Trophy, Layers, FileType, Bot, Database,
   Plug, Cpu, Trash2, ShieldCheck, Info, FolderTree, Search, ListTree, ArrowUp,
+  History, ChevronDown,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Badge } from '@/components/ui';
 import { cn } from '@/utils';
+import { APP_VERSION } from '@/version';
+import { CHANGELOG } from '@/changelog';
 
 /* ------------------------------------------------------------------ */
 /* Static content — every fact below is sourced from the codebase.     */
@@ -116,14 +119,15 @@ const formats = [
 
 const agents = [
   { name: 'Extraction', role: 'Structured data: team, funding, timeline, market' },
-  { name: 'Technical', role: 'Architecture, tech stack, scalability' },
-  { name: 'Financial', role: 'Revenue model, unit economics, ROI' },
-  { name: 'Risk', role: '9-dimensional risk assessment' },
-  { name: 'Innovation', role: 'Novelty, IP potential, disruption score' },
-  { name: 'Feasibility', role: 'Team capability, timeline realism, market fit' },
-  { name: 'Compliance', role: 'Governance, data privacy, regulatory readiness' },
-  { name: 'Sustainability', role: 'Environmental, social, economic sustainability' },
-  { name: 'Final Scoring', role: 'Cross-agent synthesis, weighted score, SWOT' },
+  { name: 'Problem Relevance', role: 'Farming challenges, direct farmer pain points' },
+  { name: 'Solution Readiness', role: 'Technology Readiness Level (TRL 5–9), innovativeness' },
+  { name: 'Pilot Design', role: 'Schedule, milestones, testing scope viability' },
+  { name: 'Farmer Adoption', role: 'Incentives, usability, youth/gender parity' },
+  { name: 'Scale-up Potential', role: 'Revenue streams, market scale strategy' },
+  { name: 'Team Capacity', role: 'Technical, agronomic and business experience' },
+  { name: 'Compliance', role: 'Regulations, environmental certifications, standards' },
+  { name: 'Debate', role: 'Resolves high-severity scoring conflicts between agents' },
+  { name: 'Scoring', role: 'Final score synthesis, recommendation, SWOT' },
 ];
 
 const backendEndpoints = [
@@ -255,8 +259,9 @@ const sections: Section[] = [
           of a printed page) and the system extracts the text — running OCR when the document
           is scanned — then uses an LLM (Groq, LLaMA 3.3 70B) to categorize it into
           agriculture domains, summarize it, and give it a quick 0–100 triage score. A deeper
-          9-agent evaluation pipeline can score a proposal across innovation, financials,
-          risk, sustainability and more, and produce a SWOT analysis.
+          multi-agent evaluation pipeline scores a proposal against the 7 AIAIC parameters
+          (Problem Relevance, Solution Readiness, Pilot Design, Farmer Adoption, Scale-up
+          Potential, Team Capacity, Compliance) and produces a SWOT analysis.
         </p>
         <div className="flex flex-wrap gap-2 mt-4">
           <Badge variant="success">Max file size: 50 MB</Badge>
@@ -304,7 +309,7 @@ const sections: Section[] = [
           <p className="text-xs text-text-muted mt-2">
             8-4-4-4-12 hexadecimal characters, random — collisions are practically impossible.
             The UI shows only the first 8 characters (e.g. <code className="font-mono">3f2b8c1d</code>)
-            as a minimal ID; a copy button next to it copies the full UUID.
+            as a minimal ID; clicking the ID copies the full UUID.
           </p>
         </div>
       </>
@@ -501,13 +506,13 @@ const sections: Section[] = [
   },
   {
     id: 'agents',
-    label: 'The 9 AI agents',
+    label: 'The AI agents',
     icon: Bot,
     render: () => (
       <>
         <SectionHeader
           icon={Bot}
-          title="The 9 AI agents (full evaluation)"
+          title="The AI agents (full evaluation)"
           subtitle="Run when a full evaluation is explicitly requested — separate from the triage score."
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -652,6 +657,46 @@ Python AI service (8000) ── extraction • OCR • LLM agents
       ▼
 PostgreSQL ── proposal records, scores, categorization output`}
           </pre>
+        </div>
+      </>
+    ),
+  },
+  {
+    id: 'versions',
+    label: 'Version history',
+    icon: History,
+    render: () => (
+      <>
+        <SectionHeader
+          icon={History}
+          title="Version history"
+          subtitle={`What changed in each release. You are on v${APP_VERSION}.`}
+        />
+        <div className="space-y-4">
+          {CHANGELOG.map((v, i) => (
+            <div key={v.version} className="rounded-lg border border-border p-4">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <code className="text-sm font-mono font-semibold text-primary">v{v.version}</code>
+                {i === 0 && <Badge variant="success">Latest</Badge>}
+                <span className="text-xs text-text-muted">{v.date}</span>
+              </div>
+              <p className="text-sm text-text-secondary leading-relaxed">{v.summary}</p>
+              <details className="group mt-3">
+                <summary className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-primary hover:underline list-none [&::-webkit-details-marker]:hidden">
+                  <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+                  All details
+                </summary>
+                <ul className="mt-3 space-y-2 pl-1">
+                  {v.details.map((d) => (
+                    <li key={d} className="flex gap-2 text-sm text-text-secondary leading-relaxed">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0 mt-[7px]" />
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          ))}
         </div>
       </>
     ),

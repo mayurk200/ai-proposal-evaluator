@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Layers, Copy, Check, Brain, type LucideIcon } from 'lucide-react';
+import { FileText, Search, Plus, Loader2, ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, Tag, AlertTriangle, RefreshCw, Info, X, ExternalLink, CheckCircle2, Trash2, Trophy, List, Layers, Check, Brain, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, Button, Input, Select, Skeleton, Badge, ScoreBadge, Progress } from '@/components/ui';
@@ -110,8 +110,8 @@ function formatBytes(bytes?: number): string {
 }
 
 /**
- * Minimal proposal ID: shows the first 8 characters of the UUID (enough to
- * tell proposals apart) with a button that copies the full ID for API use.
+ * Minimal proposal ID: the first 8 characters of the UUID. Clicking the ID
+ * copies the full UUID to the clipboard (hover shows the full ID).
  */
 function ShortId({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
@@ -127,16 +127,14 @@ function ShortId({ id }: { id: string }) {
   };
 
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="font-mono" title={id}>{id.slice(0, 8)}</span>
-      <button
-        onClick={copyFull}
-        title={copied ? 'Copied!' : 'Copy full ID'}
-        className="text-text-muted hover:text-primary transition-colors"
-      >
-        {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-      </button>
-    </span>
+    <button
+      onClick={copyFull}
+      title={copied ? 'Copied!' : `Click to copy full ID\n${id}`}
+      className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+    >
+      {id.slice(0, 8)}
+      {copied && <Check className="w-3.5 h-3.5 text-success" />}
+    </button>
   );
 }
 
@@ -555,7 +553,7 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = (p.status || '').toLowerCase();
   const detail = p.categorization || null;
-  const title = detail?.title || p.filename || 'Untitled proposal';
+  const name = detail?.title || p.filename || 'Untitled proposal';
   const summary = detail?.summary;
   const categories = p.categories?.length ? p.categories : detail?.categories || [];
   const hasDetail = Boolean(detail);
@@ -572,10 +570,13 @@ function ProposalRow({ p, index, activeCategory, onCategoryClick, onDelete, dele
               <FileText className="w-5 h-5 text-primary" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-text truncate" title={title}>{title}</p>
+              <div className="flex items-center gap-2 text-sm font-semibold min-w-0">
+                <ShortId id={p.id} />
+                <span className="text-text truncate" title={name}>{name}</span>
+              </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
                 {p.created_at && <span>{formatDate(p.created_at)}</span>}
-                {p.filename && <span className="truncate">{p.filename}</span>}
+                {p.filename && p.filename !== name && <span className="truncate">{p.filename}</span>}
               </div>
               {summary && <p className="text-xs text-text-muted mt-2 line-clamp-2">{summary}</p>}
               {(categories.length > 0 || detail?.stage || needsReview || notAgriRelevant) && (
@@ -1055,7 +1056,7 @@ function RankingBoard({ search, activeCategory, onCategoryClick }: {
             {ranked.map((p, i) => {
               const position = i + 1;
               const detail = p.categorization || null;
-              const title = detail?.title || p.filename || 'Untitled proposal';
+              const name = detail?.title || p.filename || 'Untitled proposal';
               const categories = categoriesOf(p);
               return (
                 <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
@@ -1073,9 +1074,12 @@ function RankingBoard({ search, activeCategory, onCategoryClick }: {
                         <span className="text-[10px] text-text-muted mt-1">of {ranked.length}</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-text truncate" title={title}>{title}</p>
+                        <div className="flex items-center gap-2 text-sm font-semibold min-w-0">
+                          <ShortId id={p.id} />
+                          <span className="text-text truncate" title={name}>{name}</span>
+                        </div>
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
-                          {p.filename && <span className="truncate">{p.filename}</span>}
+                          {p.filename && p.filename !== name && <span className="truncate">{p.filename}</span>}
                           {p.created_at && <span className="flex-shrink-0">{formatDate(p.created_at)}</span>}
                         </div>
                         {categories.length > 0 && (
