@@ -1,34 +1,57 @@
 """
-Agents package — Multi-agent AIAIC evaluation pipeline.
+Agents — the AIAIC evaluation pipeline.
 
-Each agent lives in its own sub-package for modularity.
-Import agents from here for a clean public API.
+  metadata_agent  runs once at ingestion, on the fast model, to derive the idea's
+                  identity (company, category, problem, solution).
+  parameters      the seven AIAIC parameter agents. Section-routed; every score must
+                  carry a verbatim citation or be declared unevidenced.
+  debate_agent    runs only when the parameter assessments contradict each other.
+  scoring_agent   blind synthesis — sees scores and citations, never the company name
+                  or the raw document.
+  orchestrator    routes sections, runs the seven in parallel, then debate, then
+                  synthesis.
+
+The old ExtractionAgent is gone: it spent a full LLM call per evaluation pulling out
+structured fields that the metadata agent now derives once, at ingestion, on the cheap
+model, and persists.
 """
 
 from app.agents.base_agent import BaseAgent
-from app.agents.extraction import ExtractionAgent
-from app.agents.problem_relevance import ProblemRelevanceAgent
-from app.agents.solution_readiness import SolutionReadinessAgent
-from app.agents.pilot_design import PilotDesignAgent
-from app.agents.farmer_adoption import FarmerAdoptionAgent
-from app.agents.scaleup import ScaleUpAgent
-from app.agents.team_capacity import TeamCapacityAgent
-from app.agents.compliance import ComplianceAgent
-from app.agents.debate import DebateAgent
-from app.agents.scoring import ScoringAgent
-from app.agents.orchestrator import AgentOrchestrator
+from app.agents.debate_agent import DebateAgent, debate_agent
+from app.agents.metadata.metadata_agent import MetadataAgent, metadata_agent
+from app.agents.orchestrator import AgentOrchestrator, orchestrator
+from app.agents.parameters import (
+    PARAMETER_AGENTS,
+    PARAMETER_LABELS,
+    WEIGHTS,
+    ComplianceAgent,
+    FarmerAdoptionAgent,
+    PilotDesignAgent,
+    ProblemRelevanceAgent,
+    ScaleUpAgent,
+    SolutionReadinessAgent,
+    TeamCapacityAgent,
+)
+from app.agents.scoring_agent import ScoringAgent, scoring_agent
 
 __all__ = [
+    "PARAMETER_AGENTS",
+    "PARAMETER_LABELS",
+    "WEIGHTS",
+    "AgentOrchestrator",
     "BaseAgent",
-    "ExtractionAgent",
-    "ProblemRelevanceAgent",
-    "SolutionReadinessAgent",
-    "PilotDesignAgent",
-    "FarmerAdoptionAgent",
-    "ScaleUpAgent",
-    "TeamCapacityAgent",
     "ComplianceAgent",
     "DebateAgent",
+    "FarmerAdoptionAgent",
+    "MetadataAgent",
+    "PilotDesignAgent",
+    "ProblemRelevanceAgent",
+    "ScaleUpAgent",
     "ScoringAgent",
-    "AgentOrchestrator",
+    "SolutionReadinessAgent",
+    "TeamCapacityAgent",
+    "debate_agent",
+    "metadata_agent",
+    "orchestrator",
+    "scoring_agent",
 ]

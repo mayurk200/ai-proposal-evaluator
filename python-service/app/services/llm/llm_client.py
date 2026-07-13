@@ -41,7 +41,9 @@ from tenacity import (
 )
 
 from app.config import settings
+from app.services.llm.rate_limiter import TokenBudgetExceeded, get_rate_limiter
 from app.utils.logging import get_logger
+from app.utils.tokens import count_tokens
 
 logger = get_logger(__name__)
 
@@ -58,6 +60,12 @@ RETRYABLE_ERRORS = (
 
 class LLMError(RuntimeError):
     """Raised when the LLM cannot produce a usable response."""
+
+
+# A request too big for the account's per-minute budget is a configuration problem,
+# not a transient one — surface it as an LLMError so agents fail cleanly with a
+# message that says what to change, instead of retrying into a wall.
+__all__ = ["LLMClient", "LLMError", "TokenBudgetExceeded", "get_llm_client", "reset_llm_client"]
 
 
 class LLMClient:
@@ -115,8 +123,19 @@ class LLMClient:
         use_temp = temperature if temperature is not None else self.temperature
         use_max_tokens = max_tokens or self.max_tokens
 
+        # Groq charges the RESERVATION — input plus the max_tokens you allow yourself —
+        # against the per-minute budget, not what the response actually costs. So the
+        # reservation is what we must budget for.
+        reserved = (
+            count_tokens(system_prompt) + count_tokens(user_content) + use_max_tokens
+        )
+        tpm = settings.LLM_TPM_FAST if fast else settings.LLM_TPM
+        limiter = get_rate_limiter(use_model, tpm)
+
+        await limiter.acquire(reserved)
+
         async with self._semaphore:
-            return await self._chat_with_retry(
+            response = await self._chat_with_retry(
                 system_prompt=system_prompt,
                 user_content=user_content,
                 model=use_model,
@@ -124,6 +143,11 @@ class LLMClient:
                 max_tokens=use_max_tokens,
                 json_mode=json_mode,
             )
+
+        # Hand back what we reserved but did not spend, so the next caller is not
+        # throttled against tokens nobody used.
+        await limiter.reconcile(reserved, response["tokens"])
+        return response
 
     @retry(
         stop=stop_after_attempt(4),

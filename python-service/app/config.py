@@ -25,9 +25,33 @@ class Settings(BaseSettings):
     LLM_MODEL_FAST: str = "llama-3.1-8b-instant"
     LLM_TEMPERATURE: float = 0.3
     LLM_MAX_TOKENS: int = 4096
-    # Cap on parameter agents in flight at once. They are independent of each
-    # other, so this is purely a rate-limit guard, not a correctness one.
+
+    # Groq's per-minute token budgets, per model. THESE ARE ACCOUNT-SPECIFIC.
+    #
+    # Read yours from the response headers:
+    #   curl -sD - -o /dev/null https://api.groq.com/openai/v1/chat/completions \
+    #     -H "Authorization: Bearer $GROQ_API_KEY" ... | grep x-ratelimit-limit-tokens
+    #
+    # Groq counts (input + max_tokens) — the reservation, not the actual usage — so a
+    # single request must fit inside the budget on its own, and concurrent requests
+    # must fit together. The rate limiter enforces both.
+    #
+    # Defaults below are Groq's FREE tier. They are small, and they are the binding
+    # constraint on how fast an evaluation can run: seven 70B agent calls at ~7k
+    # tokens each simply cannot go faster than 12k/minute allows. Raising the account
+    # tier and raising these numbers is the single highest-leverage speedup available
+    # — no code changes needed.
+    LLM_TPM: int = 12_000        # llama-3.3-70b-versatile
+    LLM_TPM_FAST: int = 6_000    # llama-3.1-8b-instant
+
+    # Cap on agent calls in flight at once. The rate limiter is what actually protects
+    # the TPM budget; this just avoids queueing a thundering herd behind it.
     LLM_MAX_CONCURRENCY: int = 3
+
+    # Per-call ceilings, sized so one request always fits inside LLM_TPM alongside its
+    # system prompt. Agent context is capped separately in BaseAgent.
+    LLM_AGENT_MAX_TOKENS: int = 2_000
+    LLM_AGENT_CONTEXT_TOKENS: int = 5_000
 
     # Document Processing
     MAX_FILE_SIZE_MB: int = 50

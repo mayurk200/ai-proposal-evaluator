@@ -77,8 +77,10 @@ SECTION_TYPES: tuple[SectionType, ...] = (
             "the need and its relevance to farmers, districts and the region."
         ),
         keywords=(
+            # "background" deliberately NOT here: "Founders Background" is a team
+            # heading, and the ambiguity routed it to the wrong agent.
             "problem", "challenge", "pain point", "need", "relevance", "context",
-            "background", "motivation", "issue",
+            "motivation", "issue",
         ),
     ),
     SectionType(
@@ -90,9 +92,14 @@ SECTION_TYPES: tuple[SectionType, ...] = (
             "intellectual property, prototypes and product maturity."
         ),
         keywords=(
+            # The bare word "model" is deliberately NOT here. It collides with
+            # "Revenue Model", "Business Model", "Financial Model" and "Operating
+            # Model" — all of which are business-model headings, not technology ones,
+            # and all of which were being routed to this agent. The specific technical
+            # terms below carry the signal without the collision.
             "solution", "technology", "technical", "innovation", "trl", "readiness",
-            "product", "platform", "architecture", "algorithm", "model", "patent",
-            "intellectual property", "prototype", "data source", "approach",
+            "product", "platform", "architecture", "algorithm", "machine learning",
+            "patent", "intellectual property", "prototype", "data source", "approach",
         ),
     ),
     SectionType(
@@ -216,10 +223,13 @@ SCOREABLE_SECTION_KEYS: tuple[str, ...] = tuple(
 # says otherwise.
 MIN_BODY_CHARS_FOR_SEMANTIC = 120
 
-# Word-boundary patterns, compiled once. Multi-word keywords keep their spaces.
-_KEYWORD_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+# Word-boundary patterns, compiled once, paired with a specificity weight equal to the
+# keyword's word count. Word boundaries matter: the old filter used naive substring
+# matching, so "ip" matched inside "DIPP", "equipment" and "recipient".
+_KEYWORD_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
     section.key: [
-        re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE) for kw in section.keywords
+        (re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE), float(len(kw.split())))
+        for kw in section.keywords
     ]
     for section in SECTION_TYPES
 }
@@ -286,10 +296,12 @@ def split_into_blocks(text: str) -> list[Block]:
 
     blocks: list[Block] = []
 
-    # Anything before the first heading is the preamble — usually the cover page
-    # and abstract, which is real content and must not be dropped.
+    # Anything before the first heading is the preamble — the cover page and abstract.
+    # Kept even when it is short: a cover page is often just the company name and the
+    # project title, which is precisely what the metadata agent needs, and the old
+    # MIN_BLOCK_CHARS floor silently discarded it.
     preamble = text[: matches[0].start()].strip()
-    if len(preamble) >= MIN_BLOCK_CHARS:
+    if len(preamble) >= 10:
         blocks.append(
             Block(heading="", text=preamble, start=0, end=matches[0].start())
         )
@@ -307,11 +319,22 @@ def split_into_blocks(text: str) -> list[Block]:
     return blocks
 
 
-def _keyword_score(text: str, section_key: str) -> int:
-    """Count distinct keyword hits for a section within `text`."""
-    return sum(
-        1 for pattern in _KEYWORD_PATTERNS[section_key] if pattern.search(text)
-    )
+def _keyword_score(text: str, section_key: str) -> float:
+    """
+    Score a section's keywords against `text`, weighted by how specific each keyword is.
+
+    A multi-word keyword is far more discriminating than a single generic word:
+    "business model" says almost exactly one thing, whereas "model" appears in
+    revenue models, financial models, ML models and operating models. Weighting by
+    word count means a specific phrase outvotes a generic collision, so a heading like
+    "Revenue Model" cannot be dragged into the technology section by the bare word
+    "model" — a bug this weighting (and the keyword-list cleanup beside it) fixes.
+    """
+    total = 0.0
+    for pattern, weight in _KEYWORD_PATTERNS[section_key]:
+        if pattern.search(text):
+            total += weight
+    return total
 
 
 def classify_by_keywords(block: Block) -> tuple[str, float]:

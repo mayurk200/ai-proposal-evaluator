@@ -82,10 +82,16 @@ class MetadataAgent:
     name = "MetadataAgent"
 
     # The identity of an idea lives in its opening pages and its problem/solution
-    # sections. Sending the whole document (including the budget tables and the
-    # compliance annexure) would cost several times the tokens to produce the same
-    # six fields.
-    MAX_INPUT_TOKENS = 6000
+    # sections. Sending the whole document (budget tables, compliance annexure and
+    # all) would cost several times the tokens to produce the same six fields.
+    #
+    # The hard ceiling is the fast model's per-minute budget, which Groq charges as
+    # (input + max_tokens). On the free tier that is 6,000, so:
+    #     system prompt (~800) + input (3,000) + max_tokens (1,200) = ~5,000
+    # leaves headroom. An earlier 6,000-token input produced a 7,273-token request
+    # and a hard 413 that no retry could ever clear.
+    MAX_INPUT_TOKENS = 3000
+    MAX_OUTPUT_TOKENS = 1200
 
     async def extract(
         self,
@@ -113,7 +119,7 @@ class MetadataAgent:
                 # Near-deterministic: this is extraction, not judgment. A creative
                 # temperature here invents company names.
                 temperature=0.1,
-                max_tokens=1500,
+                max_tokens=self.MAX_OUTPUT_TOKENS,
                 fast=True,
             )
 

@@ -33,6 +33,10 @@ from app.models.schemas import HealthResponse, SupportedFormatsResponse
 from app.services.database.proposal_repository import get_proposal_repository
 from app.services.database.registry_repository import get_registry_repository
 from app.services.database.repository import get_repository
+from app.services.processing.evaluation_service import (
+    EvaluationError,
+    get_evaluation_service,
+)
 from app.services.processing.ingestion_service import get_ingestion_service
 from app.services.storage.storage_backend import get_storage_backend
 from app.utils.logging import get_logger
@@ -466,6 +470,76 @@ async def retry_queue(
     for proposal in result["proposals"]:
         proposal["can_retry"] = proposal["retry_count"] < settings.MAX_EVALUATION_RETRIES
     return result
+
+
+# =============================================================================
+# Evaluation
+# =============================================================================
+
+
+class EvaluateRequest(BaseModel):
+    # Re-run an evaluation that already completed. Costs a full pipeline, so it is
+    # opt-in rather than the default.
+    force: bool = False
+
+
+@router.post("/proposals/{proposal_id}/evaluate")
+async def evaluate_proposal(
+    proposal_id: str,
+    request: EvaluateRequest | None = None,
+    actor: Actor = Depends(get_actor),
+):
+    """
+    Run the agent pipeline over a stored proposal.
+
+    Works on any proposal that has been ingested and cleared the duplicate gate —
+    including one ingested months ago and never evaluated. The document is not
+    re-read: sections were persisted at ingestion, so this costs the agent calls
+    and nothing else. That is what makes "let the admin evaluate a stored idea from
+    the database, without re-uploading it" practical.
+
+    Idempotent: a proposal that already has a completed evaluation returns it,
+    unless `force`.
+    """
+    try:
+        result = await get_evaluation_service().evaluate(
+            proposal_id,
+            triggered_by=actor.user_id,
+            force=bool(request and request.force),
+        )
+    except EvaluationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return result
+
+
+@router.post("/proposals/{proposal_id}/evaluate/retry")
+async def retry_evaluation(proposal_id: str, actor: Actor = Depends(get_actor)):
+    """Retry an evaluation that failed. Budget-limited (see MAX_EVALUATION_RETRIES)."""
+    try:
+        return await get_evaluation_service().retry(
+            proposal_id, triggered_by=actor.user_id
+        )
+    except EvaluationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/evaluations/{evaluation_id}")
+async def get_evaluation(evaluation_id: str):
+    """One evaluation report, including every agent's cited evidence."""
+    record = await get_repository().get(evaluation_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    return record
+
+
+@router.get("/evaluations")
+async def list_evaluations(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    status: Optional[str] = Query(default=None),
+):
+    return await get_repository().list_evaluations(page=page, limit=limit, status=status)
 
 
 # =============================================================================
