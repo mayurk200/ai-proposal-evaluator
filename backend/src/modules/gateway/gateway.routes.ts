@@ -123,9 +123,13 @@ router.get(
  * DESK2 may upload, process, retry and read everything, but may not decide.
  */
 const ADMIN_ONLY: Array<{ method: string; pattern: RegExp }> = [
+  // Resolve the duplicate gate: evaluate this idea, or skip it as a duplicate.
   { method: 'POST', pattern: /^\/proposals\/[^/]+\/review$/ },
+  // Approve / reject an idea — writes to the append-only approval ledger.
   { method: 'POST', pattern: /^\/proposals\/[^/]+\/decision$/ },
+  // Mark an idea selected for funding.
   { method: 'POST', pattern: /^\/proposals\/[^/]+\/funding$/ },
+  // Destroys a proposal and every artifact hanging off it.
   { method: 'DELETE', pattern: /^\/proposals\/[^/]+$/ },
 ];
 

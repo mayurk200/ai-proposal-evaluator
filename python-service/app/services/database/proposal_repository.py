@@ -196,6 +196,7 @@ class ProposalRepository:
         is_evaluated: Optional[bool] = None,
         category_id: Optional[str] = None,
         company_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
         search: Optional[str] = None,
     ) -> dict:
         """Paginated, filtered listing. Never returns full extracted text."""
@@ -210,6 +211,8 @@ class ProposalRepository:
             filters.append(Proposal.category_id == category_id)
         if company_id:
             filters.append(Proposal.company_id == company_id)
+        if batch_id:
+            filters.append(Proposal.batch_id == batch_id)
         if search:
             pattern = f"%{search.lower()}%"
             filters.append(

@@ -43,12 +43,33 @@ function actorHeaders(actor?: ProxyActor): Record<string, string> {
   return headers;
 }
 
-async function readError(response: Response): Promise<string> {
+/**
+ * Pull a message — and any structured payload — out of a FastAPI error body.
+ *
+ * FastAPI puts everything under `detail`. That is usually a string, but for a 409
+ * approval conflict it is an object carrying the list of conflicting approvals, and the
+ * UI needs that list to show the evaluator what they are about to override. Stringifying
+ * it would leave them with an unhelpful `[object Object]`.
+ */
+async function readError(
+  response: Response,
+): Promise<{ message: string; details?: unknown }> {
   try {
-    const body = await response.json();
-    return (body as any)?.detail ?? (body as any)?.message ?? JSON.stringify(body);
+    const body = (await response.json()) as any;
+    const detail = body?.detail ?? body?.message ?? body;
+
+    if (typeof detail === 'string') return { message: detail };
+
+    if (detail && typeof detail === 'object') {
+      return {
+        message: detail.message ?? response.statusText,
+        details: detail,
+      };
+    }
+
+    return { message: JSON.stringify(detail) };
   } catch {
-    return response.statusText;
+    return { message: response.statusText };
   }
 }
 
@@ -96,13 +117,14 @@ export async function callPython(path: string, options: CallOptions = {}): Promi
 
       if (response.ok) return response;
 
-      // 4xx (bad input, not found, forbidden) will fail identically on retry —
-      // surface it immediately instead of burning the caller's time.
+      // 4xx (bad input, not found, forbidden, approval conflict) will fail identically
+      // on retry — surface it immediately instead of burning the caller's time.
       if (!RETRYABLE_STATUS.has(response.status)) {
-        throw new AppError(await readError(response), response.status);
+        const { message, details } = await readError(response);
+        throw new AppError(message, response.status, details);
       }
 
-      lastError = `${response.status}: ${await readError(response)}`;
+      lastError = `${response.status}: ${(await readError(response)).message}`;
     } catch (err: any) {
       if (err instanceof AppError) throw err;
       lastError =

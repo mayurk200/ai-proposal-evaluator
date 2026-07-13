@@ -10,6 +10,8 @@ requirement (g) possible at all.
 
 from __future__ import annotations
 
+import asyncio
+import re
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -33,11 +35,18 @@ from app.models.schemas import HealthResponse, SupportedFormatsResponse
 from app.services.database.proposal_repository import get_proposal_repository
 from app.services.database.registry_repository import get_registry_repository
 from app.services.database.repository import get_repository
+from app.services.processing.batch_service import get_batch_service
+from app.services.processing.decision_service import (
+    DecisionConflict,
+    DecisionError,
+    get_decision_service,
+)
 from app.services.processing.evaluation_service import (
     EvaluationError,
     get_evaluation_service,
 )
 from app.services.processing.ingestion_service import get_ingestion_service
+from app.services.reporting.pdf_exporter import build_evaluation_pdf
 from app.services.storage.storage_backend import get_storage_backend
 from app.utils.logging import get_logger
 
@@ -540,6 +549,249 @@ async def list_evaluations(
     status: Optional[str] = Query(default=None),
 ):
     return await get_repository().list_evaluations(page=page, limit=limit, status=status)
+
+
+@router.get("/evaluations/{evaluation_id}/export")
+async def export_evaluation_pdf(evaluation_id: str):
+    """
+    Export an evaluation report as PDF (requirement g).
+
+    The PDF carries the cited evidence behind every score, not just the numbers — which
+    is what makes it something an evaluator can hand to an applicant or an auditor.
+    """
+    evaluation = await get_repository().get(evaluation_id)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+
+    proposals = get_proposal_repository()
+    proposal = await proposals.get(evaluation["proposal_id"])
+    if not proposal:
+        raise HTTPException(status_code=404, detail="The evaluated proposal no longer exists")
+
+    decision = await get_registry_repository().latest_decision(proposal["id"])
+
+    # ReportLab is synchronous and a long report is real CPU work — keep it off the
+    # event loop.
+    pdf = await asyncio.to_thread(
+        build_evaluation_pdf,
+        evaluation=evaluation,
+        proposal=proposal,
+        decision=decision,
+    )
+
+    stem = Path(proposal["filename"]).stem[:60] or "evaluation"
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)
+
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"X-Filename": f"{safe}_evaluation.pdf"},
+    )
+
+
+# =============================================================================
+# Decisions — the approval ledger
+# =============================================================================
+
+
+class DecisionRequest(BaseModel):
+    decision: str = Field(
+        description="approved | rejected | selected_for_funding | unselected"
+    )
+    notes: Optional[str] = None
+    # Approving into a category that already has an approval — or from a company that
+    # has already won — is refused unless the evaluator says, explicitly, that they
+    # mean it. The override is recorded against their name.
+    acknowledge_conflicts: bool = False
+
+
+class FundingRequest(BaseModel):
+    selected: bool = True
+    notes: Optional[str] = None
+    acknowledge_conflicts: bool = False
+
+
+@router.get("/proposals/{proposal_id}/conflicts")
+async def get_conflicts(proposal_id: str):
+    """
+    What approving this idea would collide with.
+
+    Read-only, so the UI can warn the evaluator BEFORE they click rather than rejecting
+    them afterwards: which other idea already holds this category, and what else this
+    company has already been approved for.
+    """
+    try:
+        return {"conflicts": await get_decision_service().check_conflicts(proposal_id)}
+    except DecisionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/proposals/{proposal_id}/decision")
+async def record_decision(
+    proposal_id: str,
+    request: DecisionRequest,
+    actor: Actor = Depends(get_actor),
+):
+    """Approve or reject an idea. ADMIN only — enforced at the gateway."""
+    try:
+        return await get_decision_service().decide(
+            proposal_id,
+            decision=request.decision,
+            decided_by=actor.user_id,
+            notes=request.notes,
+            acknowledge_conflicts=request.acknowledge_conflicts,
+        )
+    except DecisionConflict as exc:
+        # 409, with the detail needed to show the evaluator exactly what they are about
+        # to do — not a bare "are you sure?".
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "conflicts": exc.conflicts},
+        )
+    except DecisionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/proposals/{proposal_id}/funding")
+async def mark_funding(
+    proposal_id: str,
+    request: FundingRequest,
+    actor: Actor = Depends(get_actor),
+):
+    """Mark (or unmark) an idea as selected for funding. ADMIN only."""
+    try:
+        return await get_decision_service().mark_for_funding(
+            proposal_id,
+            selected=request.selected,
+            decided_by=actor.user_id,
+            notes=request.notes,
+            acknowledge_conflicts=request.acknowledge_conflicts,
+        )
+    except DecisionConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "conflicts": exc.conflicts},
+        )
+    except DecisionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# =============================================================================
+# Analytics — requirements (d), (e), (f)
+# =============================================================================
+
+
+@router.get("/analytics/categories")
+async def analytics_categories(year: Optional[int] = Query(default=None)):
+    """
+    (d) How many ideas are approved in each category.
+
+    This is the number an evaluator checks before approving another idea into a
+    category that already has one.
+    """
+    return {
+        "categories": await get_registry_repository().approvals_by_category(year=year)
+    }
+
+
+@router.get("/analytics/companies")
+async def analytics_companies(year: Optional[int] = Query(default=None)):
+    """
+    (e) How many ideas each company has had approved, and across how many categories.
+
+    `multi_category` is the flag the client asked for: one company winning in more than
+    one domain.
+    """
+    return {
+        "companies": await get_registry_repository().approvals_by_company(year=year)
+    }
+
+
+@router.get("/analytics/timeline")
+async def analytics_timeline(
+    year: Optional[int] = Query(default=None),
+    group_by: str = Query(default="category", pattern="^(category|company)$"),
+):
+    """(f) Approvals bucketed by the year and month they actually happened in."""
+    return {
+        "timeline": await get_registry_repository().approval_timeline(
+            year=year, group_by=group_by
+        )
+    }
+
+
+@router.get("/analytics/overview")
+async def analytics_overview():
+    """Everything the dashboard needs, in one round trip."""
+    registry = get_registry_repository()
+    proposals = get_proposal_repository()
+
+    # These are independent reads — issue them together rather than in series.
+    (
+        categories,
+        companies,
+        timeline,
+        pending_review,
+        failed,
+        unevaluated,
+        evaluated,
+    ) = await asyncio.gather(
+        registry.approvals_by_category(),
+        registry.approvals_by_company(),
+        registry.approval_timeline(),
+        proposals.list_proposals(review_decision="pending", limit=1),
+        proposals.list_proposals(status="failed", limit=1),
+        proposals.list_proposals(is_evaluated=False, limit=1),
+        proposals.list_proposals(is_evaluated=True, limit=1),
+    )
+
+    return {
+        "totals": {
+            "evaluated": evaluated["total"],
+            "not_evaluated": unevaluated["total"],
+            "awaiting_review": pending_review["total"],
+            "failed": failed["total"],
+            "approved": sum(c["approved_count"] for c in categories),
+            "categories": len(categories),
+            "companies": len(companies),
+        },
+        "by_category": categories,
+        "by_company": companies,
+        "timeline": timeline,
+        # The companies that have won in more than one domain — the thing requirement
+        # (e) exists to surface.
+        "multi_category_companies": [c for c in companies if c["multi_category"]],
+    }
+
+
+# =============================================================================
+# Batches
+# =============================================================================
+
+
+@router.get("/batches/{batch_id}")
+async def get_batch(batch_id: str):
+    """Where a batch has got to, and what is stuck."""
+    try:
+        return await get_batch_service().get_batch(batch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/batches/{batch_id}/evaluate")
+async def evaluate_batch(batch_id: str, actor: Actor = Depends(get_actor)):
+    """
+    Evaluate every proposal in a batch that has cleared the duplicate gate.
+
+    Proposals still awaiting an admin's ruling are skipped, not driven through — the
+    gate is a gate. Per-proposal failures do not stop the batch.
+    """
+    try:
+        return await get_batch_service().evaluate_batch(
+            batch_id, triggered_by=actor.user_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 # =============================================================================
