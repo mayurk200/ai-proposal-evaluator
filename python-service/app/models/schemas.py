@@ -84,10 +84,19 @@ class ExtractedFormFields(BaseModel):
 
 
 class ProcessedDocument(BaseModel):
-    """Complete result of document processing."""
+    """
+    Complete result of document processing.
+
+    `sections` replaces the old `chunks` list. Chunking cut the document into
+    fixed-size overlapping windows and left every agent to keyword-scan all of
+    them; sections cut it on its actual headings and label each part, so an agent
+    can be handed exactly the parts it is meant to judge. Shape:
+
+        {section_key: {label, char_count, block_count, headings[], text}}
+    """
     metadata: DocumentMetadata
     full_text: str = ""
-    chunks: list[DocumentChunk] = Field(default_factory=list)
+    sections: dict[str, dict] = Field(default_factory=dict)
     images: list[ExtractedImage] = Field(default_factory=list)
     tables: list[ExtractedTable] = Field(default_factory=list)
     summary: str = ""

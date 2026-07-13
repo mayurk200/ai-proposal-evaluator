@@ -14,7 +14,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
@@ -49,10 +50,18 @@ class ProposalRepository:
         Exact-duplicate check. Same bytes, whatever the filename, means we have
         already done this work — return the existing row instead of paying for
         extraction and a full agent pipeline a second time.
+
+        The eager loads are load-bearing, not decorative: `_to_dict` reads
+        `row.company.name` and `row.category.slug`, and under async SQLAlchemy a
+        lazy relationship touched after the query has completed raises
+        MissingGreenlet. Without these, every duplicate re-upload 500s.
         """
         async with self._sessions() as session:
             result = await session.execute(
-                select(Proposal).where(Proposal.file_hash == file_hash).limit(1)
+                select(Proposal)
+                .options(selectinload(Proposal.company), selectinload(Proposal.category))
+                .where(Proposal.file_hash == file_hash)
+                .limit(1)
             )
             row = result.scalar_one_or_none()
             return self._to_dict(row) if row else None
@@ -371,10 +380,56 @@ class ProposalRepository:
             return result.rowcount
 
     # ------------------------------------------------------------------
+    # Delete
+    # ------------------------------------------------------------------
+
+    async def delete(self, proposal_id: str) -> bool:
+        """
+        Remove a proposal and everything hanging off it.
+
+        Children go first — evaluations, decisions and similarity matches all carry
+        a foreign key to this row, and Postgres will (rightly) refuse to orphan
+        them. Similarity matches are deleted from *both* sides: this proposal may
+        be the match target of some other proposal's pending review.
+        """
+        from app.services.database.models import Decision, Evaluation
+
+        async with self._sessions() as session:
+            await session.execute(
+                sa_delete(SimilarityMatch).where(
+                    (SimilarityMatch.proposal_id == proposal_id)
+                    | (SimilarityMatch.matched_proposal_id == proposal_id)
+                )
+            )
+            await session.execute(
+                sa_delete(Decision).where(Decision.proposal_id == proposal_id)
+            )
+            await session.execute(
+                sa_delete(Evaluation).where(Evaluation.proposal_id == proposal_id)
+            )
+            result = await session.execute(
+                sa_delete(Proposal).where(Proposal.id == proposal_id)
+            )
+            await session.commit()
+
+        logger.info("proposal_deleted", proposal_id=proposal_id)
+        return result.rowcount > 0
+
+    # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------
 
     def _to_dict(self, row: Proposal, *, with_text: bool = False) -> dict:
+        # `company` and `category` are lazy relationships. If the caller's query
+        # forgot to eager-load them, touching them here would raise MissingGreenlet
+        # (async SQLAlchemy cannot lazy-load outside the greenlet context) and take
+        # down an endpoint that was otherwise fine. Read them out of the already-
+        # loaded instance state instead, so a missing eager-load degrades to a null
+        # name rather than a 500. Callers that need the names still eager-load them.
+        loaded = inspect(row).unloaded
+        company = None if "company" in loaded else row.company
+        category = None if "category" in loaded else row.category
+
         payload = {
             "id": row.id,
             "filename": row.filename,
@@ -390,10 +445,10 @@ class ProposalRepository:
             "solution_summary": row.solution_summary,
             "idea_metadata": row.idea_metadata,
             "company_id": row.company_id,
-            "company_name": row.company.name if row.company else None,
+            "company_name": company.name if company else None,
             "category_id": row.category_id,
-            "category_slug": row.category.slug if row.category else None,
-            "category_label": row.category.label if row.category else None,
+            "category_slug": category.slug if category else None,
+            "category_label": category.label if category else None,
             "secondary_categories": row.secondary_categories,
             "status": row.status,
             "is_evaluated": row.is_evaluated,

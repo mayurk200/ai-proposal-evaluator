@@ -1,34 +1,40 @@
 """
-FastAPI API routes for document processing, evaluation, storage, and report comparison.
+API routes.
+
+The surface is organised around the proposal lifecycle rather than around one-shot
+"upload a file, get a score" calls. A proposal is ingested, gets metadata, passes
+(or fails) the duplicate gate, and is then evaluated — each of those is
+addressable, retryable and observable, which is what makes the failure handling in
+requirement (g) possible at all.
 """
 
-import time
+from __future__ import annotations
+
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, Form, Query
-
-from app.config import settings
-from app.models.schemas import (
-    BatchEvaluationResponse,
-    CompareRequest,
-    CompareResponse,
-    DocumentMetadata,
-    ErrorResponse,
-    EvaluateChunksRequest,
-    EvaluationResponse,
-    HealthResponse,
-    ProcessDocumentResponse,
-    ProcessedDocument,
-    ReportListResponse,
-    SupportedFormatsResponse,
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
 )
-from app.services.processing.document_processor import process_document
-from app.services.processing.batch_processor import process_batch
-from app.services.storage.storage_backend import StorageBackend, get_storage_backend
+from pydantic import BaseModel, Field
+
+from app.api.dependencies import Actor, get_actor, verify_llm_connection
+from app.config import settings
+from app.models.schemas import HealthResponse, SupportedFormatsResponse
+from app.services.database.proposal_repository import get_proposal_repository
+from app.services.database.registry_repository import get_registry_repository
 from app.services.database.repository import get_repository
-from app.agents.orchestrator import AgentOrchestrator
-from app.api.dependencies import verify_llm_connection
+from app.services.processing.ingestion_service import get_ingestion_service
+from app.services.storage.storage_backend import get_storage_backend
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,50 +43,62 @@ router = APIRouter(prefix="/api/v1")
 
 
 # =============================================================================
-# Health & Info
+# Health & info
 # =============================================================================
 
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
-    services = {
-        "llm": "connected" if verify_llm_connection() else "disconnected",
-    }
+    """
+    Distinguishes hard dependencies from soft ones.
 
-    # Check Tesseract
+    Database or storage down means we cannot accept or record a proposal at all —
+    that is a 503, and the orchestrator should act on it. The LLM being down is
+    degraded, not dead: ingestion, listing and review still work, only evaluation
+    stops.
+    """
+    services: dict[str, str] = {}
+    healthy = True
+
+    try:
+        await get_repository().list_evaluations(page=1, limit=1)
+        services["database"] = "connected"
+    except Exception as exc:
+        services["database"] = f"disconnected: {exc}"
+        healthy = False
+
+    try:
+        get_storage_backend()
+        services["storage"] = f"{settings.STORAGE_PROVIDER} (ok)"
+    except Exception as exc:
+        services["storage"] = f"unavailable: {exc}"
+        healthy = False
+
+    services["llm"] = "connected" if verify_llm_connection() else "disconnected"
+
     try:
         import pytesseract
+
         pytesseract.get_tesseract_version()
-        services["tesseract_ocr"] = "available"
+        services["ocr"] = "available"
     except Exception:
-        services["tesseract_ocr"] = "unavailable"
+        services["ocr"] = "unavailable"
 
-    # Check database
-    try:
-        repo = get_repository()
-        await repo.list_evaluations(page=1, limit=1)
-        services["database"] = "connected"
-    except Exception:
-        services["database"] = "disconnected"
+    status = "ok" if healthy else "unhealthy"
+    if healthy and services["llm"] != "connected":
+        status = "degraded"
 
-    # Check storage
-    try:
-        storage = get_storage_backend()
-        services["storage"] = f"{settings.STORAGE_PROVIDER} (ok)"
-    except Exception:
-        services["storage"] = "unavailable"
-
-    return HealthResponse(
-        status="ok",
-        environment=settings.ENV,
-        services=services,
+    return Response(
+        content=HealthResponse(
+            status=status, environment=settings.ENV, services=services
+        ).model_dump_json(),
+        media_type="application/json",
+        status_code=200 if healthy else 503,
     )
 
 
 @router.get("/supported-formats", response_model=SupportedFormatsResponse)
-async def get_supported_formats():
-    """List supported file formats."""
+async def supported_formats():
     return SupportedFormatsResponse(
         formats=settings.supported_formats_list,
         max_file_size_mb=settings.MAX_FILE_SIZE_MB,
@@ -88,430 +106,379 @@ async def get_supported_formats():
 
 
 # =============================================================================
-# Document Processing
+# Ingestion
 # =============================================================================
 
 
-@router.post("/process-document", response_model=ProcessDocumentResponse)
-async def process_document_endpoint(
-    file: UploadFile = File(...),
-    run_ocr: bool = Form(default=True),
-    generate_summary: bool = Form(default=True),
-):
-    """
-    Upload and process a document.
-    Extracts text, images, tables, and creates strategic chunks.
+def _validate_upload(filename: str, content: bytes) -> str:
+    """Shared validation. Returns the extension."""
+    if not filename:
+        raise HTTPException(status_code=400, detail="A filename is required")
 
-    Supports: PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, JPEG, TIFF, BMP
-    """
-    # Validate file
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    ext = Path(file.filename).suffix.lower().lstrip(".")
+    ext = Path(filename).suffix.lower().lstrip(".")
     if ext not in settings.supported_formats_list:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported format: {ext}. Supported: {', '.join(settings.supported_formats_list)}",
+            detail=(
+                f"Unsupported format '{ext}' for {filename}. "
+                f"Supported: {', '.join(settings.supported_formats_list)}"
+            ),
         )
-
-    # Read file bytes
-    file_bytes = await file.read()
-
-    if len(file_bytes) > settings.max_file_size_bytes:
+    if not content:
+        raise HTTPException(status_code=400, detail=f"{filename} is empty")
+    if len(content) > settings.max_file_size_bytes:
         raise HTTPException(
             status_code=400,
-            detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB",
+            detail=f"{filename} exceeds the {settings.MAX_FILE_SIZE_MB}MB limit",
         )
-
-    if len(file_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    try:
-        result = await process_document(
-            file_bytes=file_bytes,
-            filename=file.filename,
-            file_type=file.content_type or "",
-            run_ocr=run_ocr,
-            generate_summary=generate_summary,
-        )
-
-        return ProcessDocumentResponse(
-            status="success",
-            document=result,
-        )
-    except Exception as e:
-        logger.error("document_processing_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+    return ext
 
 
-# =============================================================================
-# Single-File Evaluation (with persistence)
-# =============================================================================
-
-
-@router.post("/evaluate", response_model=EvaluationResponse)
-async def evaluate_document(
-    file: UploadFile = File(...),
-    run_ocr: bool = Form(default=True),
+@router.post("/proposals/ingest")
+async def ingest_proposals(
+    background: BackgroundTasks,
+    file: Optional[UploadFile] = File(default=None),
+    files: Optional[list[UploadFile]] = File(default=None),
+    batch_id: Optional[str] = Form(default=None),
+    actor: Actor = Depends(get_actor),
 ):
     """
-    Full evaluation pipeline: process document → run all agents → persist results.
+    Accept one or more documents (batch upload is the same endpoint).
 
-    Returns the evaluation along with evaluation_id and file_url for later retrieval.
+    Returns as soon as the bytes are safely stored and a row exists for each file.
+    Extraction, metadata and the duplicate check happen in the background — a
+    25-file batch must not hold an HTTP connection open for twenty minutes.
+
+    Poll `GET /proposals` (or the individual proposal) to watch each one progress.
+    Nothing is reported as successful merely because the upload landed.
     """
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    ext = Path(file.filename).suffix.lower().lstrip(".")
-    if ext not in settings.supported_formats_list:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported format: {ext}. Supported: {', '.join(settings.supported_formats_list)}",
-        )
-
-    file_bytes = await file.read()
-
-    if len(file_bytes) > settings.max_file_size_bytes:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB",
-        )
-
-    if len(file_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    start_time = time.time()
-
-    try:
-        # Step 1: Process document
-        logger.info("evaluation_started", filename=file.filename)
-        processed = await process_document(
-            file_bytes=file_bytes,
-            filename=file.filename,
-            file_type=file.content_type or "",
-            run_ocr=run_ocr,
-            generate_summary=True,
-        )
-
-        if not processed.full_text.strip() or len(processed.full_text.split()) < 20:
-            raise HTTPException(
-                status_code=400,
-                detail="Could not extract sufficient text from the file. Ensure it contains readable content.",
-            )
-
-        # Step 2: Run agent evaluation
-        orchestrator = AgentOrchestrator()
-        eval_response = await orchestrator.evaluate(document=processed)
-
-        total_time = time.time() - start_time
-        eval_response.processing_time_seconds = round(total_time, 2)
-
-        # Step 3: Upload file to storage
-        file_url = ""
-        storage_key = ""
-        try:
-            storage = get_storage_backend()
-            storage_key = StorageBackend.generate_key(file.filename)
-            file_url = await storage.upload(file_bytes, storage_key, file.content_type or "application/octet-stream")
-            eval_response.file_url = file_url
-        except Exception as e:
-            logger.warning("file_upload_failed", error=str(e))
-
-        # Step 4: Persist to database
-        evaluation_id = ""
-        try:
-            repo = get_repository()
-            evaluation_id = await repo.save_evaluation(
-                filename=file.filename,
-                file_storage_key=storage_key,
-                file_storage_url=file_url,
-                file_size_bytes=len(file_bytes),
-                file_content_type=file.content_type or "application/octet-stream",
-                overall_score=eval_response.evaluation.overall_score,
-                recommendation=eval_response.evaluation.recommendation,
-                evaluation_report=eval_response.model_dump(mode="json"),
-                document_metadata=processed.metadata.model_dump(mode="json"),
-                status="completed",
-            )
-            eval_response.evaluation_id = evaluation_id
-        except Exception as e:
-            logger.warning("evaluation_persist_failed", error=str(e))
-
-        return eval_response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("evaluation_failed", error=str(e), filename=file.filename)
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
-
-
-# =============================================================================
-# Batch Evaluation
-# =============================================================================
-
-
-@router.post("/evaluate-batch", response_model=BatchEvaluationResponse)
-async def evaluate_batch(
-    files: list[UploadFile] = File(...),
-):
-    """
-    Evaluate multiple files in a batch.
-
-    Files are processed sequentially to respect LLM rate limits.
-    Returns a batch_id for tracking and per-file results.
-    """
-    if not files:
+    incoming = files or ([file] if file else [])
+    if not incoming:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    if len(files) > 20:
-        raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
+    if len(incoming) > 25:
+        raise HTTPException(status_code=400, detail="Maximum 25 files per upload")
 
-    # Validate and read all files upfront
-    file_list = []
-    for f in files:
-        if not f.filename:
-            raise HTTPException(status_code=400, detail="All files must have a filename")
-        ext = Path(f.filename).suffix.lower().lstrip(".")
-        if ext not in settings.supported_formats_list:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported format for {f.filename}: {ext}",
-            )
-        content = await f.read()
-        if len(content) == 0:
-            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
-        if len(content) > settings.max_file_size_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large: {f.filename}. Max: {settings.MAX_FILE_SIZE_MB}MB",
-            )
-        file_list.append({
-            "bytes": content,
-            "filename": f.filename,
-            "content_type": f.content_type or "application/octet-stream",
-        })
-
-    result = await process_batch(file_list)
-
-    return BatchEvaluationResponse(**result)
-
-
-# =============================================================================
-# Evaluate Pre-Processed Chunks
-# =============================================================================
-
-
-@router.post("/evaluate-chunks", response_model=EvaluationResponse)
-async def evaluate_chunks(request: EvaluateChunksRequest):
-    """
-    Evaluate pre-processed document chunks.
-    Use this when document processing is done separately.
-    """
-    if not request.chunks:
-        raise HTTPException(status_code=400, detail="No chunks provided")
-
-    start_time = time.time()
-
-    try:
-        # Build a ProcessedDocument from the chunks request
-        doc = ProcessedDocument(
-            metadata=request.metadata,
-            full_text="\n\n".join(c.text for c in request.chunks),
-            chunks=request.chunks,
-            summary=request.summary,
+    # Validate everything up front. Rejecting the batch before any work starts beats
+    # processing nine files and then failing on the tenth.
+    payloads = []
+    for upload in incoming:
+        content = await upload.read()
+        _validate_upload(upload.filename or "", content)
+        payloads.append(
+            (content, upload.filename or "", upload.content_type or "application/octet-stream")
         )
 
-        orchestrator = AgentOrchestrator()
-        eval_response = await orchestrator.evaluate(document=doc)
+    # A multi-file upload is a batch whether the caller said so or not — grouping it
+    # is what lets the UI show "7 of 12 processed" instead of twelve unrelated rows.
+    if not batch_id and len(payloads) > 1:
+        batch_id = str(uuid.uuid4())
 
-        total_time = time.time() - start_time
-        eval_response.processing_time_seconds = round(total_time, 2)
+    service = get_ingestion_service()
+    results = []
 
-        return eval_response
-    except Exception as e:
-        logger.error("chunk_evaluation_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+    for content, filename, content_type in payloads:
+        accepted = await service.accept(
+            file_bytes=content,
+            filename=filename,
+            content_type=content_type,
+            uploaded_by=actor.user_id,
+            batch_id=batch_id,
+        )
+        results.append(accepted)
+
+        # Only schedule work for files that are actually new and actually stored.
+        if not accepted.get("deduplicated") and accepted["status"] == "uploaded":
+            background.add_task(_process_proposal, accepted["proposal_id"])
+
+    return {
+        "batch_id": batch_id,
+        "total": len(results),
+        "accepted": sum(1 for r in results if not r.get("deduplicated")),
+        "duplicates": sum(1 for r in results if r.get("deduplicated")),
+        "proposals": results,
+    }
+
+
+async def _process_proposal(proposal_id: str) -> None:
+    """
+    Background worker.
+
+    Swallows exceptions on purpose: `process()` has already recorded the failure on
+    the proposal row (stage + message + retry count), so re-raising here would only
+    produce an unhandled-task traceback in the logs with nowhere to go. The failure
+    is visible in the retry queue, which is where an operator will actually see it.
+    """
+    try:
+        await get_ingestion_service().process(proposal_id)
+    except Exception as exc:
+        logger.error("background_processing_failed", proposal_id=proposal_id, error=str(exc))
+
+
+@router.post("/proposals/{proposal_id}/retry")
+async def retry_proposal(
+    proposal_id: str,
+    background: BackgroundTasks,
+    actor: Actor = Depends(get_actor),
+):
+    """
+    Re-run processing on a failed proposal.
+
+    Requirement (g): a failed idea "should be managed neatly and should be retried".
+    The original document is already stored, so a retry costs no re-upload — it
+    picks up from the stored bytes.
+    """
+    proposals = get_proposal_repository()
+    proposal = await proposals.get(proposal_id)
+
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal["status"] != "failed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only failed proposals can be retried (this one is '{proposal['status']}')",
+        )
+    if proposal["retry_count"] >= settings.MAX_EVALUATION_RETRIES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This proposal has already failed {proposal['retry_count']} times. "
+                "It needs a human to look at the document."
+            ),
+        )
+
+    await proposals.update(proposal_id, status="uploaded", error_message=None, error_stage=None)
+    background.add_task(_process_proposal, proposal_id)
+
+    await get_registry_repository().audit(
+        action="proposal_retry",
+        entity_type="proposal",
+        entity_id=proposal_id,
+        actor_id=actor.user_id,
+        payload={"attempt": proposal["retry_count"] + 1},
+    )
+
+    return {"proposal_id": proposal_id, "status": "uploaded", "retrying": True}
 
 
 # =============================================================================
-# Reports CRUD & Comparison
+# Proposals
 # =============================================================================
 
 
-@router.get("/reports", response_model=ReportListResponse)
-async def list_reports(
+@router.get("/proposals")
+async def list_proposals(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     status: Optional[str] = Query(default=None),
+    review_decision: Optional[str] = Query(default=None),
+    is_evaluated: Optional[bool] = Query(default=None),
+    category_id: Optional[str] = Query(default=None),
+    company_id: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
 ):
-    """List all stored evaluation reports (paginated)."""
-    try:
-        repo = get_repository()
-        result = await repo.list_evaluations(page=page, limit=limit, status=status)
-        return ReportListResponse(**result)
-    except Exception as e:
-        logger.error("list_reports_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to list reports: {str(e)}")
-
-
-@router.get("/reports/{report_id}")
-async def get_report(report_id: str):
-    """Get a single stored evaluation report with the full JSON."""
-    try:
-        repo = get_repository()
-        record = await repo.get_evaluation(report_id)
-        if not record:
-            raise HTTPException(status_code=404, detail="Report not found")
-        return {"status": "success", "data": record}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("get_report_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to get report: {str(e)}")
-
-
-@router.delete("/reports/{report_id}")
-async def delete_report(report_id: str):
-    """Delete a report and its stored file."""
-    try:
-        repo = get_repository()
-        record = await repo.get_evaluation(report_id)
-        if not record:
-            raise HTTPException(status_code=404, detail="Report not found")
-
-        # Delete file from storage
-        if record.get("file_storage_key"):
-            try:
-                storage = get_storage_backend()
-                await storage.delete(record["file_storage_key"])
-            except Exception as e:
-                logger.warning("file_delete_failed", key=record["file_storage_key"], error=str(e))
-
-        # Delete from database
-        await repo.delete_evaluation(report_id)
-
-        return {"status": "success", "message": "Report deleted"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("delete_report_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to delete report: {str(e)}")
-
-
-@router.post("/reports/compare", response_model=CompareResponse)
-async def compare_reports(request: CompareRequest):
     """
-    Compare two or more evaluation reports.
+    List proposals, filtered.
 
-    Returns the full reports along with a comparison summary showing
-    score differences across all parameters.
+    `is_evaluated=false` is the "ideas we hold metadata for but have never scored"
+    view — the one an admin uses to pick a stored idea and evaluate it later,
+    without re-uploading the document.
     """
-    try:
-        repo = get_repository()
-        reports = await repo.get_evaluations_by_ids(request.report_ids)
-
-        if len(reports) < 2:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Found {len(reports)} of {len(request.report_ids)} requested reports. Need at least 2.",
-            )
-
-        # Build comparison summary
-        comparison = _build_comparison(reports)
-
-        return CompareResponse(reports=reports, comparison=comparison)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("compare_reports_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to compare reports: {str(e)}")
+    return await get_proposal_repository().list_proposals(
+        page=page,
+        limit=limit,
+        status=status,
+        review_decision=review_decision,
+        is_evaluated=is_evaluated,
+        category_id=category_id,
+        company_id=company_id,
+        search=search,
+    )
 
 
-@router.get("/batches/{batch_id}")
-async def get_batch(batch_id: str):
-    """Get all evaluation reports for a batch."""
-    try:
-        repo = get_repository()
-        reports = await repo.get_evaluations_by_batch(batch_id)
-        if not reports:
-            raise HTTPException(status_code=404, detail="Batch not found or empty")
+@router.get("/proposals/{proposal_id}")
+async def get_proposal(proposal_id: str):
+    """One proposal, with its evaluation history and its company's approval record."""
+    proposals = get_proposal_repository()
+    proposal = await proposals.get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
 
-        return {
-            "status": "success",
-            "batch_id": batch_id,
-            "total_files": len(reports),
-            "completed": sum(1 for r in reports if r.get("status") == "completed"),
-            "failed": sum(1 for r in reports if r.get("status") == "failed"),
-            "reports": reports,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("get_batch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to get batch: {str(e)}")
+    evaluations = await get_repository().list_for_proposal(proposal_id)
+    latest = await get_repository().get_latest_for_proposal(proposal_id)
 
+    registry = get_registry_repository()
 
-# =============================================================================
-# Helpers
-# =============================================================================
+    # The evaluator is about to make a call on this idea. Requirement (e) says they
+    # must be able to see what else this company has already had approved — so it
+    # travels with the proposal rather than being a separate page they might not open.
+    company_context = None
+    if proposal.get("company_id"):
+        company_context = await registry.company_approval_context(proposal["company_id"])
 
-
-def _build_comparison(reports: list[dict]) -> dict:
-    """Build a comparison summary for multiple reports."""
-    parameter_keys = [
-        "problem_relevance_score",
-        "solution_readiness_score",
-        "pilot_design_score",
-        "farmer_adoption_score",
-        "scaleup_score",
-        "team_capacity_score",
-        "compliance_score",
-    ]
-
-    summary = {
-        "total_reports": len(reports),
-        "overall_scores": {},
-        "parameter_scores": {},
-        "recommendations": {},
-        "ranking": [],
+    return {
+        "proposal": proposal,
+        "evaluations": evaluations,
+        "latest_evaluation": latest,
+        "decision": await registry.latest_decision(proposal_id),
+        "company_context": company_context,
+        "similar": await proposals.get_similarity_matches(proposal_id),
     }
 
-    # Extract scores from each report
-    for report in reports:
-        report_id = report["id"]
-        filename = report["filename"]
-        eval_data = report.get("evaluation_report", {})
-        evaluation = eval_data.get("evaluation", {}) if eval_data else {}
 
-        overall = report.get("overall_score", 0.0)
-        summary["overall_scores"][report_id] = {
-            "filename": filename,
-            "score": overall,
-        }
-        summary["recommendations"][report_id] = {
-            "filename": filename,
-            "recommendation": report.get("recommendation", "N/A"),
-        }
+@router.get("/proposals/{proposal_id}/file")
+async def get_proposal_file(proposal_id: str):
+    """
+    Stream the original document.
 
-        for key in parameter_keys:
-            if key not in summary["parameter_scores"]:
-                summary["parameter_scores"][key] = {}
-            summary["parameter_scores"][key][report_id] = {
-                "filename": filename,
-                "score": evaluation.get(key, 0.0),
-            }
+    Requirement: when viewing an approved/selected idea, an operator must be able to
+    open the file it was scored from. The bytes are streamed through an
+    authenticated route rather than exposed as a public storage URL.
+    """
+    proposal = await get_proposal_repository().get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if not proposal.get("storage_key"):
+        raise HTTPException(status_code=404, detail="No stored original for this proposal")
 
-    # Rank by overall score
-    ranked = sorted(
-        summary["overall_scores"].items(),
-        key=lambda x: x[1]["score"],
-        reverse=True,
+    try:
+        content = await get_storage_backend().download(proposal["storage_key"])
+    except Exception as exc:
+        logger.error("file_fetch_failed", proposal_id=proposal_id, error=str(exc))
+        raise HTTPException(status_code=502, detail=f"Could not read the stored file: {exc}")
+
+    return Response(
+        content=content,
+        media_type=proposal["content_type"],
+        headers={"X-Filename": proposal["filename"]},
     )
-    summary["ranking"] = [
-        {"rank": i + 1, "id": rid, "filename": data["filename"], "score": data["score"]}
-        for i, (rid, data) in enumerate(ranked)
-    ]
 
-    return summary
+
+@router.delete("/proposals/{proposal_id}")
+async def delete_proposal(proposal_id: str, actor: Actor = Depends(get_actor)):
+    """Delete a proposal and its stored artifacts. Best-effort on storage — a
+    missing object must never block the database delete."""
+    proposals = get_proposal_repository()
+    proposal = await proposals.get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    storage = get_storage_backend()
+    for key in (proposal.get("storage_key"), proposal.get("text_storage_key")):
+        if key:
+            try:
+                await storage.delete(key)
+            except Exception as exc:
+                logger.warning("artifact_delete_failed", key=key, error=str(exc))
+
+    await proposals.delete(proposal_id)
+
+    await get_registry_repository().audit(
+        action="proposal_deleted",
+        entity_type="proposal",
+        entity_id=proposal_id,
+        actor_id=actor.user_id,
+        payload={"filename": proposal["filename"]},
+    )
+
+    return {"deleted": True, "proposal_id": proposal_id}
+
+
+# =============================================================================
+# The duplicate gate
+# =============================================================================
+
+
+class ReviewRequest(BaseModel):
+    """An admin's ruling on a flagged near-duplicate."""
+
+    evaluate: bool = Field(
+        description=(
+            "True: not a duplicate (or worth evaluating anyway) — send it to the "
+            "agents. False: it IS a duplicate — skip it. Either way the metadata is "
+            "kept."
+        )
+    )
+    note: Optional[str] = None
+
+
+@router.get("/proposals/{proposal_id}/similar")
+async def get_similar(proposal_id: str):
+    """
+    The ideas this one resembles, with the reason each was flagged.
+
+    This is what the admin sees side by side before deciding whether to evaluate.
+    """
+    proposals = get_proposal_repository()
+    proposal = await proposals.get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    return {
+        "proposal": proposal,
+        "matches": await proposals.get_similarity_matches(proposal_id),
+    }
+
+
+@router.post("/proposals/{proposal_id}/review")
+async def review_proposal(
+    proposal_id: str,
+    request: ReviewRequest,
+    actor: Actor = Depends(get_actor),
+):
+    """Resolve the duplicate gate. ADMIN only — enforced at the gateway."""
+    try:
+        return await get_ingestion_service().resolve_review(
+            proposal_id,
+            evaluate=request.evaluate,
+            reviewed_by=actor.user_id,
+            note=request.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/review-queue")
+async def review_queue(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Everything waiting on an admin's duplicate ruling."""
+    return await get_proposal_repository().list_proposals(
+        page=page, limit=limit, review_decision="pending", status="pending_review"
+    )
+
+
+@router.get("/retry-queue")
+async def retry_queue(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """
+    Everything that failed.
+
+    Requirement (g) again: failures are a queue an operator works through, not
+    silence.
+    """
+    result = await get_proposal_repository().list_proposals(
+        page=page, limit=limit, status="failed"
+    )
+    for proposal in result["proposals"]:
+        proposal["can_retry"] = proposal["retry_count"] < settings.MAX_EVALUATION_RETRIES
+    return result
+
+
+# =============================================================================
+# Categories
+# =============================================================================
+
+
+@router.get("/categories")
+async def list_categories():
+    """
+    The discovered taxonomy.
+
+    Not a fixed list — these are the categories the submitted ideas turned out to
+    be about, minted as they arrived.
+    """
+    return {"categories": await get_registry_repository().list_categories()}

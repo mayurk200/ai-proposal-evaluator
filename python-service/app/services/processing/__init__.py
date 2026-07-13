@@ -1,9 +1,21 @@
 from .document_processor import process_document
-from .chunker import chunk_document
-from .summarizer import create_executive_summary
+from .ingestion_service import get_ingestion_service
+from .sectioniser import (
+    SCOREABLE_SECTION_KEYS,
+    SECTION_TYPES,
+    scoreable_sections,
+    sectionise,
+    sections_from_json,
+    sections_to_json,
+)
 
 __all__ = [
+    "SCOREABLE_SECTION_KEYS",
+    "SECTION_TYPES",
+    "get_ingestion_service",
     "process_document",
-    "chunk_document",
-    "create_executive_summary",
+    "scoreable_sections",
+    "sectionise",
+    "sections_from_json",
+    "sections_to_json",
 ]

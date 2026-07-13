@@ -1,17 +1,32 @@
 """
-Text extraction from various document formats:
-- PDF (text-based and mixed)
-- DOCX / DOC
-- PPTX / PPT
-- TXT
-- Images (delegates to OCR engine)
+Text extraction with layout awareness.
 
-Uses PyMuPDF for PDF, python-docx for DOCX, python-pptx for PPTX.
+The previous extractor called `page.get_text("text")`, which returns characters in
+the order the PDF happens to store them. For a single-column report that is
+usually fine. For the two-column layouts and boxed application forms that AIAIC
+proposals actually use, it interleaves columns — you get the first line of the
+left column, then the first line of the right column, and the resulting text is
+subtly scrambled. Agents then score a document whose sentences do not join up.
+
+What changed:
+
+* PDF text is pulled as positioned blocks and sorted into true reading order
+  (top-to-bottom within a column, left column before right).
+* Headings are detected from **font size and weight**, not from an ALL-CAPS regex.
+  A regex cannot tell a heading from an acronym-heavy sentence; font size can. The
+  extracted heading structure is what the sectioniser routes on, so getting this
+  right is what lets a finance agent receive the financial section and nothing
+  else.
+* DOCX headings come from paragraph styles, which Word already gives us and the
+  old code partly ignored.
 """
 
+from __future__ import annotations
+
 import io
+import statistics
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
@@ -22,17 +37,122 @@ from app.utils.text_cleaning import clean_text
 
 logger = get_logger(__name__)
 
+# A block whose text is at least this much larger than the document's body size is
+# treated as a heading. 1.15 is deliberately low: proposal templates often use a
+# heading only slightly larger than body text, and missing a heading costs us a
+# section boundary, while a false heading merely splits a section in two.
+HEADING_SIZE_RATIO = 1.15
 
-def extract_text_from_pdf(file_path: Optional[str] = None, file_bytes: Optional[bytes] = None) -> dict:
+# Bold text at body size is a heading only if it is short. A whole bold paragraph
+# is emphasis, not a title.
+MAX_HEADING_WORDS = 14
+
+
+def _spans_of(page: fitz.Page) -> list[dict[str, Any]]:
+    """Flatten a page into text spans carrying their font size and flags."""
+    spans: list[dict[str, Any]] = []
+    data = page.get_text("dict")
+
+    for block in data.get("blocks", []):
+        if block.get("type") != 0:  # 0 = text, 1 = image
+            continue
+        for line in block.get("lines", []):
+            line_text = "".join(s.get("text", "") for s in line.get("spans", []))
+            if not line_text.strip():
+                continue
+
+            line_spans = line.get("spans", [])
+            if not line_spans:
+                continue
+
+            # Take the dominant span's typography as the line's typography.
+            dominant = max(line_spans, key=lambda s: len(s.get("text", "")))
+            bbox = line.get("bbox", (0, 0, 0, 0))
+
+            spans.append(
+                {
+                    "text": line_text.strip(),
+                    "size": round(float(dominant.get("size", 0)), 1),
+                    # Bit 4 of the span flags is the bold bit in PyMuPDF.
+                    "bold": bool(int(dominant.get("flags", 0)) & 2**4),
+                    "x0": bbox[0],
+                    "y0": bbox[1],
+                    "x1": bbox[2],
+                    "y1": bbox[3],
+                }
+            )
+
+    return spans
+
+
+def _sort_reading_order(spans: list[dict[str, Any]], page_width: float) -> list[dict[str, Any]]:
     """
-    Extract text from a PDF file, page by page.
+    Put spans into human reading order.
 
-    Args:
-        file_path: Path to PDF file.
-        file_bytes: Raw bytes of the PDF.
+    Detects a two-column layout by checking whether the spans cluster into a left
+    and a right group with a clear gutter between them. If they do, we read the
+    left column top-to-bottom, then the right — which is what a person does, and
+    what the naive extractor got wrong.
+    """
+    if not spans:
+        return []
 
-    Returns:
-        Dict with keys: text, pages (list of page texts), page_count, has_images
+    midpoint = page_width / 2
+    left = [s for s in spans if s["x1"] < midpoint * 1.05]
+    right = [s for s in spans if s["x0"] > midpoint * 0.95]
+
+    # Treat it as two columns only when both sides carry real content and almost
+    # nothing straddles the middle (a full-width title or table would).
+    straddling = len(spans) - len(left) - len(right)
+    is_two_column = (
+        len(left) >= 3
+        and len(right) >= 3
+        and straddling <= len(spans) * 0.2
+    )
+
+    if is_two_column:
+        return sorted(left, key=lambda s: s["y0"]) + sorted(right, key=lambda s: s["y0"])
+
+    # Single column: top-to-bottom, then left-to-right for anything on the same line.
+    return sorted(spans, key=lambda s: (round(s["y0"], 1), s["x0"]))
+
+
+def _body_size(all_spans: list[dict[str, Any]]) -> float:
+    """The document's dominant body font size — the baseline headings stand out from."""
+    sizes = [s["size"] for s in all_spans if s["size"] > 0 and len(s["text"].split()) > 3]
+    if not sizes:
+        return 10.0
+    try:
+        # Mode, not mean: body text is by far the most common size, and a few huge
+        # title lines would drag a mean upward and hide real headings.
+        return statistics.mode(sizes)
+    except statistics.StatisticsError:
+        return statistics.median(sizes)
+
+
+def _is_heading(span: dict[str, Any], body_size: float) -> bool:
+    word_count = len(span["text"].split())
+    if word_count == 0 or word_count > MAX_HEADING_WORDS:
+        return False
+    if span["text"].endswith((".", ",", ";")):
+        return False  # A sentence, not a title.
+
+    if span["size"] >= body_size * HEADING_SIZE_RATIO:
+        return True
+    if span["bold"] and span["size"] >= body_size:
+        return True
+    return False
+
+
+def extract_text_from_pdf(
+    file_path: Optional[str] = None, file_bytes: Optional[bytes] = None
+) -> dict:
+    """
+    Extract PDF text in reading order, marking detected headings.
+
+    Headings are emitted as `## Heading` lines so downstream sectioning has an
+    unambiguous, format-independent boundary marker to split on — regardless of
+    whether the heading was found via font size in a PDF or a style in a DOCX.
     """
     if file_bytes:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -41,57 +161,83 @@ def extract_text_from_pdf(file_path: Optional[str] = None, file_bytes: Optional[
     else:
         raise ValueError("Either file_path or file_bytes must be provided")
 
-    pages: list[dict] = []
-    full_text_parts: list[str] = []
-    has_images = False
-
     try:
+        # Two passes: we need the whole document's typography before we can say
+        # what counts as a heading in it.
+        pages_spans: list[tuple[int, list[dict[str, Any]], float]] = []
+        every_span: list[dict[str, Any]] = []
+
         for page_num in range(len(doc)):
             page = doc[page_num]
+            spans = _spans_of(page)
+            ordered = _sort_reading_order(spans, page.rect.width)
+            pages_spans.append((page_num + 1, ordered, page.rect.width))
+            every_span.extend(ordered)
 
-            # Extract text
-            page_text = page.get_text("text")
-            cleaned = clean_text(page_text)
+        body = _body_size(every_span)
 
-            # Check for images on this page
-            image_list = page.get_images(full=True)
-            if image_list:
+        pages: list[dict] = []
+        full_parts: list[str] = []
+        headings: list[str] = []
+        has_images = False
+
+        for page_number, spans, _width in pages_spans:
+            page = doc[page_number - 1]
+            page_images = page.get_images(full=True)
+            if page_images:
                 has_images = True
 
-            pages.append({
-                "page_number": page_num + 1,
-                "text": cleaned,
-                "word_count": len(cleaned.split()),
-                "has_images": bool(image_list),
-                "image_count": len(image_list),
-            })
-            full_text_parts.append(cleaned)
+            lines: list[str] = []
+            for span in spans:
+                if _is_heading(span, body):
+                    heading = span["text"].strip()
+                    headings.append(heading)
+                    lines.append(f"\n## {heading}\n")
+                else:
+                    lines.append(span["text"])
+
+            page_text = clean_text("\n".join(lines))
+            pages.append(
+                {
+                    "page_number": page_number,
+                    "text": page_text,
+                    "word_count": len(page_text.split()),
+                    "has_images": bool(page_images),
+                    "image_count": len(page_images),
+                }
+            )
+            full_parts.append(page_text)
+
+        full_text = "\n\n".join(full_parts)
+
+        logger.info(
+            "pdf_extracted",
+            page_count=len(pages),
+            word_count=len(full_text.split()),
+            headings=len(headings),
+            body_font_size=body,
+            has_images=has_images,
+        )
+
+        return {
+            "text": full_text,
+            "pages": pages,
+            "page_count": len(pages),
+            "headings": headings,
+            "has_images": has_images,
+        }
     finally:
         doc.close()
 
-    full_text = "\n\n".join(full_text_parts)
 
-    logger.info(
-        "pdf_extracted",
-        page_count=len(pages),
-        word_count=len(full_text.split()),
-        has_images=has_images,
-    )
-
-    return {
-        "text": full_text,
-        "pages": pages,
-        "page_count": len(pages),
-        "has_images": has_images,
-    }
-
-
-def extract_text_from_docx(file_path: Optional[str] = None, file_bytes: Optional[bytes] = None) -> dict:
+def extract_text_from_docx(
+    file_path: Optional[str] = None, file_bytes: Optional[bytes] = None
+) -> dict:
     """
-    Extract text from a DOCX file, preserving paragraph structure.
+    Extract DOCX text, using Word's own heading styles as section boundaries.
 
-    Returns:
-        Dict with keys: text, paragraphs, has_images, table_count
+    Word already tells us what a heading is. The old extractor recorded that in a
+    field nobody read and then emitted flat text, throwing the structure away.
     """
     if file_bytes:
         doc = DocxDocument(io.BytesIO(file_bytes))
@@ -100,66 +246,55 @@ def extract_text_from_docx(file_path: Optional[str] = None, file_bytes: Optional
     else:
         raise ValueError("Either file_path or file_bytes must be provided")
 
-    paragraphs: list[dict] = []
-    full_text_parts: list[str] = []
+    parts: list[str] = []
+    headings: list[str] = []
 
-    for i, para in enumerate(doc.paragraphs):
+    for para in doc.paragraphs:
         text = para.text.strip()
-        if text:
-            style_name = para.style.name if para.style else ""
-            is_heading = "Heading" in style_name or "Title" in style_name
-            paragraphs.append({
-                "index": i,
-                "text": text,
-                "style": style_name,
-                "is_heading": is_heading,
-            })
-            full_text_parts.append(text)
+        if not text:
+            continue
 
-    # Extract text from tables
-    table_texts: list[str] = []
+        style = para.style.name if para.style else ""
+        if "Heading" in style or "Title" in style:
+            headings.append(text)
+            parts.append(f"\n## {text}\n")
+        else:
+            parts.append(text)
+
+    # Tables carry the numbers in most application forms — never drop them.
     for table in doc.tables:
-        table_text_parts: list[str] = []
+        rows: list[str] = []
         for row in table.rows:
-            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-            if row_text:
-                table_text_parts.append(row_text)
-        if table_text_parts:
-            table_texts.append("\n".join(table_text_parts))
-            full_text_parts.append("\n".join(table_text_parts))
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                rows.append(" | ".join(cells))
+        if rows:
+            parts.append("\n".join(rows))
 
-    # Check for images
-    has_images = False
-    for rel in doc.part.rels.values():
-        if "image" in rel.reltype:
-            has_images = True
-            break
-
-    full_text = clean_text("\n\n".join(full_text_parts))
+    has_images = any("image" in rel.reltype for rel in doc.part.rels.values())
+    full_text = clean_text("\n\n".join(parts))
 
     logger.info(
         "docx_extracted",
-        paragraph_count=len(paragraphs),
         word_count=len(full_text.split()),
+        headings=len(headings),
         table_count=len(doc.tables),
         has_images=has_images,
     )
 
     return {
         "text": full_text,
-        "paragraphs": paragraphs,
+        "headings": headings,
         "has_images": has_images,
         "table_count": len(doc.tables),
+        "page_count": 1,
     }
 
 
-def extract_text_from_pptx(file_path: Optional[str] = None, file_bytes: Optional[bytes] = None) -> dict:
-    """
-    Extract text from a PPTX file, slide by slide.
-
-    Returns:
-        Dict with keys: text, slides, slide_count, has_images
-    """
+def extract_text_from_pptx(
+    file_path: Optional[str] = None, file_bytes: Optional[bytes] = None
+) -> dict:
+    """Extract PPTX text. Slide titles become headings."""
     if file_bytes:
         prs = Presentation(io.BytesIO(file_bytes))
     elif file_path:
@@ -168,46 +303,58 @@ def extract_text_from_pptx(file_path: Optional[str] = None, file_bytes: Optional
         raise ValueError("Either file_path or file_bytes must be provided")
 
     slides: list[dict] = []
-    full_text_parts: list[str] = []
+    parts: list[str] = []
+    headings: list[str] = []
     has_images = False
 
     for slide_num, slide in enumerate(prs.slides, 1):
-        slide_texts: list[str] = []
+        body: list[str] = []
+        title = ""
         slide_has_images = False
 
         for shape in slide.shapes:
+            # The title placeholder is the slide's heading.
+            is_title = (
+                shape == slide.shapes.title
+                if slide.shapes.title is not None
+                else False
+            )
+
             if shape.has_text_frame:
-                for paragraph in shape.text_frame.paragraphs:
-                    text = paragraph.text.strip()
-                    if text:
-                        slide_texts.append(text)
+                text = "\n".join(
+                    p.text.strip() for p in shape.text_frame.paragraphs if p.text.strip()
+                )
+                if text:
+                    if is_title:
+                        title = text
+                    else:
+                        body.append(text)
 
-            # Check for tables in slides
             if shape.has_table:
-                table = shape.table
-                for row in table.rows:
-                    row_text = " | ".join(
-                        cell.text.strip() for cell in row.cells if cell.text.strip()
-                    )
-                    if row_text:
-                        slide_texts.append(row_text)
+                for row in shape.table.rows:
+                    cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                    if cells:
+                        body.append(" | ".join(cells))
 
-            # Check for images
             if shape.shape_type == 13:  # Picture
                 slide_has_images = True
                 has_images = True
 
-        slide_text = "\n".join(slide_texts)
-        slides.append({
-            "slide_number": slide_num,
-            "text": slide_text,
-            "word_count": len(slide_text.split()),
-            "has_images": slide_has_images,
-        })
-        if slide_text:
-            full_text_parts.append(f"--- Slide {slide_num} ---\n{slide_text}")
+        heading = title or f"Slide {slide_num}"
+        headings.append(heading)
 
-    full_text = clean_text("\n\n".join(full_text_parts))
+        slide_text = "\n".join(body)
+        slides.append(
+            {
+                "slide_number": slide_num,
+                "text": slide_text,
+                "word_count": len(slide_text.split()),
+                "has_images": slide_has_images,
+            }
+        )
+        parts.append(f"\n## {heading}\n{slide_text}")
+
+    full_text = clean_text("\n\n".join(parts))
 
     logger.info(
         "pptx_extracted",
@@ -220,32 +367,39 @@ def extract_text_from_pptx(file_path: Optional[str] = None, file_bytes: Optional
         "text": full_text,
         "slides": slides,
         "slide_count": len(slides),
+        "page_count": len(slides),
+        "headings": headings,
         "has_images": has_images,
     }
 
 
-def extract_text_from_txt(file_path: Optional[str] = None, file_bytes: Optional[bytes] = None) -> dict:
-    """
-    Extract text from a plain text file.
-
-    Returns:
-        Dict with keys: text
-    """
+def extract_text_from_txt(
+    file_path: Optional[str] = None, file_bytes: Optional[bytes] = None
+) -> dict:
     if file_bytes:
         text = file_bytes.decode("utf-8", errors="replace")
     elif file_path:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
+        text = Path(file_path).read_text(encoding="utf-8", errors="replace")
     else:
         raise ValueError("Either file_path or file_bytes must be provided")
 
-    text = clean_text(text)
+    cleaned = clean_text(text)
+    logger.info("txt_extracted", word_count=len(cleaned.split()))
+    return {"text": cleaned, "page_count": 1, "headings": []}
 
-    logger.info("txt_extracted", word_count=len(text.split()))
 
-    return {
-        "text": text,
-    }
+MIME_TO_EXT = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "text/plain": "txt",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/tiff": "tiff",
+    "image/bmp": "bmp",
+}
 
 
 def extract_text(
@@ -254,54 +408,26 @@ def extract_text(
     file_type: str = "",
     filename: str = "",
 ) -> dict:
-    """
-    Unified text extraction entry point. Routes to the correct extractor
-    based on file type/extension.
-
-    Args:
-        file_path: Path to the file.
-        file_bytes: Raw file bytes.
-        file_type: MIME type of the file.
-        filename: Original filename (used for extension detection).
-
-    Returns:
-        Dict with extracted content.
-    """
-    # Determine format from MIME type or extension
+    """Route to the right extractor by extension, falling back to MIME type."""
     ext = ""
     if filename:
         ext = Path(filename).suffix.lower().lstrip(".")
     if not ext and file_path:
         ext = Path(file_path).suffix.lower().lstrip(".")
-
-    mime_to_ext = {
-        "application/pdf": "pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-        "application/msword": "doc",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-        "application/vnd.ms-powerpoint": "ppt",
-        "text/plain": "txt",
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/tiff": "tiff",
-        "image/bmp": "bmp",
-    }
-
     if not ext and file_type:
-        ext = mime_to_ext.get(file_type, "")
+        ext = MIME_TO_EXT.get(file_type, "")
 
     logger.info("extracting_text", format=ext, filename=filename)
 
     if ext == "pdf":
         return extract_text_from_pdf(file_path=file_path, file_bytes=file_bytes)
-    elif ext in ("docx", "doc"):
+    if ext in ("docx", "doc"):
         return extract_text_from_docx(file_path=file_path, file_bytes=file_bytes)
-    elif ext in ("pptx", "ppt"):
+    if ext in ("pptx", "ppt"):
         return extract_text_from_pptx(file_path=file_path, file_bytes=file_bytes)
-    elif ext == "txt":
+    if ext == "txt":
         return extract_text_from_txt(file_path=file_path, file_bytes=file_bytes)
-    elif ext in ("png", "jpg", "jpeg", "tiff", "bmp"):
-        # Image files — delegate to OCR
-        return {"text": "", "requires_ocr": True}
-    else:
-        raise ValueError(f"Unsupported file format: {ext or file_type}")
+    if ext in ("png", "jpg", "jpeg", "tiff", "bmp"):
+        return {"text": "", "requires_ocr": True, "page_count": 1, "headings": []}
+
+    raise ValueError(f"Unsupported file format: {ext or file_type}")

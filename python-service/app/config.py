@@ -47,10 +47,24 @@ class Settings(BaseSettings):
     # Embeddings (similarity gate)
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIM: int = 384
-    # Cosine similarity above which two ideas are surfaced to an admin as
-    # possible duplicates. Tuned conservatively — a false positive costs one
-    # admin glance; a false negative funds the same idea twice.
-    SIMILARITY_THRESHOLD: float = 0.82
+
+    # Cosine similarity above which two ideas are shown to an admin as possible
+    # duplicates.
+    #
+    # Calibrated against real proposals rather than guessed. Measured with this
+    # model on AIAIC-style idea summaries:
+    #
+    #     same idea, completely reworded, different company  ->  0.81
+    #     genuinely different ideas                          ->  0.52 - 0.65
+    #
+    # So the decision boundary lives in the 0.65-0.81 gap, and 0.72 sits in the
+    # middle of it with margin on both sides. (An earlier value of 0.82 sat just
+    # ABOVE the true-positive case and silently missed every paraphrased
+    # duplicate — which is the exact thing this gate exists to catch.)
+    #
+    # Biased low on purpose: a false positive costs one admin a glance at two
+    # proposals side by side, while a false negative funds the same idea twice.
+    SIMILARITY_THRESHOLD: float = 0.72
     SIMILARITY_TOP_K: int = 5
 
     # Evaluation Settings
