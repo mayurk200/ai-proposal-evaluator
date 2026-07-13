@@ -1,56 +1,67 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
 import { env } from './config/env';
+import { assertDbReady } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './modules/auth/auth.routes';
-import proposalRoutes from './modules/proposal/proposal.routes';
-import aiRoutes from './modules/ai/ai.routes';
-import comparisonRoutes from './modules/comparison/comparison.routes';
+import gatewayRoutes from './modules/gateway/gateway.routes';
+import { checkPythonServiceHealth } from './utils/pythonProxy';
 
 const app = express();
 
-// Ensure upload directory exists
-const uploadDir = path.resolve(env.UPLOAD_DIR);
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Middleware
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Static files
-app.use('/uploads', express.static(uploadDir));
+// No `express.static('/uploads')` any more. It published every uploaded proposal
+// to anyone who could guess a filename. Originals are now owned by the Python
+// service's object storage and streamed through an authenticated route.
 
-// Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/proposals', proposalRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/comparisons', comparisonRoutes);
+app.use('/api', gatewayRoutes);
 
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
+/**
+ * Health reflects the system, not just this process. The AI service is a hard
+ * dependency — if it is down we report it, because nothing else is going to
+ * quietly take over.
+ */
+app.get('/api/health', async (_req, res) => {
+  const aiReady = await checkPythonServiceHealth();
+  res.status(aiReady ? 200 : 503).json({
+    status: aiReady ? 'ok' : 'degraded',
+    services: { gateway: 'ok', ai: aiReady ? 'ok' : 'unreachable' },
     environment: env.NODE_ENV,
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Error handler
 app.use(errorHandler);
 
-// Start server
-const PORT = parseInt(env.PORT);
-app.listen(PORT, () => {
-  console.log(`🚀 AgriEval API running on http://localhost:${PORT}`);
-  console.log(`📊 Environment: ${env.NODE_ENV}`);
+async function start() {
+  // Fail at boot, not on the first user request.
+  await assertDbReady();
+
+  if (!(await checkPythonServiceHealth())) {
+    console.warn(
+      'WARNING: the Python AI service is not reachable. Uploads and evaluation ' +
+        'will return 503 until it is up. There is no Node-side fallback.',
+    );
+  }
+
+  const port = parseInt(env.PORT, 10);
+  app.listen(port, () => {
+    console.log(`AgriEval gateway listening on http://localhost:${port} [${env.NODE_ENV}]`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Failed to start:', err.message);
+  process.exit(1);
 });
 
 export default app;

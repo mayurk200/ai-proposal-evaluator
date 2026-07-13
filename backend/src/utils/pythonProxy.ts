@@ -1,217 +1,197 @@
 /**
- * Proxy utility for communicating with the Python AI Processing Service.
- * Handles file forwarding, response mapping, and error handling.
+ * Proxy to the Python AI service.
+ *
+ * The Python service is the only implementation of extraction, metadata,
+ * similarity and evaluation. There is no Node-side fallback: when Python is
+ * down, the gateway returns 503 and says so. The previous behaviour — silently
+ * failing over to a Node agent pipeline that scored against an entirely
+ * different rubric — produced numbers that looked authoritative and were not
+ * comparable to anything else in the database.
+ *
+ * `mapPythonResponseToLegacy` is gone with it. It flattened the seven real AIAIC
+ * parameter scores back onto legacy names (innovation/market/financial/...), so
+ * the frontend was reading a lossy projection of the evaluation.
  */
 
 import { env } from '../config/env';
+import { AppError } from '../middleware/errorHandler';
 
-interface PythonEvaluationResponse {
-  status: string;
-  document_metadata: {
-    filename: string;
-    format: string;
-    file_size_bytes: number;
-    total_pages: number;
-    total_words: number;
-    total_chunks: number;
-    total_images: number;
-    total_tables: number;
-    has_scanned_content: boolean;
-    detected_sections: string[];
-    processing_time_seconds: number;
-  };
-  evaluation: {
-    overall_score: number;
-    problem_relevance_score: number;
-    solution_readiness_score: number;
-    pilot_design_score: number;
-    farmer_adoption_score: number;
-    scaleup_score: number;
-    team_capacity_score: number;
-    compliance_score: number;
-    innovation_score: number;
-    market_score: number;
-    agriculture_score: number;
-    financial_score: number;
-    scalability_score: number;
-    sustainability_score: number;
-    risk_score: number;
-    technical_score: number;
-    feasibility_score: number;
-    recommendation: string;
-    summary: string;
-    strengths: string[];
-    weaknesses: string[];
-    swot_analysis: {
-      strengths: string[];
-      weaknesses: string[];
-      opportunities: string[];
-      threats: string[];
-    };
-    key_points: string[];
-    invalid_claims: string[];
-    investment_readiness: string;
-    key_action_items: string[];
-    risk_level: string;
-    parameter_breakdown?: Record<string, any>;
-    debate_summary?: any;
-  };
-  agent_results: Record<string, any>;
-  processing_time_seconds: number;
-}
-
-interface PythonBatchEvaluationResponse {
-  status: string;
-  batch_id: string;
-  total_files: number;
-  completed: number;
-  failed: number;
-  results: Array<{
-    evaluation_id?: string;
-    filename: string;
-    status: string;
-    overall_score?: number;
-    recommendation?: string;
-    file_url?: string;
-    processing_time_seconds?: number;
-    error?: string;
-  }>;
+/** Identity of the caller, forwarded so Python can attribute decisions. */
+export interface ProxyActor {
+  userId?: string;
+  userRole?: string;
 }
 
 /**
- * Send a file to the Python service for full AI evaluation.
+ * Purpose-sized timeouts. A read is not a 5-minute operation, and an evaluation
+ * is not a 15-second one; a single global timeout gets one of them wrong.
  */
-export async function evaluateWithPythonService(
-  fileBuffer: Buffer,
-  filename: string,
-  mimeType: string,
-  runOcr: boolean = true,
-): Promise<PythonEvaluationResponse> {
-  const baseUrl = env.PYTHON_SERVICE_URL;
-  const url = `${baseUrl}/api/v1/evaluate`;
+export const TIMEOUTS = {
+  read: 15_000,
+  write: 60_000,
+  evaluate: 300_000,
+  health: 5_000,
+} as const;
 
-  const formData = new FormData();
-  const blob = new Blob([fileBuffer], { type: mimeType });
-  formData.append('file', blob, filename);
-  formData.append('run_ocr', String(runOcr));
+/** Transient by nature — worth another attempt. Anything else fails fast. */
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300_000); // 5 min timeout
+function actorHeaders(actor?: ProxyActor): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (actor?.userId) headers['X-User-Id'] = actor.userId;
+  if (actor?.userRole) headers['X-User-Role'] = actor.userRole;
+  return headers;
+}
 
+async function readError(response: Response): Promise<string> {
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Python service error (${response.status}): ${errorBody}`);
-    }
-
-    return await response.json() as PythonEvaluationResponse;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('Python service evaluation timed out after 5 minutes');
-    }
-    throw new Error(`Python service communication failed: ${error.message}`);
-  } finally {
-    clearTimeout(timeout);
+    const body = await response.json();
+    return (body as any)?.detail ?? (body as any)?.message ?? JSON.stringify(body);
+  } catch {
+    return response.statusText;
   }
 }
 
+interface CallOptions {
+  method?: string;
+  // The only two shapes we ever send: a JSON string, or multipart for uploads.
+  // (`BodyInit` is a DOM type and this project compiles against ES2022 + Node.)
+  body?: string | FormData;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  actor?: ProxyActor;
+  /** Retries on transient failures only. 0 disables. */
+  retries?: number;
+}
+
 /**
- * Send multiple files to the Python service for sequential batch evaluation.
+ * One call to Python, with backoff on transient failures.
+ * Returns the raw Response so callers can stream (file downloads, PDF export)
+ * rather than forcing everything through JSON.
  */
-export async function evaluateBatchWithPythonService(
+export async function callPython(path: string, options: CallOptions = {}): Promise<Response> {
+  const {
+    method = 'GET',
+    body,
+    headers = {},
+    timeoutMs = TIMEOUTS.read,
+    actor,
+    retries = 2,
+  } = options;
+
+  const url = `${env.PYTHON_SERVICE_URL}${path}`;
+  let lastError = '';
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method,
+        body,
+        headers: { ...actorHeaders(actor), ...headers },
+        signal: controller.signal,
+      });
+
+      if (response.ok) return response;
+
+      // 4xx (bad input, not found, forbidden) will fail identically on retry —
+      // surface it immediately instead of burning the caller's time.
+      if (!RETRYABLE_STATUS.has(response.status)) {
+        throw new AppError(await readError(response), response.status);
+      }
+
+      lastError = `${response.status}: ${await readError(response)}`;
+    } catch (err: any) {
+      if (err instanceof AppError) throw err;
+      lastError =
+        err.name === 'AbortError'
+          ? `timed out after ${Math.round(timeoutMs / 1000)}s`
+          : err.message;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (attempt < retries) {
+      await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+  }
+
+  throw new AppError(`AI service unavailable (${path}): ${lastError}`, 503);
+}
+
+/** Call Python and parse the JSON body. */
+export async function callPythonJson<T = unknown>(
+  path: string,
+  options: CallOptions = {},
+): Promise<T> {
+  const response = await callPython(path, options);
+  return (await response.json()) as T;
+}
+
+/** POST a JSON body to Python. */
+export async function postPythonJson<T = unknown>(
+  path: string,
+  payload: unknown,
+  options: Omit<CallOptions, 'method' | 'body'> = {},
+): Promise<T> {
+  return callPythonJson<T>(path, {
+    ...options,
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+    timeoutMs: options.timeoutMs ?? TIMEOUTS.write,
+  });
+}
+
+/** Forward one or more uploaded files to Python as multipart/form-data. */
+export async function postPythonFiles<T = unknown>(
+  path: string,
   files: Array<{ buffer: Buffer; originalname: string; mimetype: string }>,
-): Promise<PythonBatchEvaluationResponse> {
-  const baseUrl = env.PYTHON_SERVICE_URL;
-  const url = `${baseUrl}/api/v1/evaluate-batch`;
+  fields: Record<string, string> = {},
+  options: Omit<CallOptions, 'method' | 'body'> = {},
+): Promise<T> {
+  const form = new FormData();
+  const field = files.length > 1 ? 'files' : 'file';
 
-  const formData = new FormData();
   for (const file of files) {
-    const blob = new Blob([file.buffer], { type: file.mimetype });
-    formData.append('files', blob, file.originalname);
+    form.append(
+      field,
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
+      file.originalname,
+    );
+  }
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
   }
 
-  const timeoutMs = Math.max(300_000, files.length * 300_000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Python batch service error (${response.status}): ${errorBody}`);
-    }
-
-    return await response.json() as PythonBatchEvaluationResponse;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error(`Python batch evaluation timed out after ${Math.round(timeoutMs / 60000)} minutes`);
-    }
-    throw new Error(`Python batch service communication failed: ${error.message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
+  return callPythonJson<T>(path, {
+    ...options,
+    method: 'POST',
+    body: form,
+    timeoutMs: options.timeoutMs ?? TIMEOUTS.write,
+  });
 }
 
-/**
- * Map the Python service evaluation response to the format expected
- * by the existing Node.js backend and frontend.
- */
-export function mapPythonResponseToLegacy(response: PythonEvaluationResponse) {
-  const evaluation = response.evaluation;
-
-  return {
-    finalScore: {
-      overall_score: evaluation.overall_score,
-      problem_relevance_score: evaluation.problem_relevance_score,
-      solution_readiness_score: evaluation.solution_readiness_score,
-      pilot_design_score: evaluation.pilot_design_score,
-      farmer_adoption_score: evaluation.farmer_adoption_score,
-      scaleup_score: evaluation.scaleup_score,
-      team_capacity_score: evaluation.team_capacity_score,
-      compliance_score: evaluation.compliance_score,
-      innovation_score: evaluation.innovation_score,
-      market_score: evaluation.market_score,
-      agriculture_score: evaluation.agriculture_score,
-      financial_score: evaluation.financial_score,
-      scalability_score: evaluation.scalability_score,
-      sustainability_score: evaluation.sustainability_score,
-      risk_score: evaluation.risk_score,
-      recommendation: evaluation.recommendation,
-      summary: evaluation.summary,
-      strengths: evaluation.strengths,
-      weaknesses: evaluation.weaknesses,
-      swot_analysis: evaluation.swot_analysis,
-      investment_readiness: evaluation.investment_readiness,
-      key_action_items: evaluation.key_action_items,
-      parameter_breakdown: evaluation.parameter_breakdown,
-      debate_summary: evaluation.debate_summary,
-    },
-    agentResults: response.agent_results,
-  };
-}
-
-/**
- * Check if the Python service is available.
- */
+/** Liveness probe. Used to fail fast with a clear message, never to pick a fallback. */
 export async function checkPythonServiceHealth(): Promise<boolean> {
   try {
-    const baseUrl = env.PYTHON_SERVICE_URL;
-    const response = await fetch(`${baseUrl}/api/v1/health`, {
-      signal: AbortSignal.timeout(5000),
+    const response = await fetch(`${env.PYTHON_SERVICE_URL}/api/v1/health`, {
+      signal: AbortSignal.timeout(TIMEOUTS.health),
     });
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/** Throw a clean 503 if the AI service is not reachable. */
+export async function assertPythonAvailable(): Promise<void> {
+  if (!(await checkPythonServiceHealth())) {
+    throw new AppError(
+      'The AI evaluation service is unavailable. Evaluation cannot proceed — please retry once it is back.',
+      503,
+    );
   }
 }

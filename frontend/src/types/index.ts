@@ -1,12 +1,22 @@
 // ===== User Types =====
+/**
+ * Two operator roles, matching the backend.
+ *
+ * ADMIN decides: resolves the duplicate gate, approves/rejects an idea, marks
+ * one selected for funding. DESK2 uploads, processes, retries and reads.
+ * (The old 'USER' role is gone — it existed for self-registered public users,
+ * which this console no longer has.)
+ */
+export type Role = 'ADMIN' | 'DESK2';
+
 export interface User {
   id: string;
   email: string;
   name: string;
-  company?: string;
-  role: 'USER' | 'ADMIN';
-  createdAt: string;
-  _count?: { proposals: number };
+  role: Role;
+  is_active: boolean;
+  created_at: string;
+  last_login_at?: string | null;
 }
 
 export interface AuthResponse {

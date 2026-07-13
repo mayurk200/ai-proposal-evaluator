@@ -26,32 +26,24 @@ async def lifespan(app: FastAPI):
         storage_provider=settings.STORAGE_PROVIDER,
     )
 
-    # Initialize database tables
-    try:
-        from app.services.database.repository import get_repository
-        repo = get_repository()
-        await repo.init_tables()
-        logger.info("database_ready")
-    except Exception as e:
-        logger.warning("database_init_failed", error=str(e))
+    # The database is a hard dependency: it holds the proposals, the approval
+    # ledger and the vector index. Starting without it would mean accepting
+    # uploads we cannot record, so this failure is fatal rather than a warning.
+    from app.services.database.session import close_db, init_db
 
-    # Verify storage backend
-    try:
-        from app.services.storage.storage_backend import get_storage_backend
-        storage = get_storage_backend()
-        logger.info("storage_ready", provider=settings.STORAGE_PROVIDER)
-    except Exception as e:
-        logger.warning("storage_init_failed", error=str(e))
+    await init_db()
+    logger.info("database_ready")
+
+    # Storage is also hard — an ingested proposal whose original we cannot store
+    # is an idea we can never show the evaluator the source of.
+    from app.services.storage.storage_backend import get_storage_backend
+
+    get_storage_backend()
+    logger.info("storage_ready", provider=settings.STORAGE_PROVIDER)
 
     yield
 
-    # Shutdown
-    try:
-        from app.services.database.repository import get_repository
-        repo = get_repository()
-        await repo.close()
-    except Exception:
-        pass
+    await close_db()
     logger.info("shutting_down_python_service")
 
 

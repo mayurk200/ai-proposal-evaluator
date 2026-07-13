@@ -1,249 +1,316 @@
 """
-Async repository for evaluation persistence using SQLAlchemy + asyncpg.
+Evaluation persistence.
+
+An evaluation is a run, not a property of a proposal — a proposal can be
+evaluated more than once (a retry after failure, a forced re-run after the rubric
+changes) and we keep every run. The proposal row carries the *current* verdict;
+this table carries the history.
+
+Report bodies are JSONB rather than JSON-as-text. The previous schema stored them
+as `Text` and `json.dumps`'d on the way in, which meant the database could not see
+inside them: "show me every proposal whose financial sub-score is below 4" had to
+be done by pulling every report into Python and parsing it.
 """
 
-import json
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import select, delete as sa_delete
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy import func, select, update, delete as sa_delete
 
-from app.config import settings
-from app.services.database.models import Base, EvaluationRecord
+from app.services.database.models import Evaluation
+from app.services.database.session import get_session_factory
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def utc_now_naive() -> datetime:
-    """Return UTC as a naive datetime for the existing timestamp columns."""
+def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class EvaluationRepository:
-    """CRUD operations for evaluation records."""
+    """CRUD over `evaluations`."""
 
-    def __init__(self, database_url: Optional[str] = None):
-        self._url = database_url or settings.DATABASE_URL
-        self._engine = create_async_engine(self._url, echo=False, pool_pre_ping=True)
-        self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
+    def __init__(self) -> None:
+        self._sessions = get_session_factory()
 
-    async def init_tables(self) -> None:
-        """Create tables if they don't exist."""
-        async with self._engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("database_tables_initialized")
+    # ------------------------------------------------------------------
+    # Create / update
+    # ------------------------------------------------------------------
 
-    async def close(self) -> None:
-        """Dispose of the engine connection pool."""
-        await self._engine.dispose()
-
-    # ----- Create -----
-
-    async def save_evaluation(
+    async def create_pending(
         self,
-        filename: str,
-        file_storage_key: str = "",
-        file_storage_url: str = "",
-        file_size_bytes: int = 0,
-        file_content_type: str = "application/octet-stream",
-        overall_score: float = 0.0,
-        recommendation: str = "Not Recommended",
-        evaluation_report: Optional[dict] = None,
-        document_metadata: Optional[dict] = None,
-        status: str = "completed",
-        error_message: Optional[str] = None,
+        *,
+        proposal_id: str,
         batch_id: Optional[str] = None,
+        triggered_by: Optional[str] = None,
     ) -> str:
-        """Save an evaluation record and return the generated ID."""
-        record_id = str(uuid.uuid4())
+        """
+        Open an evaluation row *before* the agents run.
 
-        record = EvaluationRecord(
-            id=record_id,
-            filename=filename,
-            file_storage_key=file_storage_key,
-            file_storage_url=file_storage_url,
-            file_size_bytes=file_size_bytes,
-            file_content_type=file_content_type,
-            overall_score=overall_score,
-            recommendation=recommendation,
-            evaluation_report=json.dumps(evaluation_report) if evaluation_report else None,
-            document_metadata=json.dumps(document_metadata) if document_metadata else None,
-            status=status,
-            error_message=error_message,
-            batch_id=batch_id,
-            created_at=utc_now_naive(),
-            completed_at=utc_now_naive() if status == "completed" else None,
-        )
+        An in-flight evaluation is therefore visible in the database, so a crash
+        mid-pipeline leaves a `processing` row that can be found and retried —
+        rather than nothing at all, which is what the old fire-and-forget
+        `/evaluate` left behind.
+        """
+        evaluation_id = str(uuid.uuid4())
 
-        async with self._session_factory() as session:
-            session.add(record)
+        async with self._sessions() as session:
+            session.add(
+                Evaluation(
+                    id=evaluation_id,
+                    proposal_id=proposal_id,
+                    batch_id=batch_id,
+                    triggered_by=triggered_by,
+                    status="processing",
+                )
+            )
             await session.commit()
 
-        logger.info("evaluation_saved", id=record_id, filename=filename, score=overall_score)
-        return record_id
+        return evaluation_id
 
-    # ----- Read -----
-
-    async def get_evaluation(self, evaluation_id: str) -> Optional[dict]:
-        """Get a single evaluation record by ID."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(EvaluationRecord).where(EvaluationRecord.id == evaluation_id)
-            )
-            record = result.scalar_one_or_none()
-            if record is None:
-                return None
-            return self._record_to_dict(record)
-
-    async def list_evaluations(
-        self,
-        page: int = 1,
-        limit: int = 20,
-        status: Optional[str] = None,
-    ) -> dict:
-        """List evaluations with pagination."""
-        async with self._session_factory() as session:
-            query = select(EvaluationRecord).order_by(EvaluationRecord.created_at.desc())
-
-            if status:
-                query = query.where(EvaluationRecord.status == status)
-
-            # Count total
-            from sqlalchemy import func
-            count_query = select(func.count()).select_from(EvaluationRecord)
-            if status:
-                count_query = count_query.where(EvaluationRecord.status == status)
-            count_result = await session.execute(count_query)
-            total = count_result.scalar() or 0
-
-            # Paginate
-            offset = (page - 1) * limit
-            query = query.offset(offset).limit(limit)
-            result = await session.execute(query)
-            records = result.scalars().all()
-
-            return {
-                "evaluations": [self._record_to_summary(r) for r in records],
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "total_pages": (total + limit - 1) // limit if limit > 0 else 0,
-            }
-
-    async def get_evaluations_by_ids(self, ids: list[str]) -> list[dict]:
-        """Get multiple evaluations by their IDs (for comparison)."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(EvaluationRecord).where(EvaluationRecord.id.in_(ids))
-            )
-            records = result.scalars().all()
-            return [self._record_to_dict(r) for r in records]
-
-    async def get_evaluations_by_batch(self, batch_id: str) -> list[dict]:
-        """Get all evaluations for a batch."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(EvaluationRecord)
-                .where(EvaluationRecord.batch_id == batch_id)
-                .order_by(EvaluationRecord.created_at)
-            )
-            records = result.scalars().all()
-            return [self._record_to_dict(r) for r in records]
-
-    # ----- Update -----
-
-    async def update_evaluation(
+    async def complete(
         self,
         evaluation_id: str,
-        **kwargs,
+        *,
+        overall_score: float,
+        recommendation: str,
+        report: dict,
+        parameter_scores: Optional[dict] = None,
+        swot: Optional[dict] = None,
+        risk_level: Optional[str] = None,
+        total_tokens: int = 0,
+        total_duration_ms: int = 0,
+        model_used: Optional[str] = None,
     ) -> bool:
-        """Update fields on an evaluation record."""
-        async with self._session_factory() as session:
+        async with self._sessions() as session:
             result = await session.execute(
-                select(EvaluationRecord).where(EvaluationRecord.id == evaluation_id)
-            )
-            record = result.scalar_one_or_none()
-            if record is None:
-                return False
-
-            for key, value in kwargs.items():
-                if key in ("evaluation_report", "document_metadata") and isinstance(value, dict):
-                    value = json.dumps(value)
-                if isinstance(value, datetime) and value.tzinfo is not None:
-                    value = value.astimezone(timezone.utc).replace(tzinfo=None)
-                if hasattr(record, key):
-                    setattr(record, key, value)
-
-            await session.commit()
-            return True
-
-    # ----- Delete -----
-
-    async def delete_evaluation(self, evaluation_id: str) -> bool:
-        """Delete an evaluation record."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                sa_delete(EvaluationRecord).where(EvaluationRecord.id == evaluation_id)
+                update(Evaluation)
+                .where(Evaluation.id == evaluation_id)
+                .values(
+                    status="completed",
+                    overall_score=overall_score,
+                    recommendation=recommendation,
+                    report=report,
+                    parameter_scores=parameter_scores,
+                    swot=swot,
+                    risk_level=risk_level,
+                    total_tokens=total_tokens,
+                    total_duration_ms=total_duration_ms,
+                    model_used=model_used,
+                    completed_at=_utcnow(),
+                )
             )
             await session.commit()
             return result.rowcount > 0
 
-    # ----- Helpers -----
+    async def fail(self, evaluation_id: str, error: str) -> bool:
+        async with self._sessions() as session:
+            result = await session.execute(
+                update(Evaluation)
+                .where(Evaluation.id == evaluation_id)
+                .values(
+                    status="failed",
+                    error_message=error[:4000],
+                    completed_at=_utcnow(),
+                )
+            )
+            await session.commit()
+            return result.rowcount > 0
 
-    def _record_to_dict(self, record: EvaluationRecord) -> dict:
-        """Convert a full record to dict with parsed JSON fields."""
+    async def update(self, evaluation_id: str, **fields: Any) -> bool:
+        known = {k: v for k, v in fields.items() if hasattr(Evaluation, k)}
+        if not known:
+            return False
+        async with self._sessions() as session:
+            result = await session.execute(
+                update(Evaluation).where(Evaluation.id == evaluation_id).values(**known)
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Read
+    # ------------------------------------------------------------------
+
+    async def get(self, evaluation_id: str) -> Optional[dict]:
+        async with self._sessions() as session:
+            row = (
+                await session.execute(
+                    select(Evaluation).where(Evaluation.id == evaluation_id)
+                )
+            ).scalar_one_or_none()
+            return self._to_dict(row) if row else None
+
+    async def get_latest_for_proposal(self, proposal_id: str) -> Optional[dict]:
+        """The current verdict on an idea."""
+        async with self._sessions() as session:
+            row = (
+                await session.execute(
+                    select(Evaluation)
+                    .where(
+                        Evaluation.proposal_id == proposal_id,
+                        Evaluation.status == "completed",
+                    )
+                    .order_by(Evaluation.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            return self._to_dict(row) if row else None
+
+    async def list_for_proposal(self, proposal_id: str) -> list[dict]:
+        """Full run history, newest first."""
+        async with self._sessions() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(Evaluation)
+                        .where(Evaluation.proposal_id == proposal_id)
+                        .order_by(Evaluation.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [self._to_summary(r) for r in rows]
+
+    async def list_evaluations(
+        self,
+        *,
+        page: int = 1,
+        limit: int = 20,
+        status: Optional[str] = None,
+    ) -> dict:
+        async with self._sessions() as session:
+            count_q = select(func.count()).select_from(Evaluation)
+            list_q = select(Evaluation).order_by(Evaluation.created_at.desc())
+
+            if status:
+                count_q = count_q.where(Evaluation.status == status)
+                list_q = list_q.where(Evaluation.status == status)
+
+            total = (await session.execute(count_q)).scalar() or 0
+            rows = (
+                (await session.execute(list_q.offset((page - 1) * limit).limit(limit)))
+                .scalars()
+                .all()
+            )
+
+            return {
+                "evaluations": [self._to_summary(r) for r in rows],
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total + limit - 1) // limit if limit else 0,
+            }
+
+    async def get_by_ids(self, ids: list[str]) -> list[dict]:
+        """For the compare view."""
+        async with self._sessions() as session:
+            rows = (
+                (await session.execute(select(Evaluation).where(Evaluation.id.in_(ids))))
+                .scalars()
+                .all()
+            )
+            return [self._to_dict(r) for r in rows]
+
+    async def get_by_batch(self, batch_id: str) -> list[dict]:
+        async with self._sessions() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(Evaluation)
+                        .where(Evaluation.batch_id == batch_id)
+                        .order_by(Evaluation.created_at)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [self._to_summary(r) for r in rows]
+
+    async def find_stale_processing(self, older_than_minutes: int = 30) -> list[dict]:
+        """
+        Evaluations stuck in `processing` — i.e. the process died mid-run.
+
+        Without this they would sit as `processing` forever and the idea would
+        look like it was being worked on. The retry queue picks these up.
+        """
+        cutoff = _utcnow().timestamp() - older_than_minutes * 60
+        cutoff_dt = datetime.fromtimestamp(cutoff, tz=timezone.utc).replace(tzinfo=None)
+
+        async with self._sessions() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(Evaluation).where(
+                            Evaluation.status == "processing",
+                            Evaluation.created_at < cutoff_dt,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [self._to_summary(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Delete
+    # ------------------------------------------------------------------
+
+    async def delete(self, evaluation_id: str) -> bool:
+        async with self._sessions() as session:
+            result = await session.execute(
+                sa_delete(Evaluation).where(Evaluation.id == evaluation_id)
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def _to_dict(self, row: Evaluation) -> dict:
         return {
-            "id": record.id,
-            "filename": record.filename,
-            "file_storage_key": record.file_storage_key,
-            "file_storage_url": record.file_storage_url,
-            "file_size_bytes": record.file_size_bytes,
-            "file_content_type": record.file_content_type,
-            "overall_score": record.overall_score,
-            "recommendation": record.recommendation,
-            "evaluation_report": json.loads(record.evaluation_report) if record.evaluation_report else None,
-            "document_metadata": json.loads(record.document_metadata) if record.document_metadata else None,
-            "status": record.status,
-            "error_message": record.error_message,
-            "batch_id": record.batch_id,
-            "created_at": record.created_at.isoformat() if record.created_at else None,
-            "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+            **self._to_summary(row),
+            # JSONB comes back as a dict already — no json.loads round-trip.
+            "report": row.report,
+            "swot": row.swot,
         }
 
-    def _record_to_summary(self, record: EvaluationRecord) -> dict:
-        """Convert a record to a lightweight summary (no full report JSON)."""
+    def _to_summary(self, row: Evaluation) -> dict:
         return {
-            "id": record.id,
-            "filename": record.filename,
-            "file_storage_url": record.file_storage_url,
-            "file_size_bytes": record.file_size_bytes,
-            "overall_score": record.overall_score,
-            "recommendation": record.recommendation,
-            "status": record.status,
-            "batch_id": record.batch_id,
-            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "id": row.id,
+            "proposal_id": row.proposal_id,
+            "overall_score": row.overall_score,
+            "recommendation": row.recommendation,
+            "risk_level": row.risk_level,
+            "parameter_scores": row.parameter_scores,
+            "status": row.status,
+            "error_message": row.error_message,
+            "total_tokens": row.total_tokens,
+            "total_duration_ms": row.total_duration_ms,
+            "model_used": row.model_used,
+            "batch_id": row.batch_id,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
         }
 
 
-# ---------------------------------------------------------------------------
-# Singleton
-# ---------------------------------------------------------------------------
-
-_repo_instance: Optional[EvaluationRepository] = None
+_repo: Optional[EvaluationRepository] = None
 
 
 def get_repository() -> EvaluationRepository:
-    """Get the repository singleton."""
-    global _repo_instance
-    if _repo_instance is None:
-        _repo_instance = EvaluationRepository()
-    return _repo_instance
+    global _repo
+    if _repo is None:
+        _repo = EvaluationRepository()
+    return _repo
 
 
 def reset_repository() -> None:
-    """Reset the singleton (used in tests)."""
-    global _repo_instance
-    _repo_instance = None
+    """Used by tests."""
+    global _repo
+    _repo = None
