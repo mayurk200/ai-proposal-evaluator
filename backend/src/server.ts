@@ -22,13 +22,15 @@ app.use(express.urlencoded({ extended: true }));
 // to anyone who could guess a filename. Originals are now owned by the Python
 // service's object storage and streamed through an authenticated route.
 
-app.use('/api/auth', authRoutes);
-app.use('/api', gatewayRoutes);
-
 /**
  * Health reflects the system, not just this process. The AI service is a hard
- * dependency — if it is down we report it, because nothing else is going to
- * quietly take over.
+ * dependency — if it is down we report it, because nothing else is going to quietly
+ * take over.
+ *
+ * Registered BEFORE the gateway router. Express matches in order, and the gateway
+ * applies `authMiddleware` to everything under /api — so mounting health after it made
+ * the health check itself return 401, which is exactly the endpoint that must answer
+ * when nobody is holding a token.
  */
 app.get('/api/health', async (_req, res) => {
   const aiReady = await checkPythonServiceHealth();
@@ -39,6 +41,9 @@ app.get('/api/health', async (_req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+app.use('/api/auth', authRoutes);
+app.use('/api', gatewayRoutes);
 
 app.use(errorHandler);
 

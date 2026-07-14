@@ -255,14 +255,16 @@ export default function LandingPage() {
             viewport={{ once: true }}
             className="glass-card-static gradient-primary p-12 md:p-16 text-center text-white rounded-3xl"
           >
-            <h2 className="text-3xl md:text-4xl font-bold">Ready to evaluate your next big idea?</h2>
+            <h2 className="text-3xl md:text-4xl font-bold">Evaluation you can defend</h2>
             <p className="mt-4 text-white/80 text-lg max-w-xl mx-auto">
-              Join hundreds of investors and founders using AI-powered agriculture proposal evaluation.
+              Every score traceable to the words that produced it. Sign in to continue.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register">
+              {/* There is no public sign-up — this is an internal console with seeded
+                  operator accounts. */}
+              <Link to="/login">
                 <button className="px-8 py-3.5 bg-white text-primary font-semibold rounded-xl hover:shadow-lg transition-all">
-                  Get Started Free
+                  Sign in
                 </button>
               </Link>
             </div>

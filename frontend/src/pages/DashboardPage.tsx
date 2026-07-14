@@ -1,322 +1,302 @@
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  FileText, TrendingUp, Brain, Clock, Award,
-  ArrowUpRight, Sparkles
+  Activity,
+  AlertTriangle,
+  Building2,
+  CheckCircle2,
+  Copy,
+  FileStack,
+  FolderTree,
+  Layers,
+  RotateCcw,
+  TrendingUp,
+  Upload,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, Radar, PieChart, Pie, Cell
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { Card, Badge, ScoreBadge, Skeleton, Progress } from '@/components/ui';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { aiApi } from '@/services/proposal.service';
-import { useAuthStore } from '@/store/authStore';
-import { formatDate, getStatusColor, getScoreColor } from '@/utils';
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.08, duration: 0.5 },
-  }),
-};
-
-const COLORS = ['#2E7D32', '#66BB6A', '#C8E6C9', '#81C784', '#A5D6A7'];
-
-function StatCard({ icon: Icon, label, value, change, index }: {
-  icon: any; label: string; value: string | number; change?: string; index: number;
-}) {
-  return (
-    <motion.div custom={index} initial="hidden" animate="visible" variants={fadeUp}>
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-24 h-24 bg-accent/20 rounded-full -translate-y-8 translate-x-8" />
-        <div className="flex items-start justify-between relative">
-          <div>
-            <p className="text-sm text-text-muted font-medium">{label}</p>
-            <p className="text-3xl font-bold text-text mt-1">{value}</p>
-            {change && (
-              <div className="flex items-center gap-1 mt-2">
-                <ArrowUpRight className="w-3.5 h-3.5 text-primary" />
-                <span className="text-xs font-medium text-primary">{change}</span>
-              </div>
-            )}
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-accent/40 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-primary" />
-          </div>
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i} hover={false}>
-            <Skeleton className="h-4 w-24 mb-3" />
-            <Skeleton className="h-8 w-16 mb-2" />
-            <Skeleton className="h-3 w-20" />
-          </Card>
-        ))}
-      </div>
-      <div className="grid lg:grid-cols-3 gap-6">
-        <Card hover={false} className="lg:col-span-2"><Skeleton className="h-64 w-full" /></Card>
-        <Card hover={false}><Skeleton className="h-64 w-full" /></Card>
-      </div>
-    </div>
-  );
-}
+import { Button, Skeleton } from '@/components/ui';
+import { EmptyState, StatTile, StatusBadge } from '@/components/domain';
+import { analyticsApi, proposalApi } from '@/services/agrieval.service';
 
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: aiApi.getDashboard,
+  const navigate = useNavigate();
+
+  const { data: overview, isLoading } = useQuery({
+    queryKey: ['analytics', 'overview'],
+    queryFn: analyticsApi.overview,
+    // Ingestion and evaluation run in the background, so these counts move on their own.
+    refetchInterval: 15_000,
   });
 
-  if (isLoading) {
-    return (
-      <AppLayout>
-        <DashboardSkeleton />
-      </AppLayout>
-    );
-  }
+  const { data: recent } = useQuery({
+    queryKey: ['proposals', 'recent'],
+    queryFn: () => proposalApi.list({ limit: 8 }),
+    refetchInterval: 10_000,
+  });
 
-  const scoreHistoryData = stats?.scoreHistory?.map((s, i) => ({
-    name: `#${i + 1}`,
-    overall: s.overallScore,
-    problemRelevance: s.problemRelevanceScore || 0,
-    solutionReadiness: s.solutionReadinessScore || 0,
-    pilotDesign: s.pilotDesignScore || 0,
-    farmerAdoption: s.farmerAdoptionScore || 0,
-    scaleUp: s.scaleUpScore || 0,
-    teamCapacity: s.teamCapacityScore || 0,
-    compliance: s.complianceScore || 0,
-  })) || [];
+  const totals = overview?.totals;
 
-  const categoryData = stats?.categoryStats?.map((c) => ({
-    name: c.recommendation,
-    value: c._count,
-  })) || [];
+  // Approvals per month, summed across categories — requirement (f).
+  const byPeriod = (overview?.timeline ?? []).reduce<Record<string, number>>(
+    (acc, point) => {
+      acc[point.period] = (acc[point.period] ?? 0) + point.approved_count;
+      return acc;
+    },
+    {},
+  );
+  const timelineData = Object.entries(byPeriod)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, approved]) => ({ period, approved }));
 
-  const radarData = stats?.topProposals?.[0] ? [
-    { metric: 'Problem Relevance', value: stats.topProposals[0].problemRelevanceScore || 0 },
-    { metric: 'Solution Readiness', value: stats.topProposals[0].solutionReadinessScore || 0 },
-    { metric: 'Pilot Design', value: stats.topProposals[0].pilotDesignScore || 0 },
-    { metric: 'Farmer Adoption', value: stats.topProposals[0].farmerAdoptionScore || 0 },
-    { metric: 'Scale-up', value: stats.topProposals[0].scaleUpScore || 0 },
-    { metric: 'Team Capacity', value: stats.topProposals[0].teamCapacityScore || 0 },
-    { metric: 'Compliance', value: stats.topProposals[0].complianceScore || 0 },
-  ] : [];
+  const categoryData = (overview?.by_category ?? []).slice(0, 8);
+  const multiCategory = overview?.multi_category_companies ?? [];
 
   return (
     <AppLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-2xl font-bold text-text">
-            Welcome back, <span className="text-gradient">{user?.name?.split(' ')[0] || 'Guest'}</span>
-          </h1>
-          <p className="text-sm text-text-muted mt-1">Here's your proposal evaluation overview</p>
-        </motion.div>
-
-        {/* Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard icon={FileText} label="Total Proposals" value={stats?.totalProposals || 0} index={0} />
-          <StatCard icon={Award} label="Evaluated" value={stats?.evaluatedProposals || 0} index={1} />
-          <StatCard icon={TrendingUp} label="Average Score" value={stats?.averageScore || 0} index={2} />
-          <StatCard icon={Clock} label="Pending" value={stats?.pendingProposals || 0} index={3} />
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text">Dashboard</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Portfolio balance, approval history, and anything waiting on you.
+          </p>
         </div>
+        <Button onClick={() => navigate('/upload')}>
+          <Upload className="h-4 w-4" />
+          Upload proposals
+        </Button>
+      </header>
 
-        {/* Charts Row */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Score Trend */}
-          <motion.div custom={4} initial="hidden" animate="visible" variants={fadeUp} className="lg:col-span-2">
-            <Card hover={false}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-base font-semibold text-text">Score Trends</h3>
-                  <p className="text-xs text-text-muted mt-0.5">Evaluation scores over time</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-text-muted">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Overall</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Solution Readiness</span>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={scoreHistoryData}>
-                  <defs>
-                    <linearGradient id="colorOverall" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorReadiness" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D97706" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="#D97706" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                  <XAxis dataKey="name" fontSize={12} stroke="#94A3B8" />
-                  <YAxis fontSize={12} stroke="#94A3B8" domain={[0, 100]} />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'rgba(255,255,255,0.9)',
-                      backdropFilter: 'blur(12px)',
-                      border: '1px solid rgba(255,255,255,0.4)',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                    }}
-                  />
-                  <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2.5} fill="url(#colorOverall)" />
-                  <Area type="monotone" dataKey="solutionReadiness" stroke="#D97706" strokeWidth={2} fill="url(#colorReadiness)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </Card>
-          </motion.div>
-
-          {/* Distribution or Radar */}
-          <motion.div custom={5} initial="hidden" animate="visible" variants={fadeUp}>
-            <Card hover={false} className="h-full">
-              <h3 className="text-base font-semibold text-text mb-4">
-                {radarData.length > 0 ? 'Top Proposal Profile' : 'Category Distribution'}
-              </h3>
-              <ResponsiveContainer width="100%" height={280}>
-                {radarData.length > 0 ? (
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="#E2E8F0" />
-                    <PolarAngleAxis dataKey="metric" fontSize={11} stroke="#64748B" />
-                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                    <Radar
-                      dataKey="value"
-                      stroke="#2E7D32"
-                      fill="#2E7D32"
-                      fillOpacity={0.15}
-                      strokeWidth={2}
-                    />
-                  </RadarChart>
-                ) : (
-                  <PieChart>
-                    <Pie
-                      data={categoryData.length > 0 ? categoryData : [{ name: 'No data', value: 1 }]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {(categoryData.length > 0 ? categoryData : [{ name: 'No data' }]).map((_, idx) => (
-                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                )}
-              </ResponsiveContainer>
-            </Card>
-          </motion.div>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-2xl" />
+          ))}
         </div>
+      ) : (
+        <>
+          {/* The queues come first: these are the items that need a human. */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatTile
+              icon={Copy}
+              label="Possible duplicates"
+              value={totals?.awaiting_review ?? 0}
+              tone={totals?.awaiting_review ? 'warning' : 'default'}
+              hint="Waiting on a decision to evaluate or skip"
+              onClick={() => navigate('/review')}
+            />
+            <StatTile
+              icon={RotateCcw}
+              label="Failed"
+              value={totals?.failed ?? 0}
+              tone={totals?.failed ? 'danger' : 'default'}
+              hint="Retryable — the original document is still stored"
+              onClick={() => navigate('/proposals?status=failed')}
+            />
+            <StatTile
+              icon={FileStack}
+              label="Not evaluated"
+              value={totals?.not_evaluated ?? 0}
+              hint="Metadata held; evaluate any of these without re-uploading"
+              onClick={() => navigate('/proposals?is_evaluated=false')}
+            />
+            <StatTile
+              icon={CheckCircle2}
+              label="Approved"
+              value={totals?.approved ?? 0}
+              tone="success"
+              hint={`across ${totals?.categories ?? 0} categories`}
+              onClick={() => navigate('/analytics')}
+            />
+          </div>
 
-        {/* Recent & Top Row */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Recent Proposals */}
-          <motion.div custom={6} initial="hidden" animate="visible" variants={fadeUp}>
-            <Card hover={false}>
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-base font-semibold text-text">Recent Proposals</h3>
-                <Link to="/proposals" className="text-xs text-primary font-medium hover:underline">View all →</Link>
-              </div>
-              <div className="space-y-3">
-                {stats?.recentProposals?.length ? stats.recentProposals.map((p) => (
-                  <Link key={p.id} to={`/proposals/${p.id}`}>
-                    <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent-light/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-accent/40 flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-text truncate max-w-[200px]">{p.title}</p>
-                          <p className="text-xs text-text-muted">{formatDate(p.createdAt)}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${getStatusColor(p.status)}`}>
-                          {p.status}
+          {/* (e) The most consequential warning on this page. */}
+          {multiCategory.length > 0 && (
+            <section className="glass-card-static mt-6 rounded-2xl border-l-4 border-l-amber-400 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-text">
+                    One company approved across multiple categories
+                  </h2>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    These companies already hold approved ideas in more than one domain.
+                    Check before granting them another slot.
+                  </p>
+
+                  <div className="mt-3 space-y-2">
+                    {multiCategory.map((company) => (
+                      <div
+                        key={company.company_id}
+                        className="flex items-center justify-between rounded-lg bg-amber-50/70 px-3 py-2"
+                      >
+                        <span className="flex items-center gap-2 text-sm font-medium text-text">
+                          <Building2 className="h-4 w-4 text-amber-600" />
+                          {company.name}
                         </span>
-                        {p.evaluation && <ScoreBadge score={p.evaluation.overallScore} size="sm" />}
+                        <span className="text-xs text-amber-800">
+                          {company.approved_count} approved ·{' '}
+                          {company.categories_spanned} categories
+                        </span>
                       </div>
-                    </div>
-                  </Link>
-                )) : (
-                  <div className="text-center py-8">
-                    <p className="text-sm text-text-muted">No proposals yet</p>
-                    <Link to="/upload" className="text-sm text-primary font-medium mt-1 inline-block">Upload your first →</Link>
+                    ))}
                   </div>
-                )}
+                </div>
               </div>
-            </Card>
-          </motion.div>
+            </section>
+          )}
 
-          {/* AI Insights */}
-          <motion.div custom={7} initial="hidden" animate="visible" variants={fadeUp}>
-            <Card hover={false}>
-              <div className="flex items-center gap-2 mb-5">
-                <Sparkles className="w-5 h-5 text-primary" />
-                <h3 className="text-base font-semibold text-text">AI Insights</h3>
+          <div className="mt-6 grid gap-5 lg:grid-cols-2">
+            {/* (d) Approvals per category */}
+            <section className="glass-card-static rounded-2xl p-5">
+              <header className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FolderTree className="h-4 w-4 text-text-secondary" />
+                  <h2 className="text-sm font-semibold text-text">Approvals by category</h2>
+                </div>
+                <Link to="/analytics" className="text-xs text-primary hover:underline">
+                  View all
+                </Link>
+              </header>
+
+              {categoryData.length === 0 ? (
+                <EmptyState
+                  icon={FolderTree}
+                  title="No approvals yet"
+                  description="Categories appear here as ideas are approved. The taxonomy is discovered from the proposals themselves — nothing is predefined."
+                />
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={210}>
+                    <BarChart
+                      data={categoryData}
+                      layout="vertical"
+                      margin={{ left: 8, right: 16 }}
+                    >
+                      <CartesianGrid horizontal={false} stroke="#f0f0ee" />
+                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="label"
+                        width={116}
+                        tick={{ fontSize: 11 }}
+                      />
+                      <Tooltip
+                        cursor={{ fill: '#f7f7f5' }}
+                        contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                      />
+                      <Bar dataKey="approved_count" name="Approved" radius={[0, 4, 4, 0]}>
+                        {categoryData.map((entry) => (
+                          <Cell
+                            key={entry.category_id}
+                            // More than one approval in a category is precisely what the
+                            // client wants to avoid — so it reads as a warning, not a win.
+                            fill={entry.approved_count > 1 ? '#d97706' : '#10a37f'}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <p className="mt-2 text-[11px] text-text-muted">
+                    Amber marks a category that already holds more than one approved idea.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* (f) Timeline */}
+            <section className="glass-card-static rounded-2xl p-5">
+              <header className="mb-4 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-text-secondary" />
+                <h2 className="text-sm font-semibold text-text">Approvals over time</h2>
+              </header>
+
+              {timelineData.length === 0 ? (
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No approval history yet"
+                  description="Every approval is recorded against the month it actually happened in."
+                />
+              ) : (
+                <ResponsiveContainer width="100%" height={210}>
+                  <LineChart data={timelineData} margin={{ left: -18, right: 8 }}>
+                    <CartesianGrid stroke="#f0f0ee" />
+                    <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="approved"
+                      name="Approved"
+                      stroke="#10a37f"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </section>
+          </div>
+
+          <section className="glass-card-static mt-6 rounded-2xl p-5">
+            <header className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-text-secondary" />
+                <h2 className="text-sm font-semibold text-text">Recent activity</h2>
               </div>
-              <div className="space-y-4">
-                {stats?.topProposals?.length ? (
-                  <>
-                    <div className="p-4 rounded-xl bg-accent-light/50 border border-accent/30">
-                      <p className="text-sm font-medium text-primary">Top Performer</p>
-                      <p className="text-lg font-bold text-text mt-1">
-                        {stats.topProposals[0]?.proposal?.title}
+              <Link to="/proposals" className="text-xs text-primary hover:underline">
+                All proposals
+              </Link>
+            </header>
+
+            {!recent?.proposals.length ? (
+              <EmptyState
+                icon={Layers}
+                title="No proposals yet"
+                description="Upload one or more documents to begin. Batch upload is supported."
+                action={
+                  <Button size="sm" onClick={() => navigate('/upload')}>
+                    <Upload className="h-4 w-4" />
+                    Upload
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="divide-y divide-border/60">
+                {recent.proposals.map((proposal) => (
+                  <Link
+                    key={proposal.id}
+                    to={`/proposals/${proposal.id}`}
+                    className="flex items-center justify-between gap-4 rounded-lg px-2 py-2.5 transition-colors hover:bg-accent-light/30"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-text">
+                        {proposal.title || proposal.filename}
                       </p>
-                      <p className="text-xs text-text-muted mt-1">
-                        Score: {stats.topProposals[0]?.overallScore}/100 — {stats.topProposals[0]?.recommendation}
+                      <p className="truncate text-xs text-text-muted">
+                        {proposal.company_name ?? 'Company not identified'}
+                        {proposal.category_label && ` · ${proposal.category_label}`}
                       </p>
                     </div>
-                    <div className="space-y-3">
-                      <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Score Breakdown</p>
-                      {[
-                        { label: 'Problem Relevance', value: stats.topProposals[0]?.problemRelevanceScore },
-                        { label: 'Solution Readiness', value: stats.topProposals[0]?.solutionReadinessScore },
-                        { label: 'Pilot Design', value: stats.topProposals[0]?.pilotDesignScore },
-                        { label: 'Farmer Adoption', value: stats.topProposals[0]?.farmerAdoptionScore },
-                        { label: 'Scale-up Potential', value: stats.topProposals[0]?.scaleUpScore },
-                        { label: 'Team Capacity', value: stats.topProposals[0]?.teamCapacityScore },
-                        { label: 'Compliance', value: stats.topProposals[0]?.complianceScore },
-                      ].map((item) => (
-                        <div key={item.label}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-text-secondary">{item.label}</span>
-                            <span className={`font-medium ${getScoreColor(item.value || 0)}`}>
-                              {Math.round(item.value || 0)}
-                            </span>
-                          </div>
-                          <Progress value={item.value || 0} className="h-1.5" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-8">
-                    <Brain className="w-10 h-10 text-text-muted mx-auto mb-2" />
-                    <p className="text-sm text-text-muted">AI insights will appear after your first evaluation</p>
-                  </div>
-                )}
+                    <StatusBadge status={proposal.status} />
+                  </Link>
+                ))}
               </div>
-            </Card>
-          </motion.div>
-        </div>
-      </div>
+            )}
+          </section>
+        </>
+      )}
     </AppLayout>
   );
 }

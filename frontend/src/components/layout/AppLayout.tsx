@@ -1,28 +1,51 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Upload, FileText, GitCompare,
-  BarChart3, Settings, LogOut, Leaf, Menu, X, ChevronRight
+  BarChart3, ChevronRight, Copy, FileText, LayoutDashboard,
+  Leaf, LogOut, Menu, Settings, Upload, X
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { analyticsApi } from '@/services/agrieval.service';
+import type { Role } from '@/types';
 
+interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  /** Restrict the link to these roles. Cosmetic — the gateway enforces the real rule. */
+  roles?: Role[];
+  /** Show a count badge from the overview (the work-waiting-on-you signal). */
+  badge?: 'awaiting_review';
+}
 
-
-const navItems = [
+const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: Upload, label: 'Upload Proposal', path: '/upload' },
+  { icon: Upload, label: 'Upload', path: '/upload' },
   { icon: FileText, label: 'Proposals', path: '/proposals' },
-  { icon: GitCompare, label: 'Compare', path: '/compare' },
+  // The duplicate gate. Badged, because an idea sitting here is blocking work.
+  { icon: Copy, label: 'Duplicate review', path: '/review', badge: 'awaiting_review' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
+  { icon: Settings, label: 'Settings', path: '/settings', roles: ['ADMIN'] },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, hasRole } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
+
+  const { data: overview } = useQuery({
+    queryKey: ['analytics', 'overview'],
+    queryFn: analyticsApi.overview,
+    enabled: isAuthenticated,
+    refetchInterval: 30_000,
+  });
+
+  const visible = navItems.filter(
+    (item) => !item.roles || hasRole(...item.roles),
+  );
 
   const handleLogout = () => {
     logout();
@@ -58,8 +81,11 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+        {visible.map((item) => {
+          const isActive = location.pathname.startsWith(item.path);
+          const count =
+            item.badge === 'awaiting_review' ? overview?.totals.awaiting_review ?? 0 : 0;
+
           return (
             <Link key={item.path} to={item.path}>
               <motion.div
@@ -67,7 +93,15 @@ export function Sidebar() {
                 whileTap={{ scale: 0.98 }}
                 className={`sidebar-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-3' : ''}`}
               >
-                <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
+                <div className="relative flex-shrink-0">
+                  <item.icon className="w-[18px] h-[18px]" />
+                  {/* When collapsed there is no room for a number, but the user still
+                      needs to know something is waiting. */}
+                  {count > 0 && collapsed && (
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />
+                  )}
+                </div>
+
                 <AnimatePresence>
                   {!collapsed && (
                     <motion.span
@@ -80,7 +114,13 @@ export function Sidebar() {
                     </motion.span>
                   )}
                 </AnimatePresence>
-                {isActive && !collapsed && (
+
+                {!collapsed && count > 0 && (
+                  <span className="ml-auto rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
+                    {count}
+                  </span>
+                )}
+                {isActive && !collapsed && count === 0 && (
                   <ChevronRight className="w-4 h-4 ml-auto text-primary" />
                 )}
               </motion.div>
@@ -94,26 +134,23 @@ export function Sidebar() {
         {!collapsed && user && (
           <div className="px-3 py-2">
             <p className="text-sm font-medium text-text truncate">{user.name}</p>
-            <p className="text-xs text-text-muted truncate">{user.email}</p>
+            <p className="text-xs text-text-muted truncate">
+              {user.email}
+            </p>
+            <span className="mt-1 inline-flex rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-text-secondary">
+              {user.role}
+            </span>
           </div>
         )}
 
-        {isAuthenticated ? (
+        {isAuthenticated && (
           <button
             onClick={handleLogout}
             className={`sidebar-link w-full text-red-500 hover:bg-red-50 hover:text-red-600 ${collapsed ? 'justify-center px-3' : ''}`}
           >
             <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
-            {!collapsed && <span>Logout</span>}
+            {!collapsed && <span>Sign out</span>}
           </button>
-        ) : (
-          <Link
-            to="/login"
-            className={`sidebar-link w-full text-primary hover:bg-accent/10 ${collapsed ? 'justify-center px-3' : ''}`}
-          >
-            <LogOut className="w-[18px] h-[18px] flex-shrink-0 rotate-180" />
-            {!collapsed && <span>Login / Sign up</span>}
-          </Link>
         )}
 
         <button

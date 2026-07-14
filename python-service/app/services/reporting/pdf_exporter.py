@@ -107,16 +107,25 @@ def _esc(text: Any) -> str:
     )
 
 
-def format_score(score: Optional[float]) -> str:
+def format_score(score: Optional[float], status: str = "scored") -> str:
     """
     How a parameter score is printed.
 
-    `None` means the proposal never addressed the parameter, and it must never be
-    rendered as "0.0". This PDF is what gets handed to an applicant or an auditor —
-    printing a zero would permanently misrepresent a silent document as a bad one, in a
-    file that outlives the conversation that could have corrected it.
+    Three outcomes, three different words, and they must never be collapsed:
+
+      a number        — we assessed it.
+      "Not addressed" — the proposal is silent on it. A finding about the APPLICANT.
+      "Not assessed"  — our agent failed. A fact about US. Printing this as "not
+                        addressed" would blame the applicant for our rate limit.
+
+    None of them is ever rendered as "0.0". This PDF is what gets handed to an applicant
+    or an auditor, and it outlives the conversation that could have corrected it.
     """
-    return f"{score:.1f}" if score is not None else "Not addressed"
+    if status == "failed":
+        return "Not assessed"
+    if score is None:
+        return "Not addressed"
+    return f"{score:.1f}"
 
 
 def _ordered_breakdown(breakdown: dict[str, dict]) -> dict[str, dict]:
@@ -248,7 +257,9 @@ def build_evaluation_pdf(
             [
                 param.get("parameter_name", ""),
                 f"{param.get('weight', 0) * 100:.0f}%",
-                format_score(param.get("parameter_score")),
+                format_score(
+                    param.get("parameter_score"), param.get("status", "scored")
+                ),
                 f"{param.get('evidence_coverage', 0):.0%}",
             ]
         )
@@ -279,6 +290,21 @@ def build_evaluation_pdf(
                 + ". These are excluded from the weighted score rather than counted as "
                 "zero — the proposal is silent on them, which is not the same as "
                 "answering them poorly.",
+                styles["muted"],
+            )
+        )
+
+    # An incomplete assessment must say so on its face. Someone reading this a year from
+    # now has no other way to know that two parameters were never actually looked at.
+    if final.get("failed_parameters"):
+        story.append(Spacer(1, 4))
+        story.append(
+            Paragraph(
+                "<b><font color='#c62828'>This assessment is incomplete.</font></b> "
+                + _esc(", ".join(final["failed_parameters"]))
+                + " could not be assessed due to a technical failure on our side. This is "
+                "NOT a gap in the proposal, and the applicant should not be judged on it. "
+                "Re-run the evaluation before relying on this score.",
                 styles["muted"],
             )
         )
@@ -357,10 +383,15 @@ def build_evaluation_pdf(
 
     for param in breakdown.values():
         raw = param.get("parameter_score")
-        heading = (
-            f"{param.get('parameter_name')} — "
-            f"{f'{raw:.1f}/100' if raw is not None else 'not addressed'}"
-        )
+        status = param.get("status", "scored")
+        if status == "failed":
+            suffix = "not assessed (technical failure on our side)"
+        elif raw is None:
+            suffix = "not addressed by the proposal"
+        else:
+            suffix = f"{raw:.1f}/100"
+
+        heading = f"{param.get('parameter_name')} — {suffix}"
         block: list[Any] = [Paragraph(_esc(heading), styles["h3"])]
 
         for sq in param.get("sub_questions") or []:

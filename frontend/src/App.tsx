@@ -9,7 +9,7 @@ import DashboardPage from '@/pages/DashboardPage';
 import UploadPage from '@/pages/UploadPage';
 import ProposalsPage from '@/pages/ProposalsPage';
 import ProposalDetailPage from '@/pages/ProposalDetailPage';
-import ComparePage from '@/pages/ComparePage';
+import ReviewQueuePage from '@/pages/ReviewQueuePage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
 
@@ -72,11 +72,13 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* The duplicate gate. Anyone may look; only an ADMIN may resolve it — the
+              page hides the buttons, and the gateway rejects the call regardless. */}
           <Route
-            path="/compare"
+            path="/review"
             element={
               <ProtectedRoute>
-                <ComparePage />
+                <ReviewQueuePage />
               </ProtectedRoute>
             }
           />

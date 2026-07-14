@@ -1,419 +1,568 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { Brain, FileText, Loader2, CheckCircle, AlertTriangle, TrendingUp, Shield, Sprout, Lightbulb, DollarSign, Target, Bookmark, XCircle, Users, Scale, ChevronDown, ChevronUp } from 'lucide-react';
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
+import {
+  AlertTriangle,
+  Ban,
+  Building2,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  FileText,
+  FolderTree,
+  Gauge,
+  Landmark,
+  Play,
+  RotateCcw,
+  ScrollText,
+  Sparkles,
+  XCircle,
+} from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, Button, Badge, ScoreBadge, Progress, Skeleton } from '@/components/ui';
-import { proposalApi, aiApi } from '@/services/proposal.service';
-import { formatDate, getScoreColor, getRecommendationColor } from '@/utils';
+import { Button, Skeleton } from '@/components/ui';
+import {
+  DecisionBadge,
+  EmptyState,
+  ParameterCard,
+  RecommendationBadge,
+  ScoreRing,
+  StatusBadge,
+} from '@/components/domain';
+import {
+  ConflictError,
+  decisionApi,
+  evaluationApi,
+  proposalApi,
+} from '@/services/agrieval.service';
 import { useAuthStore } from '@/store/authStore';
+import type { ApprovalConflict, DecisionType } from '@/types';
 
 export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
-  const qc = useQueryClient();
-  const [expandedParam, setExpandedParam] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const isAdmin = useAuthStore((s) => s.hasRole('ADMIN'));
 
-  const { data: proposal, isLoading } = useQuery({
-    queryKey: ['proposal', id], queryFn: () => proposalApi.getById(id!), enabled: !!id,
+  const [conflicts, setConflicts] = useState<ApprovalConflict[] | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<DecisionType | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['proposal', id],
+    queryFn: () => proposalApi.get(id!),
+    enabled: !!id,
+    // While it is being processed or evaluated, the status changes underneath us.
+    refetchInterval: (query) => {
+      const status = query.state.data?.proposal.status;
+      return status && ['uploaded', 'extracting', 'evaluating'].includes(status)
+        ? 5_000
+        : false;
+    },
   });
-  const evalMut = useMutation({
-    mutationFn: () => aiApi.evaluate(id!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['proposal', id] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    queryClient.invalidateQueries({ queryKey: ['proposals'] });
+  };
+
+  const evaluate = useMutation({
+    // `force` matters for the re-run: evaluate() is idempotent and would otherwise hand
+    // back the stored partial report unchanged, which is precisely the thing we are
+    // trying to replace.
+    mutationFn: (force: boolean = false) => evaluationApi.run(id!, force),
+    onSuccess: invalidate,
   });
-  const rejectMut = useMutation({
-    queryFn: () => proposalApi.reject(id!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['proposal', id] }),
-  } as any);
-  if (isLoading) return <AppLayout><div className="space-y-6">{[1,2,3].map(i => <Card key={i} hover={false}><Skeleton className="h-32 w-full" /></Card>)}</div></AppLayout>;
-  if (!proposal) return <AppLayout><Card hover={false} className="text-center py-16"><p>Proposal not found</p></Card></AppLayout>;
-  const ev = proposal.evaluation;
-  const radarData = ev ? [
-    { metric: 'Problem Relevance', value: ev.problemRelevanceScore || 0, fullMark: 100 },
-    { metric: 'Solution Readiness', value: ev.solutionReadinessScore || 0, fullMark: 100 },
-    { metric: 'Pilot Design', value: ev.pilotDesignScore || 0, fullMark: 100 },
-    { metric: 'Farmer Adoption', value: ev.farmerAdoptionScore || 0, fullMark: 100 },
-    { metric: 'Scale-up Potential', value: ev.scaleUpScore || 0, fullMark: 100 },
-    { metric: 'Team Capacity', value: ev.teamCapacityScore || 0, fullMark: 100 },
-    { metric: 'Compliance', value: ev.complianceScore || 0, fullMark: 100 },
-  ] : [];
-  const barData = ev ? [
-    { name: 'Problem Relevance', score: ev.problemRelevanceScore || 0, weight: '15%' },
-    { name: 'Solution Readiness', score: ev.solutionReadinessScore || 0, weight: '20%' },
-    { name: 'Pilot Design', score: ev.pilotDesignScore || 0, weight: '20%' },
-    { name: 'Farmer Adoption', score: ev.farmerAdoptionScore || 0, weight: '15%' },
-    { name: 'Scale-up Potential', score: ev.scaleUpScore || 0, weight: '15%' },
-    { name: 'Team Capacity', score: ev.teamCapacityScore || 0, weight: '10%' },
-    { name: 'Compliance', score: ev.complianceScore || 0, weight: '5%' },
-  ] : [];
+
+  const retry = useMutation({
+    mutationFn: () => proposalApi.retryProcessing(id!),
+    onSuccess: invalidate,
+  });
+
+  const decide = useMutation({
+    mutationFn: ({
+      decision,
+      acknowledge,
+    }: {
+      decision: DecisionType;
+      acknowledge?: boolean;
+    }) =>
+      decision === 'selected_for_funding'
+        ? decisionApi.markFunding(id!, true, { acknowledgeConflicts: acknowledge })
+        : decisionApi.decide(id!, decision, { acknowledgeConflicts: acknowledge }),
+    onSuccess: () => {
+      setConflicts(null);
+      setPendingDecision(null);
+      invalidate();
+    },
+    onError: (err) => {
+      // The server refuses an approval that collides with an existing one, and returns
+      // the detail. Show the evaluator exactly what they would be overriding.
+      if (err instanceof ConflictError) {
+        setConflicts(err.conflicts);
+      }
+    },
+  });
+
+  const runDecision = (decision: DecisionType) => {
+    setPendingDecision(decision);
+    decide.mutate({ decision });
+  };
+
+  if (isLoading || !data) {
+    return (
+      <AppLayout>
+        <Skeleton className="h-96 rounded-2xl" />
+      </AppLayout>
+    );
+  }
+
+  const { proposal, latest_evaluation, decision, company_context } = data;
+  const report = latest_evaluation?.report;
+  const evaluation = report?.evaluation;
+  const meta = proposal.idea_metadata;
+
   return (
     <AppLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent/40 flex items-center justify-center"><FileText className="w-6 h-6 text-primary" /></div>
-            <div>
-              <h1 className="text-xl font-bold text-text">{proposal.title}</h1>
-              <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
-                <span>{formatDate(proposal.createdAt)}</span><span>{proposal.fileName}</span>
+      <header className="mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-text">
+              {proposal.title || proposal.filename}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-muted">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="h-4 w-4" />
+                {proposal.company_name ?? 'Company not identified'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <FolderTree className="h-4 w-4" />
+                {proposal.category_label ?? 'Uncategorised'}
+              </span>
+              <StatusBadge status={proposal.status} />
+              {decision && <DecisionBadge decision={decision.decision} />}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {/* Requirement: view the original document the score was produced from. */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => proposalApi.openFile(proposal.id)}
+            >
+              <ExternalLink className="h-4 w-4" />
+              Original document
+            </Button>
+
+            {latest_evaluation && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  evaluationApi.exportPdf(
+                    latest_evaluation.id,
+                    `${(proposal.title || proposal.filename).slice(0, 50)}_evaluation.pdf`,
+                  )
+                }
+              >
+                <Download className="h-4 w-4" />
+                Export PDF
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {proposal.status === 'failed' && (
+        <section className="glass-card-static mb-6 rounded-2xl border-l-4 border-l-red-400 p-5">
+          <div className="flex items-start gap-3">
+            <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-text">
+                Processing failed at the {proposal.error_stage ?? 'unknown'} stage
+              </h2>
+              <p className="mt-1 break-words text-xs text-text-muted">
+                {proposal.error_message}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                Attempt {proposal.retry_count}. The original document is still stored, so a
+                retry costs no re-upload.
+              </p>
+              <Button
+                size="sm"
+                className="mt-3"
+                onClick={() => retry.mutate()}
+                loading={retry.isPending}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Retry
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* (e) The company's track record, shown where the decision is made. */}
+      {company_context && company_context.approved_count > 0 && (
+        <section className="glass-card-static mb-6 rounded-2xl border-l-4 border-l-amber-400 p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-text">
+                {proposal.company_name} already has {company_context.approved_count}{' '}
+                approved idea{company_context.approved_count === 1 ? '' : 's'}
+                {company_context.categories_spanned > 1 &&
+                  ` across ${company_context.categories_spanned} categories`}
+              </h2>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Worth weighing before granting the same company another slot.
+              </p>
+              <div className="mt-3 space-y-1">
+                {company_context.approvals.map((a) => (
+                  <div
+                    key={a.proposal_id}
+                    className="flex items-center justify-between rounded-lg bg-amber-50/60 px-3 py-1.5 text-xs"
+                  >
+                    <span className="font-medium text-text">{a.title}</span>
+                    <span className="text-amber-800">
+                      {a.category} · {a.year}-{String(a.month).padStart(2, '0')}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {isAuthenticated && proposal.status !== 'REJECTED' && (
-              <Button variant="secondary" className="!bg-red-50 !text-red-600 hover:!bg-red-100 !border-red-200" onClick={() => rejectMut.mutate()} loading={rejectMut.isPending}>
-                <XCircle className="w-4 h-4 mr-2" /> Reject Proposal
-              </Button>
-            )}
-            {!isAuthenticated && (
-              <Button variant="secondary" onClick={() => navigate(`/login?claimId=${id}`)}>
-                <Bookmark className="w-4 h-4 mr-2" /> Save to Dashboard
-              </Button>
-            )}
-            {!ev && proposal.status !== 'EVALUATING' && proposal.status !== 'EXTRACTING' && proposal.status !== 'REJECTED' && (
-              <Button onClick={() => evalMut.mutate()} loading={evalMut.isPending}>
-                <Brain className="w-4 h-4 mr-2" /> Run AI Evaluation
-              </Button>
-            )}
-            {(proposal.status === 'EVALUATING' || proposal.status === 'EXTRACTING') && (
-              <Badge variant="info"><Loader2 className="w-3 h-3 animate-spin mr-1" /> Processing...</Badge>
-            )}
-            {proposal.status === 'REJECTED' && (
-              <Badge className="bg-gray-200 text-gray-900"><XCircle className="w-3 h-3 mr-1" /> Rejected</Badge>
-            )}
+        </section>
+      )}
+
+      {conflicts && conflicts.length > 0 && (
+        <section className="glass-card-static mb-6 rounded-2xl border-l-4 border-l-red-400 p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-text">
+                This approval conflicts with existing approvals
+              </h2>
+              <ul className="mt-2 space-y-2">
+                {conflicts.map((conflict, i) => (
+                  <li key={i} className="rounded-lg bg-red-50/70 px-3 py-2">
+                    <p className="text-xs font-medium text-red-900">{conflict.message}</p>
+                    {conflict.existing_approvals?.map((a) => (
+                      <p key={a.proposal_id} className="mt-1 text-[11px] text-red-800/80">
+                        · {a.title} — {a.category} ({a.year}-
+                        {String(a.month).padStart(2, '0')})
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-4 flex gap-2">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={decide.isPending}
+                  onClick={() =>
+                    pendingDecision &&
+                    decide.mutate({ decision: pendingDecision, acknowledge: true })
+                  }
+                >
+                  Approve anyway
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setConflicts(null);
+                    setPendingDecision(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-text-muted">
+                Overriding is recorded in the audit log against your account.
+              </p>
+            </div>
           </div>
-        </motion.div>
+        </section>
+      )}
 
-        {/* Evaluation Results */}
-        {ev ? (
-          <>
-            {/* Score Overview */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                <Card hover={false} className="text-center h-full flex flex-col justify-center py-6">
-                  <p className="text-sm text-text-muted mb-2">Overall Score</p>
-                  <div className="text-5xl font-bold text-gradient">{Math.round(ev.overallScore)}</div>
-                  <span className={`inline-block mt-3 text-xs font-semibold px-3 py-1 rounded-lg border mx-auto ${getRecommendationColor(ev.recommendation)}`}>{ev.recommendation}</span>
-                </Card>
-              </motion.div>
-              {[
-                { key: 'problemRelevanceScore', label: 'Problem Relevance', icon: Target, color: 'text-rose-600', bg: 'bg-rose-50' },
-                { key: 'solutionReadinessScore', label: 'Solution Readiness', icon: Lightbulb, color: 'text-amber-600', bg: 'bg-amber-50' },
-                { key: 'pilotDesignScore', label: 'Pilot Design', icon: FileText, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                { key: 'farmerAdoptionScore', label: 'Farmer Adoption', icon: Sprout, color: 'text-green-600', bg: 'bg-green-50' },
-                { key: 'scaleUpScore', label: 'Scale-up Potential', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                { key: 'teamCapacityScore', label: 'Team Capacity', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-                { key: 'complianceScore', label: 'Compliance', icon: Shield, color: 'text-slate-600', bg: 'bg-slate-50' },
-              ].map((item, i) => {
-                const score = ev[item.key as keyof typeof ev] as number ?? 0;
-                return (
-                  <motion.div key={item.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 + i * 0.04 }}>
-                    <Card hover={false} className="h-full">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className={`w-7 h-7 rounded-lg ${item.bg} flex items-center justify-center`}><item.icon className={`w-4 h-4 ${item.color}`} /></div>
-                        <p className="text-xs text-text-muted font-semibold leading-none">{item.label}</p>
-                      </div>
-                      <p className={`text-2xl font-bold ${getScoreColor(score)}`}>{Math.round(score)}</p>
-                      <Progress value={score} className="mt-2 h-1.5" />
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
+      <section className="glass-card-static mb-6 rounded-2xl p-5">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text">
+          <ScrollText className="h-4 w-4 text-text-secondary" />
+          The idea
+        </h2>
 
-            {/* Charts */}
-            <div className="grid lg:grid-cols-2 gap-6">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                <Card hover={false}>
-                  <h3 className="text-base font-semibold mb-4">Score Profile</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RadarChart data={radarData}>
-                      <PolarGrid stroke="#E2E8F0" />
-                      <PolarAngleAxis dataKey="metric" fontSize={11} stroke="#64748B" />
-                      <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                      <Radar dataKey="value" stroke="#2E7D32" fill="#2E7D32" fillOpacity={0.15} strokeWidth={2} />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </Card>
-              </motion.div>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
-                <Card hover={false}>
-                  <h3 className="text-base font-semibold mb-4">Weighted Scores</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={barData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis type="number" domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
-                      <YAxis type="category" dataKey="name" fontSize={11} stroke="#94A3B8" width={90} />
-                      <Tooltip contentStyle={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '12px' }} />
-                      <Bar dataKey="score" fill="#2E7D32" radius={[0, 6, 6, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-              </motion.div>
-            </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Problem" value={proposal.problem_statement} />
+          <Field label="Solution" value={proposal.solution_summary} />
+        </div>
 
-            {/* Summary */}
-            <Card hover={false}>
-              <h3 className="text-base font-semibold mb-3">AI Summary</h3>
-              <p className="text-sm text-text-secondary leading-relaxed">{ev.summary}</p>
-            </Card>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-border/60 pt-3 text-xs text-text-muted">
+          <span>{proposal.total_pages} pages</span>
+          <span>{proposal.total_words.toLocaleString()} words</span>
+          <span>{proposal.total_tables} tables</span>
+          {proposal.has_scanned_content && <span>contains scanned pages (OCR)</span>}
+          {meta?.trl_level && <span>TRL {meta.trl_level}</span>}
+          {meta?.districts && meta.districts.length > 0 && (
+            <span>districts: {meta.districts.slice(0, 4).join(', ')}</span>
+          )}
+        </div>
+      </section>
 
-            {/* Detailed Parameter Breakdown Accordion */}
-            {ev.parameterBreakdown && Object.keys(ev.parameterBreakdown).length > 0 && (
-              <Card hover={false} className="space-y-4">
-                <h3 className="text-base font-semibold border-b pb-2">Detailed Parameter Breakdown</h3>
-                <div className="space-y-2">
-                  {Object.entries(ev.parameterBreakdown).map(([key, breakdown]) => {
-                    const isExpanded = expandedParam === key;
-                    return (
-                      <div key={key} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30">
-                        <button
-                          className="w-full flex items-center justify-between p-4 font-semibold text-sm hover:bg-slate-50 transition text-left"
-                          onClick={() => setExpandedParam(isExpanded ? null : key)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className={`text-lg font-bold ${getScoreColor(breakdown.parameter_score)}`}>
-                              {Math.round(breakdown.parameter_score)}
-                            </span>
-                            <span className="text-text">{breakdown.parameter_name}</span>
-                          </div>
-                          {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-                        </button>
-                        {isExpanded && (
-                          <div className="p-4 bg-white border-t border-slate-200 space-y-4">
-                            {/* Sub-questions list */}
-                            <div className="space-y-4">
-                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sub-Question Rubrics</h4>
-                              {breakdown.sub_questions.map((sq: any, sIdx: number) => (
-                                <div key={sIdx} className="space-y-2 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="space-y-0.5">
-                                      <span className="text-xs font-bold text-slate-400 mr-2">{sq.question_id.toUpperCase()}</span>
-                                      <span className="text-sm font-medium text-text">{sq.question}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className={`text-sm font-bold ${getScoreColor(sq.score * 10)}`}>{sq.score}/10</span>
-                                    </div>
-                                  </div>
-                                  <div className="grid md:grid-cols-2 gap-3 text-xs mt-1">
-                                    <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                                      <span className="font-bold text-slate-500 block mb-1">Justification:</span>
-                                      <p className="text-text-secondary">{sq.justification}</p>
-                                    </div>
-                                    <div className="bg-green-50/40 p-2.5 rounded-lg border border-green-100/50">
-                                      <span className="font-bold text-green-700 block mb-1">Evidence from Proposal:</span>
-                                      <p className="text-green-950 font-medium italic">"{sq.evidence || 'N/A'}"</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+      {!evaluation ? (
+        <EmptyState
+          icon={Gauge}
+          title="Not evaluated yet"
+          description={
+            proposal.review_decision === 'pending'
+              ? 'This idea is waiting on a duplicate review. Resolve that first.'
+              : proposal.review_decision === 'skipped_duplicate'
+                ? 'This idea was marked a duplicate and skipped. Its metadata is kept, and it can still be evaluated later if that judgement changes.'
+                : 'Run the agent pipeline. It reads the sections stored at ingestion — the document is not re-read, so this costs no re-upload.'
+          }
+          action={
+            proposal.review_decision === 'approved_for_eval' ? (
+              <Button onClick={() => evaluate.mutate(false)} loading={evaluate.isPending}>
+                <Play className="h-4 w-4" />
+                Evaluate now
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <>
+          <section className="glass-card-static mb-6 rounded-2xl p-5">
+            <div className="flex flex-wrap items-center gap-6">
+              <ScoreRing score={evaluation.overall_score} />
 
-                            {/* Key findings, red flags, recommendations */}
-                            <div className="grid md:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
-                              <div>
-                                <span className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider">Key Findings</span>
-                                <ul className="list-disc pl-4 space-y-1 text-xs text-text-secondary">
-                                  {breakdown.key_findings.map((f: string, fIdx: number) => <li key={fIdx}>{f}</li>)}
-                                  {breakdown.key_findings.length === 0 && <li className="italic list-none pl-0">None reported</li>}
-                                </ul>
-                              </div>
-                              <div>
-                                <span className="text-xs font-bold text-red-500 block mb-2 uppercase tracking-wider">Red Flags</span>
-                                <ul className="list-disc pl-4 space-y-1 text-xs text-red-600 font-medium">
-                                  {breakdown.red_flags.map((rf: string, rfIdx: number) => (
-                                    <li key={rfIdx} className="flex items-start gap-1">
-                                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                                      {rf}
-                                    </li>
-                                  ))}
-                                  {breakdown.red_flags.length === 0 && <li className="italic list-none pl-0 text-slate-400">None detected</li>}
-                                </ul>
-                              </div>
-                              <div>
-                                <span className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider">Recommendations</span>
-                                <ul className="list-disc pl-4 space-y-1 text-xs text-text-secondary">
-                                  {breakdown.recommendations.map((r: string, rIdx: number) => <li key={rIdx}>{r}</li>)}
-                                  {breakdown.recommendations.length === 0 && <li className="italic list-none pl-0">None reported</li>}
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <RecommendationBadge recommendation={evaluation.recommendation} />
+                  <span className="text-xs text-text-muted">
+                    risk {evaluation.risk_level} · evidence coverage{' '}
+                    {(evaluation.evidence_coverage * 100).toFixed(0)}%
+                  </span>
                 </div>
-              </Card>
-            )}
-
-            {/* Debate Insights Section */}
-            {ev.debateSummary && ev.debateSummary.debates && ev.debateSummary.debates.length > 0 && (
-              <Card hover={false} className="border-emerald-200/50 bg-emerald-50/10">
-                <div className="flex items-center justify-between border-b border-emerald-100 pb-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Brain className="w-5 h-5 text-emerald-700" />
-                    <h3 className="text-base font-bold text-emerald-800">Multi-Agent Debate Insights</h3>
-                  </div>
-                  <Badge variant="default" className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                    Confidence: {Math.round(ev.debateSummary.confidence * 100)}%
-                  </Badge>
-                </div>
-                
-                <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-                  The Debate Agent detected potential conflicts across the evaluations and triggered a cross-examination to resolve scoring differences.
+                <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                  {evaluation.summary}
                 </p>
+              </div>
+            </div>
 
-                <div className="space-y-4">
-                  {ev.debateSummary.debates.map((debate: any, dIdx: number) => {
-                    const conflict = ev.debateSummary?.conflicts?.find((c: any) => c.conflict_id === debate.conflict_id);
-                    return (
-                      <div key={dIdx} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <h4 className="text-sm font-bold text-text">{debate.topic}</h4>
-                          {conflict && (
-                            <Badge className={`
-                              ${conflict.severity === 'high' ? 'bg-red-50 text-red-700 border-red-200' : ''}
-                              ${conflict.severity === 'medium' ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}
-                              ${conflict.severity === 'low' ? 'bg-slate-50 text-slate-700 border-slate-200' : ''}
-                              border text-xs px-2 py-0.5
-                            `}>
-                              {conflict.severity.toUpperCase()} SEVERITY
-                            </Badge>
-                          )}
-                        </div>
-
-                        {conflict && <p className="text-xs text-text-muted">{conflict.description}</p>}
-
-                        <div className="grid md:grid-cols-2 gap-4 pt-2">
-                          {debate.position_a && (
-                            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                              <span className="text-xs font-bold text-slate-500 block mb-1">Position A ({debate.position_a.agent})</span>
-                              <p className="text-xs text-text-secondary leading-relaxed mb-2">{debate.position_a.argument}</p>
-                              {debate.position_a.evidence && (
-                                <p className="text-[11px] text-slate-500 italic bg-white p-2 rounded border border-slate-100">
-                                  "{debate.position_a.evidence}"
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          {debate.position_b && (
-                            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                              <span className="text-xs font-bold text-slate-500 block mb-1">Position B ({debate.position_b.agent})</span>
-                              <p className="text-xs text-text-secondary leading-relaxed mb-2">{debate.position_b.argument}</p>
-                              {debate.position_b.evidence && (
-                                <p className="text-[11px] text-slate-500 italic bg-white p-2 rounded border border-slate-100">
-                                  "{debate.position_b.evidence}"
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="bg-emerald-50/40 p-3 rounded-lg border border-emerald-100/30">
-                          <span className="text-xs font-bold text-emerald-700 block mb-1">Resolution & consensus</span>
-                          <p className="text-xs text-text-secondary leading-relaxed">{debate.resolution}</p>
-                        </div>
-
-                        {debate.score_adjustments && debate.score_adjustments.length > 0 && (
-                          <div className="pt-2">
-                            <span className="text-xs font-bold text-slate-400 block mb-2 uppercase tracking-wider">Score Adjustments Applied</span>
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left border-collapse text-xs">
-                                <thead>
-                                  <tr className="border-b border-slate-100 text-slate-400 font-bold">
-                                    <th className="py-2 pr-4">Parameter</th>
-                                    <th className="py-2 pr-4">Sub-Question</th>
-                                    <th className="py-2 pr-4 text-center">Raw Score</th>
-                                    <th className="py-2 pr-4 text-center">Adjustment</th>
-                                    <th className="py-2 text-center">Adjusted Score</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {debate.score_adjustments.map((adj: any, aIdx: number) => (
-                                    <tr key={aIdx} className="border-b border-slate-50 last:border-0">
-                                      <td className="py-2 pr-4 font-medium">{adj.parameter}</td>
-                                      <td className="py-2 pr-4 text-slate-500">{adj.sub_question_id.toUpperCase()}</td>
-                                      <td className="py-2 pr-4 text-center text-slate-500">{adj.current_score}/10</td>
-                                      <td className="py-2 pr-4 text-center font-bold text-amber-600">{adj.adjustment > 0 ? `+${adj.adjustment}` : adj.adjustment}</td>
-                                      <td className="py-2 text-center font-bold text-emerald-700">{adj.adjusted_score}/10</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {ev.debateSummary.high_ambiguity_areas && ev.debateSummary.high_ambiguity_areas.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-emerald-100">
-                    <span className="text-xs font-bold text-emerald-800 block mb-2 uppercase tracking-wider">Ambiguity & Due-Diligence Flags</span>
-                    <ul className="list-disc pl-4 space-y-1 text-xs text-text-secondary">
-                      {ev.debateSummary.high_ambiguity_areas.map((area: string, aIdx: number) => (
-                        <li key={aIdx}>{area}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </Card>
+            {/*
+              An incomplete assessment must say so, loudly, right next to the score.
+              Otherwise an evaluator reads 69/100 and has no way of knowing that two
+              parameters were never actually looked at.
+            */}
+            {evaluation.failed_parameters?.length > 0 && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-red-800">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  This assessment is incomplete — do not rely on the score yet
+                </p>
+                <p className="mt-1 text-xs text-red-700/90">
+                  We could not assess {evaluation.failed_parameters.join(', ')} because of
+                  a technical failure on our side. This is <strong>not</strong> a gap in
+                  the proposal and the applicant has not been penalised for it — those
+                  parameters were simply left out of the weighted score.
+                </p>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  className="mt-3"
+                  onClick={() => evaluate.mutate(true)}
+                  loading={evaluate.isPending}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Re-run the evaluation
+                </Button>
+              </div>
             )}
 
-            {/* SWOT */}
-            <div className="grid md:grid-cols-2 gap-4">
-              {[
-                { title: 'Strengths', items: ev.swotAnalysis?.strengths, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-                { title: 'Weaknesses', items: ev.swotAnalysis?.weaknesses, icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' },
-                { title: 'Opportunities', items: ev.swotAnalysis?.opportunities, icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
-                { title: 'Threats', items: ev.swotAnalysis?.threats, icon: Shield, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-              ].map((s, i) => (
-                <motion.div key={s.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 + i * 0.05 }}>
-                  <Card hover={false} className="h-full">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-7 h-7 rounded-lg ${s.bg} flex items-center justify-center`}><s.icon className={`w-4 h-4 ${s.color}`} /></div>
-                      <h4 className="text-sm font-semibold">{s.title}</h4>
-                    </div>
-                    <ul className="space-y-2">
-                      {(s.items || []).map((item, j) => (
-                        <li key={j} className="text-sm text-text-secondary flex items-start gap-2">
-                          <span className={`w-1.5 h-1.5 rounded-full ${s.color.replace('text-', 'bg-')} mt-1.5 flex-shrink-0`} />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
-                </motion.div>
+            {/* Parameters the document never addressed. Reported, not silently zeroed. */}
+            {evaluation.unevidenced_parameters.length > 0 && (
+              <div className="mt-4 rounded-lg bg-gray-50 px-3 py-2">
+                <p className="text-xs text-text-muted">
+                  <span className="font-semibold text-text-secondary">
+                    Not addressed by the proposal:
+                  </span>{' '}
+                  {evaluation.unevidenced_parameters.join(', ')}. These are excluded from
+                  the weighted score rather than counted as zero — the proposal is silent
+                  on them, which is not the same as answering them poorly.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {isAdmin && (
+            <section className="glass-card-static mb-6 rounded-2xl p-5">
+              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-text">
+                <Landmark className="h-4 w-4 text-text-secondary" />
+                Decision
+              </h2>
+              <p className="mb-4 text-xs text-text-muted">
+                Approving is checked against existing approvals in this category and from
+                this company. Any conflict is shown to you before it is recorded.
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => runDecision('approved')}
+                  loading={decide.isPending && pendingDecision === 'approved'}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-violet-600 text-white hover:bg-violet-700"
+                  onClick={() => runDecision('selected_for_funding')}
+                  loading={decide.isPending && pendingDecision === 'selected_for_funding'}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Select for funding
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => runDecision('rejected')}
+                  loading={decide.isPending && pendingDecision === 'rejected'}
+                >
+                  <Ban className="h-4 w-4" />
+                  Reject
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {/* (c) SWOT as one continuous argument, not four disconnected stubs. */}
+          <section className="glass-card-static mb-6 rounded-2xl p-5">
+            <h2 className="mb-3 text-sm font-semibold text-text">SWOT</h2>
+
+            {evaluation.swot_analysis.narrative && (
+              <p className="mb-4 text-sm leading-relaxed text-text-secondary">
+                {evaluation.swot_analysis.narrative}
+              </p>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SwotQuadrant
+                title="Strengths"
+                items={evaluation.swot_analysis.strengths}
+                tone="emerald"
+              />
+              <SwotQuadrant
+                title="Weaknesses"
+                items={evaluation.swot_analysis.weaknesses}
+                tone="red"
+              />
+              <SwotQuadrant
+                title="Opportunities"
+                items={evaluation.swot_analysis.opportunities}
+                tone="blue"
+              />
+              <SwotQuadrant
+                title="Threats"
+                items={evaluation.swot_analysis.threats}
+                tone="amber"
+              />
+            </div>
+          </section>
+
+          {/* (b) Every score, with the quotes behind it. */}
+          <section className="mb-6">
+            <header className="mb-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-text">
+                <FileText className="h-4 w-4 text-text-secondary" />
+                Scores and the evidence behind them
+              </h2>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Every score is followed by the verbatim text from the proposal that
+                produced it. Quotes that could not be located in the source document were
+                discarded and contributed to no score.
+              </p>
+            </header>
+
+            <div className="grid gap-4">
+              {Object.values(evaluation.parameter_breakdown).map((parameter) => (
+                <ParameterCard key={parameter.parameter_key} parameter={parameter} />
               ))}
             </div>
+          </section>
 
-            {/* Strengths & Weaknesses */}
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card hover={false}>
-                <h3 className="text-sm font-semibold text-green-700 mb-3">Key Strengths</h3>
-                <ul className="space-y-2">{(ev.strengths || []).map((s: string, i: number) => <li key={i} className="text-sm text-text-secondary flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
-              </Card>
-              <Card hover={false}>
-                <h3 className="text-sm font-semibold text-red-600 mb-3">Key Weaknesses</h3>
-                <ul className="space-y-2">{(ev.weaknesses || []).map((w: string, i: number) => <li key={i} className="text-sm text-text-secondary flex items-start gap-2"><AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />{w}</li>)}</ul>
-              </Card>
-            </div>
-          </>
-        ) : (
-          <Card hover={false} className="text-center py-16">
-            <Brain className="w-14 h-14 text-text-muted mx-auto mb-4" />
-            <h3 className="text-lg font-semibold">Not Evaluated Yet</h3>
-            <p className="text-sm text-text-muted mt-1 mb-4">Run AI evaluation to analyze this proposal</p>
-            <Button onClick={() => evalMut.mutate()} loading={evalMut.isPending}><Brain className="w-4 h-4" /> Run Evaluation</Button>
-          </Card>
-        )}
-      </div>
+          {evaluation.key_action_items.length > 0 && (
+            <section className="glass-card-static mb-6 rounded-2xl p-5">
+              <h2 className="mb-3 text-sm font-semibold text-text">Required actions</h2>
+              <ol className="space-y-1.5">
+                {evaluation.key_action_items.map((item, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-text-secondary">
+                    <span className="tabular-nums text-text-muted">{i + 1}.</span>
+                    {item}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          {report && (
+            <p className="text-center text-[11px] text-text-muted">
+              {report.total_tokens.toLocaleString()} tokens ·{' '}
+              {report.processing_time_seconds.toFixed(0)}s · {report.model_used}
+            </p>
+          )}
+        </>
+      )}
     </AppLayout>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Field({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+        {label}
+      </p>
+      <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+        {value || <span className="italic text-text-muted">Not identified</span>}
+      </p>
+    </div>
+  );
+}
+
+function SwotQuadrant({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: 'emerald' | 'red' | 'blue' | 'amber';
+}) {
+  const tones = {
+    emerald: 'border-emerald-200 bg-emerald-50/50',
+    red: 'border-red-200 bg-red-50/50',
+    blue: 'border-blue-200 bg-blue-50/50',
+    amber: 'border-amber-200 bg-amber-50/50',
+  };
+
+  return (
+    <div className={`rounded-xl border p-3 ${tones[tone]}`}>
+      <p className="mb-1.5 text-xs font-semibold text-text">{title}</p>
+      {items.length === 0 ? (
+        <p className="text-xs italic text-text-muted">None recorded</p>
+      ) : (
+        <ul className="space-y-1">
+          {items.map((item, i) => (
+            <li key={i} className="text-xs leading-snug text-text-secondary">
+              · {item}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -1,0 +1,374 @@
+## DVARA E-REGISTRY PRIVATE LIMITED
+ARTIFICIAL INTELLIGENCE AND AGRITECH INNOVATION CENTER-PRIMARY SCREENING Application Id: AIAI-251753
+## Problem Statements
+Climate Resilience
+## Choose Application Track ( Please review [Link])
+Track 2 (Pilot and Validation)
+## Name
+Pankaj Gaur
+## Email
+pankaj.gaur@dvara.com
+## Contact Number of the Authorized Person
++91 9569526166
+## Startup Name
+Dvara E-Registry Private Limited
+## Type
+Startup
+## Startup(Please Mention)
+Revenue
+## Founders Background (2-3 lines)
+Mr. Syed Tarique Alam has over 18 years of experience in rural, agri and MSME lending. He holds MBA from IIFM, Bhopal.Mr. Tarun Katoch has 15+ years of experience in agriculture, trade markets and FPOs while working with NCDEX & GAR. He holds MBA from NIAM, Jaipur & BSc. Horticulture from Dr. YSPUHF.Mr. Senthil Kumar S., has 25+ years of experience in developing crop specific analytics & tech driven farmer solutions with MNCs.
+He holds MSc. in Agriculture.
+## Employees
+## No. of Full Time Employees
+## No. of Contractual Employees
+## Year of Incorporation
+2019-02-08T18:30:00.000Z 12 Feb 2026 08:27 PM
+1 /
+
+CIN/Registration No.
+U67190TN2019PTC127386
+## GSTIN (if applicable)
+36AAHCD0920A1ZC
+## Startup India / DPIIT Recognition No. (if any)
+DIPP45988
+## UDYAM Registration (if any)
+UDHYAM-TN-02-0049851
+## State
+Tamil Nadu
+## Registered Address
+10th floor, Phase I, IIT Madras Research Kanagam Village, Taramani, Chennai, Tamil Nadu - 600113
+## Operational Address in Maharashtra (if different)
+Dvara Holdings, Top Floor, 52/A, Tommy House, Pali Village, Bandra West, Mumbai - 400050, INDIA
+## Website
+https://www.dvaraeregistry.com/
+## PAN of Organization
+AAHCD0920A
+## Prior Govt. Collaboration (Also mention significant non-government collabora-
+## tion) if any
+Government of Odisha & Gates Foundation - Daily Price Tracking & Future Price forecasting for Horticultural Crops. Odisha State Coffee Mission as a Technical support unit to strategiz implementation of Coffee mission to reach 40,000 Ha land under Coffee. Government of Tamil Nadu and World Bank collaboration as Tamil Nadu Rural Transformation Project - Digitialisation and market linkages of FPOs. International Rice Research Institute (IRRI) - Formation of Women Led FPO and promote seed multiplication program for climate resilient. International Food Policy Research Institute (IFPRI) - Test KhetScore and Picture based Crop insurance. Offer analytical services for crop loss assessment in ACRE Project in Kenya. Collaborate for crop yield estimation under project with MNCFC for paddy crop.
+## Financials
+## FY (24-25)
+## FY (23-24)
+## FY (22-23)
+## Field
+## Net Revenue
+12,03,53,706
+6,46,74,799
+3,53,03,174
+## Expenses
+23,56,96,439
+17,50,11,681
+15,44,38,415
+## Net Profit
+(11,53,42,733)
+(11,03,36,882)
+(11,91,35,241)
+## Cash Reserves
+97,80,103
+53,51,951
+41,79,744
+## Avg. Burn Rate
+96,11,894
+91,94,740
+99,27,936
+12 Feb 2026 08:27 PM
+2 /
+
+## Funding raised till
+13,22,50,000
+12,82,60,000
+11,50,00,000
+## date
+## Unit economics (e.-
+## g. cost per farmer
+-
+-
+-
+## serviced/revenue per
+## transaction)
+## Committed pipeline
+## or LOIs (if there are al-
+10,00,00,000
+-
+-
+## ready customers/pi-
+## lots’ agreements)
+## Upload financial documents (Past 3 years, Audited Balance Sheet, P&L Statement
+## etc)
+https://api-legacy.accubate.app/document/aiaic/2fbe55e6-d2ae-4bed-b3e2-d9bda77e77a1
+## Project/Product Name
+KhetScore & Picture based Crop loss assessment for insurance claim settlement
+## Solution Synopsis
+KhetScore & Picture-Based Crop Loss Assessment are AI-driven innovations designed to transform crop insurance through precise risk & loss assessment. KhetScore leverages remote sensing, AI/ML, & climate intelligence to analyze 3 years of field data across 11 parameters & 200+ data points for soil moisture, crop vigor, nutrient status, & climate shocks. This enables granular, farm-level climate & cashflow risk profiling, allowing insurers to assign risk-based premiums instead of coarse block-level averages.Picture-Based Validation (PBV) strengthens loss assessment by merging geotagged farm images with satellite indices to validate crop damage. This reduces manual field inspections, minimizes human bias, & ensures transparent farmer-level claim settlement.How It Works:Geo-coordinates of plots processed to extract multi-season performance AI/ML models compute risk scores, enabling farmer-level underwriting. loss assessment through PBV & satellite data.Competitive Advantages: • Field-level climate-risk assessment; 200+ data points per plot, risk profiling • PBV + satellite fusion for fast, transparent claim validation • Fair, risk-adjusted premiums at farmer levelScalability & Adaptability: 100% digital, API-driven platform scales to millions of plots & integrates with Agristack, e-KYC, FPO MIS systems, & insurer engines.Impact:improves fairness, accelerates payouts, reduces operating costs, expands coverage, & builds trust by transparent assessment.
+## Target Beneficiaries (Class of Beneficiaries)
+Farmers
+Proposed Project Districts in Maharashtra.
+Amravati
+## Proposed Project Taluka in Maharashtra - Amravati
+DaryapurAnjangaon SurjiChandur RailwayAmravatiBhatkuli
+## Proposed Project Duration (months)
+## Total Project Cost (INR) ( AIAIC support + Own Funding/Private Funding)
+12 Feb 2026 08:27 PM
+3 /
+
+## Unique Value Proposition of the solution ( What value does your solution deliver
+## to your target customer ?)
+Current crop insurance schemes face several constraints:High premium, block-level policies ignore farmer level risk profiling.Costly manual field assessments Delayed claim settlements, time-consuming, laborious, & often inconsistent manual inspections.Cumbersome & documentation-heavy processes. KhetScore addresses these challenges by providing farm-level, climate-adjusted risk scoring using 3 years of satellite, climate, & crop data—to deliver underwriting based on each farmer’s field. This reduces premium distortion, lending risk, & moral hazards.
+Picture-Based Loss Assessment (PBA) delivers near-real-time, unbiased crop loss verification, eliminating dependence on manual inspections.
+Proven Track Record: validated through ACRE-IFPRI pilot covering 1,716 sites, achieving:Growth stage classification accuracy of 75%Drought detection accuracy of 89%Damage extent prediction with correlation coefficient (R) of 0.85
+Value for Farmers: Granular, fair, individualized insuranceEasy digital process for insurance & claim settlementFarmer resilience due to faster, transparent claim settlements (30-45 days vs. 90+ days)Lower premiums for low- -risk farmersInclusion of women & tenant farmers without land documentsAccessible & reliableValue for Insurers:
+Accurate risk pricing at farmer level ’ improved portfolio qualityAutomation lowering cost of operationsReduced documentation, fraud & moral hazardScientifically validated claims
+## Does the product have the potential to create employment ?
+Yes. The solution creates rural jobs by enabling Village level entrepreneurs and FPO staff to support farmer onboarding, & field data collection for crop insurance. VLEs and FPOs earn through service commissions.
+## Core Technology Stack used/Innovation
+GIS Remote Sensing AI /ML(Artificial Intelligence/Machine Learning)
+## Explain the technology you are using in detail
+Technology Overview
+1. Remote Sensing & Geospatial Analytics • Multi-resolution Sentinel-2 & Landsat data to analyse 3 years of crop
+& land-use patterns. • Crop vigour through vegetation indices (NDVI, GNDVI). • Moisture stress via NDMI, NMDI.
+• Uses SAR indicators (VHVV, VH/VV) for flood, lodging, storm damage. • Extracts land surface temperature
+(LST) & soil moisture for micro-climate insights.
+2. AI/ML Modelling • Deep learning, gradient boosting & CNN models generate farmer-specific risk scores.
+• Validated by ACRE-IFPRI: – 75% accuracy in crop growth stage classification – 89% accuracy in drought
+detection – Damage prediction MAE: 0.078; Correlation (R): 0.85 3. Climate Intelligence Layer • Integrates IMD datasets for real-time & long-term climate behaviour. • Detects
+drought, floods, heat/cold stress & profiles micro-climate.
+4. Picture-Based Loss Assessment (PBA) • Geo-tagged, time-stamped images captured via mobile app. • Segmentation detects damage, disease, pest stress. • Automated comparison with historical + satellite signatures. •
+Enables fast, transparent, farmer-level claim settlement.
+5. Scalable Digital Infrastructure • Cloud-native (AWS/Azure) architecture with modular APIs. • Digital onboarding, geo-mapping, & FSO/VLE field workflow. • GIS dashboards for insurers, lenders, govt agencies. • Fully
+Agristack-ready for national interoperability.
+Continuous Improvement Annual retraining, external validation & agronomist feedback loops for model enhancement
+## Technology Readiness Level (TRL) is a measure used to assess the maturity of a
+## particular technology on a scale from 1 to 9
+12 Feb 2026 08:27 PM
+4 /
+
+TRL 9 (Technology proven and used in a real industry setting)
+## Does your project incorporate any open-source technologies, standards, or con-
+## tributions? If yes, could you specify which ones and how they are used?
+The KhetScore and PBV platform leverages robust open-source technologies and globally accepted standards to ensure scalability, interoperability, security, and alignment with India’s digital agriculture ecosystem. Satellite & Geospatial Processing: The platform utilizes open-access Sentinel-2 satellite imagery, processed using Rasterio for raster handling and preprocessing. Geospatial interoperability is ensured through OGC standards (WMS- /WFS/WCS), GeoJSON, GeoPandas, and QGIS for spatial analysis and validation. Machine Learning & Risk Analytics: Advanced analytics are powered by TensorFlow, PyTorch, Keras, and Scikit-learn for deep learning and statistical modeling. XGBoost and LightGBM enable high-performance gradient-boosted risk scoring. Climate & Weather Data Integration: The system integrates open datasets from IMD, Weather stack and LULC Nasa Datasets to enrich crop risk and yield assessments with high-resolution climate intelligence. While proprietary algorithms remain protected IP, the platform supports open collaboration through anonymized data sharing, benchmark publications, and coordination with government agencies. This open-source foundation ensures high scalability, cost efficiency, transparency, interoperability, and future readiness.
+## Data Sources Used
+Geospatial and Satellite Data (Land/crop mapping, drought monitoring)
+## Describe how the solution ensures compliance with data governance and privacy
+## requirements under DPDP Act, 2023
+Consent-Based Data Collection
+## In your business model or technology, which of the following practices do you use
+## to evaluate model safety and ensure reliable and fair outcomes?
+Biases (Identifying and mitigating unfair biases in the model)
+## IP Status
+Foreground
+## Revenue Model
+Subscription feesCommissionLicensing feesService sale
+## Target Market/Customer Segment ( Intended Customers/Beneficiaries such as
+## Farmers, FPOs, Food Processors, Agri Input Dealers, Agrifintech, etc)
+The target market & intended beneficiaries for the Crop Insurance Product (integrating KhetScore, KSNow & PBV) are multi-layered, serving both farmers directly & the institutions supporting them: A. Primary Customers/Beneficiaries (Farmers) The core market segment is comprised of smallholder, tenant, & marginal farmers in India, particularly those who lack access to formal, fair insurance due to basis risk or lack of formal land titles. The eligible farmer groups include: •Small & marginal Farmers - representing 86% of all farm holdings •Tenant & Women Farmers - enabled through field data rather than land title requirements •Loanee & Non-loanee farmers - automatic enrollment for loanee farmers, voluntary enrollment for others •Member farmers of FPOs & Cooperatives - leveraging existing farmer networks B. Institutional/B2B Customers & Partners Key institutional stakeholders across the agricultural finance & value chain: 1. Insurance Partners/Insurers:
+•Use platform for data-driven underwriting & risk-based pricing •Rapid & scientifically verified claim settlement
+(reducing operational costs by ~40%). •Discussions going with AICIL. 2. Financial Institutions (FIs), Banks & Microfinance Institutions (MFIs): •Partner for integrating insurance with loan products (loan-linked insurance)
+12 Feb 2026 08:27 PM
+5 /
+
+•Assess credit risk using KhetScore for lending decisions 3. FPOs & Cooperatives: Crucial intermediaries for
+farmer outreach, training, & PBV adoption •Earn commissions on enrollments & claim validations •Strengthen member value proposition 4. State Governments & Government Departments: •Integration with agricultural credit, subsidy programs, & PMFBY alignment •Use KhetScore for targeted disaster response •Monitor crop health & insurance penetration through GIS dashboards 5. Research Institutions: •Collaborators for model validation, impact analysis, & performance reporting •Access anonymized datasets for agricultural AI research •ICRISAT, IFPRI, ICAR institutions, agricultural universities
+## Market size (Total Addressable Market, Serviceable Available Market, Serviceable
+## Obtainable Market), if any
+The Crop Insurance Product—powered by KhetScore, KSNow, and Picture-Based Verification (PBV)—addresses a large and rapidly expanding market driven by climate volatility, rising insurance penetration, and Agristack-enabled digitization.
+1. India Market SizeTotal Addressable Market (TAM) – IndiaThe total national market spans all farmers eligible
+for crop insurance under public and private schemes.140+ million farmers~198 million hectares of gross cropped areaPMFBY + Weather-based + Private/Alternate Insurance market size: USD 4.5–5 billion annuallyApplicable across 20+ major crops including paddy, wheat, cotton, soybean, maize, pulses, oilseeds, sugarcane, horticulture crops, and coarse cerealsTAM (India): ~USD 5 Billion / ₹40,000 Crores Serviceable Available Market (SAM) – IndiaFarmers and areas where KhetScore + PBV can be deployed immediately with insurers and Agrifintech partners:~60 million farmers with smartphones or FPO access~90 million hectares of major field crops and multi-season farming areasIncludes major climate-risk crops: cotton, soybean, maize, paddy, pulses, oilseeds, sorghum, millet, sugarcaneSAM (India): ~USD 2.5 Billion / ₹20,000 Crores
+Serviceable Obtainable Market (SOM) – IndiaNear-term target through insurer partnerships, FPO networks, and Agristack integration:3–5 million farmers reachable within 5 years10–15% adoption in high-risk crop clustersFocus crops with highest loss incidence: cotton, soybean, paddy, maize, pulsesSOM (India): ~USD 200–300 Million / ₹1,600–2,500 Crores 2. Maharashtra Market Size (State-Level)Maharashtra is one of India’s highest-risk and highest-potential states
+for climate-resilient insurance due to large areas under rainfed cotton, soybean, and pulses.TAM – Maharashtra~15 million farmers~21 million hectares of crop areaMajor crops: cotton, soybean, sugarcane, paddy, jowar, tur (pigeon pea), horticultureState crop insurance outlay: ~USD 650–700 million annuallyTAM (Maharashtra):
+~USD 700 Million / ₹5,500 Crores SAM – MaharashtraFarmer clusters where KhetScore + PBV can be deployed:6–7 million farmers in FPO clusters, cotton belts, and digitally accessible regionsFocus crops: cotton, soybean, tur, paddy, horticulture crops (banana, pomegranate, grape, orange)SAM (Maharashtra): ~USD 300–350 Million / ₹2,400–2,800 Crores SOM – MaharashtraRealistic target through insurer pilots, FPO networks, and district Agri Department partnerships:500,000–700,000 farmers in high-loss belts like Vidarbha and MarathwadaMajor crops targeted: cotton, soybean, tur, horticulture clustersSOM (Maharashtra): ~USD 40–60 Million / ₹300–500 Crores Competitive Context: Despite existing government schemes, the primary advantage lies in:Basis risk reduction:
+Traditional area-yield insurance fails 40-50% of genuine loss casesTransparency demand: Farmer trust deficit in manual CCE-based assessmentsSpeed requirement: 90+ day claim cycles inadequate for farmer liquidity needsInclusion gap: Tenant farmers (30% of cultivators) excluded from current schemesMarket Growth Drivers- :Increasing climate volatility (drought, flood frequency rising)Government push for digital agriculture (Agristack, e-NAM integration)Rising smartphone penetration in rural areas (65%+ by 2025)Insurance awareness campaigns & mandatory loan-linked coverage
+## Current Customers/ Pilots (if any)
+The proposed KhetScore-based Crop Insurance Product is currently being tested through a focused pilot covering 1,000 cotton farmers in Maharashtra’s cotton belt, spanning approximately 2,500 acres during Kharif 2024–25. Each plot undergoes pre-sowing risk assessment using KhetScore, followed by real-time crop monitoring through KSNow. 16 Picture-Based Validation (PBV) images are collected per plot across 4 crop stages, with independent agronomists conducting ground sampling for verification. The pilot also includes VLE-led training for image capture, digital policy issuance, & loan-linked enrolment through a partnered financial institution, with 12 Feb 2026 08:27 PM
+6 /
+
+the goal of enabling payout completion within 4–6 weeks of claim submission. Before this pilot, the technology was rigorously validated under the ACRE–IFPRI project, covering 1,716 sites & 11,254 field images across maize, sorghum, & green gram. The growth-stage classification model achieved 75% accuracy across four crop stages, while the drought detection model delivered 89% accuracy, further improved by integrating growth-stage data. Building on this foundation, DER is engaging with three state governments for PMFBY-linked pilots, two private insurers for commercial rollout, & NABARD for scaling through FPO networks.
+## Strength of Business Model
+The strength of the Dvara E-Registry (DER) Crop Insurance Model (KS–KSNow–PBV) lies in its innovative, data- -driven architecture that directly tackles the high basis risk and long claim delays associated with traditional area-
+-based schemes. The model ensures end-to-end transparency by integrating three core modules: KhetScore for
+accurate, risk-based premium pricing; KSNow for real-time, in-season satellite monitoring; and Picture-Based Validation (PBV) for scientifically verifiable, farmer-level loss assessment. By combining geospatial intelligence with image-based evidence, the system delivers true farm-level accuracy and drastically reduces basis risk. It also enhances operational efficiency by shortening the claim cycle from 90+ days to 30–45 days, significantly lowering manual effort, reducing validation costs, and ensuring transparent, tamper-proof claim settlements.
+Importantly, the model enables inclusive insurance access for tenant, sharecropper, and landless farmers, as eligibility is determined through field-level data rather than formal land titles. The technology-driven design is scalable, cost-efficient, and fully aligned with India’s digital agriculture and PMFBY modernization objectives, making it a future-ready solution for climate-resilient crop insurance.
+## Sustainability of the Business
+The sustainability of the business model is anchored in its scalable, technology-driven design and financially prudent structure. The KhetScore Modifier enables risk-based, actuarially sound premium pricing, ensuring long-term financial viability by accurately reflecting farm-level climate and productivity risk. The integration of KSNow for real-time satellite monitoring and AI/ML-powered Picture-Based Validation (PBV) drastically lowers operational costs by reducing dependence on manual surveys and crop-cutting experiments—making the model cost-efficient at scale. The machine learning engines continuously improve with every season of new data, strengthening predictive accuracy, lowering acquisition costs, and enhancing scalability across crops, states, and insurers. Strategically, Dvara E-Registry acts as the technology and analytics backbone, a high-margin and asset-light role, while leveraging insurers, FPOs, financial institutions, and state governments for underwriting, farmer mobilization, and scheme integration. This ecosystem-led approach minimizes fixed costs and expands reach without proportional resource demands. Additionally, alignment with national digital agriculture initiatives- —such as Agristack, PMFBY modernization, and state crop-mission programs—ensures regulatory support,
+long-term institutional adoption, and repeat revenue streams. Together, these elements create a robust, low-cost, and future-ready model capable of sustained impact and commercial growth.
+## Go-to-market Strategy
+The go-to-market strategy is designed in three phases to build trust, drive adoption, and scale nationally. Phase 1 (Months 1–6) focuses on establishing credibility through a 1,000-farmer cotton pilot in Maharashtra. Working closely with FPOs and cooperatives, DER ensures effective farmer outreach and Picture-Based Validation (PBV)
+adoption. Engagement with research institutions strengthens the scientific credibility of the model. Phase 2 (Months 6–18) emphasizes grassroots penetration. DER’s digital platform facilitates farmer registration, policy issuance via insurer APIs, and real-time crop monitoring. Targeted training programs delivered through FPOs enable farmers to confidently capture geo-tagged PBV images. Loan-linked enrolment through financial institution partners accelerates uptake. The integration of satellite intelligence (KSNow) with PBV provides clear, verifiable evidence of crop loss, reducing basis risk and enhancing trust. Phase 3 (Months 18+) focuses on expansion and institutional integration. DER partners with state governments to embed the model into agricultural credit, subsidy, and insurance workflows, while scaling across multiple agro-climatic regions. Strategic collaborations with insurers support broader underwriting. DER monetizes the platform through APIs, dashboards, and analytics services, leveraging distribution via FPOs, financial institutions, digital platforms, insurer APIs, and government channels.
+12 Feb 2026 08:27 PM
+7 /
+
+## Please explain your pricing strategy. Additionally, describe how affordable your
+## solution will be for farmers and how you have assessed their ability to pay
+The solution achieves fair pricing where the Premium = Base Input Cost × Risk Modifier (KhetScore). This formula ensures low-risk farms pay lower premiums, & the insured value dynamically adjusts to reward well-managed farms.
+Affordability Assessment:
+• Target Farmers: The solution focuses on smallholder, tenant, & women farmers.
+• Ability to Pay: The cost is made feasible by linking it directly to the farmer’s Cost of Cultivation (CoC) & loan
+exposure. Premiums are often linked to the farmer’s loan account.
+• ROI & Value: The primary ROI is preventing financial ruin by mitigating basis risk & providing rapid financial
+relief. Payouts are made within 30–45 days instead of 90+, a significant benefit for farmers’ liquidity.
+• Support: High-risk farms are managed through calibrated deductibles or subsidies.
+Institutional/Bulk Pricing: Enrollment is facilitated via FPOs/Cooperatives & Financial Institutions, integrating the product into their existing services.
+Payment Flexibility: Payments are linked to the farmer's loan account or facilitated through the FPO.
+How many farmers, farmer groups, or land plots do you plan to include in your
+## pilot, and what are your scale targets for expansion (e.g., number of farmers, area
+## covered in acres or hectares)?
+The pilot will include 1,000 farmers across Maharashtra’s cotton belt, covering approximately 2,500 acres of cultivated area (average 2.5 acres per farmer). These farmers will be onboarded through 3–4 FPOs, enabling structured PBV adoption and KhetScore-based underwriting.Following the successful pilot, the scale-up plan includes:Rabi 2026-27: Expansion to 5,000 farmers covering ~10,000 acres.Kharif 2027: Multi-crop expansion to 50,000 farmers across 5–6 states (covering 100,000+ acres).Year 3 Goal: Integration with state programs and Agristack systems to reach 250,000+ farmers and 500,000+ acres under KhetScore–PBV-based insurance.This phased expansion ensures strong validation, operational learning, and readiness for national-scale deployment under PMFBY and commercial agri-insurance programs.
+## Workplan & Milestones (monthly/quarterly)
+Phase 1: Initial Setup (Months 1–3)Finalize Pilot: Confirm pilot details- Cotton crop & geography.Partnership:
+With Insurance Partners (for underwriting & pricing) & Research Institutions (for model validation & impact analysis).Policy Structuring: Define Sum Assured (SA) formula & calculate premium (e.g. 3% of SA).
+Phase 2: Farmer Onboarding & Monitoring (Months 4–6)Pilot Launch: Register 1,000 farmers on DER’s digital platform, digitizing farmer fields & generating KhetScore for risk assessment.Outreach & Training: Engage FPOs for farmer registration, training & Picture-Based Validation (PBV) adoption.Policy Issuance: Issue e-policies.- Monitoring: satellite-based crop monitoring (KSNow) & periodic capture of PBV images by farmers/field staff.
+Phase 3: Loss Detection, Payout & Review (Months 7–12)Claim Calculation: Validate crop loss using post-event PBV images, agronomist validation & transmit verified claim data to insurer via API.Efficiency Goal: claim settlement within 4–6 weeks post-claim verification.Model Refinement: Update KhetScore based on observed yield & credit performance to feed learning into next season.Evaluation: Generate performance reports for insurers, FIs & government partners.
+Phase 4: Scale & Institutionalization (Months 13+)Institutionalization: collaboration with State Governments for integration with existing credit & subsidy programs.Geographic Expansion: Scale the product across diverse geographies.
+## Risk Assessment & Mitigation (technical, operational etc)
+Technical Risks:Data Quality & Accuracy (Yield/Loss Assessment):Risk: Poor data quality impacting yield and loss assessment.Mitigation: Multi-source Validation & Automation combining KhetScore (historical/pre-sowing risk), KSNow (in-season satellite monitoring) trained over last 5 years, & Picture-Based Validation (PBV) (geo-- 12 Feb 2026 08:27 PM
+8 /
+
+tagged images validated by AI/ML) to ensure scientifically verifiable claims. ML models designed to continuously improve with new data.
+Operational Risks:Low Farmer Adoption & Trust:Risk: Farmers’ reluctance due to past scheme delays & opaque validation.Mitigation: Efficiency & end to end transparency to shortens the claim cycle from 90+ days to 30–45 days.Field-Level Data Collection/PBV Compliance:Risk: Challenges in ensuring farmers correctly capture & submit the required geo-tagged, time-stamped PBV images.Mitigation: Partner-Led outreach through FPOs utilized for farmer training & facilitating PBV adoption. Exclusion of Smallholder/Tenant Farmers:Risk: lack of formal land titles, excluding them from traditional insurance.Mitigation: Inclusive Access by enabling insurance for tenants & landless farmers as it relies on field data (PBV/KhetScore) rather than land titles.Financial Exposure:Risk: Undifferentiated pricing could lead to unmanageable risk for underwriters.Mitigation: Risk-Based Premium Pricing using KhetScore for pre-sowing risk evaluation & premium determination, enabling premium & risk coverage rationalization.
+## Training & CapacityBuilding Plan (Govt staff/SAUs/FPOs/Farmers)
+The training plan focuses on developing capacities at institutional, intermediary, & farmer levels, ensuring sustainability & smooth operational execution.
+1. Government Staff & Implementing AgenciesTraining to cover:Understanding KhetScore-based risk profiling &
+premium differentiationInterpreting KSNow satellite dashboards for monitoringUsing PBV outputs for transparent, farmer-level claim verificationGIS dashboard navigation, reporting, & policy decision support 2. State Agricultural Universities (SAUs) & Research InstitutionsSAUs will be trained on:Validation methodologies
+for PBV & remote-sensing outputsCollaborative research for model improvement & seasonal calibration This creates an academic anchor for continuous scientific validation.
+3. Farmer Producer Organizations (FPOs) & CooperativesFPO staff will receive training on:Farmer onboarding,
+app usage, & PBV image capture protocolsAwareness-building on risk-based insurance & claim processesData quality monitoring & grievance redress facilitation 4. Farmers & Village-Level Entrepreneurs (VLEs)Farmers & VLEs will undergo practical field-based training
+on:Capturing time-stamped, geo-tagged PBV images across crop stagesUnderstanding advisory alerts, claim processes, & benefit pathwaysDigital literacy, crop monitoring apps, & self-help materials in local languages Demonstration plots, videos, IVR calls, & community meetings will enhance adoption.
+## Gender and Social Inclusion Plan
+Social Inclusion (Target Group Focus)Prioritize Vulnerable Groups: The model aims to strengthen financial resilience & insurance inclusion among smallholder & tenant farmers. The system is built to provide Inclusive Access by enabling insurance for tenants & landless farmers who lack formal land titles.Eligibility: The coverage extends to Small & marginal Farmers including Loanee farmers, & non-loanee farmers.Risk-Based Affordability:
+The risk-based premium setting ensures that low-risk farms pay lower premiums, making the solution more affordable & rewarding for better-managed smallholdings.
+Gender Focus (Women Farmers)Targeted Inclusion: The product is specifically proposed to strengthen financial resilience & insurance inclusion among women farmers.Data-Driven Access: Inclusion is facilitated by relying on field data (KhetScore, KSNow, & PBV) rather than formal land titles, which often restrict women's access to financial products.
+Accessibility & Empowerment OutcomesDigital Accessibility: The system uses remote sensing, AI/ML, & participatory data collection. Enrollment & policy issuance are handled digitally through the DER app & insurer API.Assisted Access: Enrollment is facilitated through FPOs & Cooperatives, who handle farmer outreach, training, & support for PBV adoption.Financial Empowerment: The model ensures timely, transparent, & scientifically validated claims. The improved Efficiency shortens the claim cycle from over 90 days to 30–45 days, providing crucial financial liquidity to marginalized farmers when they need it most.Process Integration: Insurance enrollment is often automatically triggered for loan-linked farmers through Financial Institutions, simplifying the process for resource-constrained smallholders.
+Number of farmers expected to be impacted by the end of the pilot.
+12 Feb 2026 08:27 PM
+9 /
+
+Output expected through this project.
+The project will deliver a fully operational, scalable, & scientifically validated KhetScore®–KSNow–Picture-Based Assessment (PBA) crop-insurance system capable of providing farmer-level risk profiling & rapid, transparent loss verification. Key outputs include:
+1. Farm-Level Risk Scores (KhetScore): • Granular, climate-adjusted risk assessments for each enrolled farmer
+using three years of satellite, climate, & crop-history data. • Identification of high-, medium- & low-risk clusters to support risk-based premium pricing.
+2. Real-Time Crop Monitoring (KSNow): • In-season satellite tracking of crop growth, moisture stress, deviations
+from expected patterns, & early climate-event alerts. • GIS dashboards for insurers & government agencies.
+3. Picture-Based Loss Assessment (PBA): • AI-verified, geo-tagged crop-loss assessments enabling claim
+decisions within 30–45 days. • Automated detection of drought, disease, lodging, storm damage & nutrient stress.
+4. Capacity Building & Field Adoption: • Trained FPOs, VLEs, & extension workers capable of capturing high--
+quality PBV images & supporting farmers. • Awareness & training materials in local languages.
+5. Validation & Knowledge Outputs: • Independent model validation reports (accuracy, precision, consistency).
+• Seasonal performance dashboards & crop-risk maps for policymakers.
+6. Scalable, replicable model for national expansion: • Technology fully ready for integration with Agristack,
+PMFBY workflows, & insurer underwriting engines.
+## Please specify the baseline values relevant to your project’s focus area, the target
+values you aim to achieve, and the methods you will use to measure these values.
+## Ensure the baseline you provide is directly related to the area or value your
+solution intends to impact.
+Baseline, Target Values & Measurement Methods 1. Baseline: High Basis Risk & Delayed Claims • Baseline Value: Claims under traditional schemes take 90–120
+days, with block-level assessments causing high basis risk. • Target: Reduce claim settlement cycle to 30–45 days with farmer-level verification. • Measurement: DER insurance workflow analytics; timestamp audits of PBV submissions and claim closures.
+2. Baseline: No Farm-Level Risk Differentiation • Baseline Value: Insurance premiums rely on uniform risk
+assumptions, not farmer-level risk. • Target: Generate KhetScore risk profiles enrolled farmers and enable risk-based premium differentiation. • Measurement: KhetScore dashboards; insurer underwriting logs; risk segmentation accuracy validation.
+3. Baseline: Manual Crop Loss Assessment • Baseline Value: 100% dependency on field visits and CCEs, high
+operational cost. • Target: loss assessments conducted digitally through PBA + satellite fusion. • Measurement:
+Digital vs. manual assessment ratio; PBV image quality and model accuracy tracking.
+4. Baseline: Limited Crop Monitoring • Baseline Value: No real-time monitoring of crop health during the season. •
+Target: Enable satellite-based in-season monitoring (KSNow) for enrolled plots. • Measurement: Remote sensing logs, anomaly detection reports, climate-event flags.
+## Farmercentric Benefits (For e.g Increase in income, hour saved , accuracy, Im-
+proved Productivity, Yield Improvement, etc).
+Farmer-Centric BenefitsReduced Crop Loss Impact: Individual risk profiling resulting into rationalised premium amounts and faster claim settlement reducing overall crop loss impact.Faster Claim Settlement: Claim processing time reduces from 90–120 days to 30–45 days, improving cash flow and financial stability.Higher Accuracy in Loss Assessment: Farmer-level evidence (satellite + PBV images) minimizes disputes, improving accuracy by over 40% compared to area-based methods.Increased Access to Insurance & Credit: Tenant and women farmers become eligible without land titles; KhetScore enables fair risk-based premiums and higher credit approval rates.Enhanced Climate Resilience: Farm-level climate risk scoring allows farmers to choose resilient crops and reduce exposure to extreme weather-related losses.Greater Transparency & Trust: Evidence-based assessments empower farmers and increase confidence in insurance systems.
+12 Feb 2026 08:27 PM
+10 /
+
+ment generation, etc).
+use—indirectly cutting emissions.
+participation.
+## Core Team and Leadership
+## Name
+## Role
+Syed Tarique
+CEO
+MBA
+Alam
+Co-founder &
+Tarun Katoch
+MBA
+Head Value Chain
+Co-founder &
+Senthil Kumar S.
+MSc.
+Head Agronomy
+Ravindra Shevade
+B.Tech
+CTO
+## Advisor/Mentor for this project
+## Expertise ( Eg
+## AI/ML, Ento-
+## Name
+## Qualifications
+## mologist, etc)
+## File Upload
+12 Feb 2026 08:27 PM
+## Expertise (Eg
+## LinkedIn URL
+## AI/ML, Agron-
+## years)
+## omist, etc)
+Financial Link-
+syed-alam-bages
+373275a/
+Value Chain-
+, FPOs and Mar-
+tarun-katochkets
+-25191116/
+Agronomy & Ana-
+senthil-kumarlytics
+-82482781/
+AI, ML, Remote
+Sensing, Data an-
+ravindra-shealytics
+vade-272031b/
+## Strategic Part-
+## ners ( if any
+## Experience (-
+## LinkedIn URL
+## SAU or Institu-
+## years)
+## tion is a part of
+## advisory)
+11 /
+
+## Strategic impact on Maharashtra’s agriculture (policy alignment + scale potential
+## + sustainability)
+Strategic Impact on Maharashtra’s Agriculture(Policy Alignment • Scale Potential • Sustainability)1. Policy Alignment with Maharashtra’s PrioritiesAligns with state goals on climate-resilient agriculture, digital governance, and farmer income stability.Enables evidence-based crop insurance and credit decisions through plot-level risk profiling rather than uniform assumptions.Improves inclusion of smallholder, women, and tenant farmers who lack formal collateral or credit history.2. Game-Changing Technology for TransparencyKhetScore (KS): Uses land use, productivity, and climate signals to generate transparent, auditable risk scores.Picture-Based Assessment (PBA): Enables geo-tagged, image-led crop loss assessment, reducing subjectivity, disputes, and delays.Builds trust among farmers, insurers, and government through objective, data-backed processes.3. Scale Potential Across MaharashtraAPI-led, automated architecture enables rapid rollout across districts and crops.Reduces administrative burden while improving claim turnaround time and leakage control.4. Sustainability & Climate ResilienceHelps farmers manage climate risk, avoid distress cycles, and invest confidently in climate-smart practices.Creates a long-term, scalable risk management layer that reduces vulnerability to extreme weather events.
+## Funding Support required from AIAIC (in ₹ lakhs)
+## Activity wise funds utilization plan
+## AIAIC Support (₹
+## Cofunding (₹ Lakhs ) Total Cost (₹ Lakhs)
+## Activity
+## Lakhs)
+Technology & Platform de-
+velopment
+Data modelling & validation
+Farmer onboarding & field
+operations
+Training & Capacity building
+Insurance integration&
+claim support
+Project management &
+monitoring
+Contingency 5%
+## Other Support required from the Government
+Government farms for trialsMentorship from experts in SAUs/AIAICHandholding support at field levelAccess to Sandbox EnvironmentAccess to Agriculture Data Exchange Platform
+## We comply with applicable laws, DPIIT/startup norms (if applicable), and data
+privacy/security regulations.
+Yes
+## We agree to periodic reviews, audits, and knowledgesharing with Government/-
+SAUs.
+Yes
+## We confirm the accuracy of information provided herein and ready to provide
+additional information if any required.
+12 Feb 2026 08:27 PM
+12 /
+
+Yes
+## I/We agree to the above terms and conditions and authorize processing of this
+application as per the stated consent.
+Yes
+12 Feb 2026 08:27 PM
+13 /

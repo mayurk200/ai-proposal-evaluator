@@ -1,0 +1,377 @@
+## FINDABILITY SCIENCES PVT LTD
+ARTIFICIAL INTELLIGENCE AND AGRITECH INNOVATION CENTER-PRIMARY SCREENING Application Id: AIAI-974358
+## Problem Statements
+Climate Resilience
+## Choose Application Track ( Please review [Link])
+Track 2 (Pilot and Validation)
+## Name
+Radhika Krishnaswamy
+## Email
+kradhika@findabilitysciences.com
+## Contact Number of the Authorized Person
++91 9049449977
+## Startup Name
+Findability Sciences Pvt Ltd
+## Type
+Startup
+## Startup(Please Mention)
+Growth
+## Founders Background (2-3 lines)
+Anand Mahurkar is the Founder & CEO of Findability Sciences, a Boston-headquartered enterprise AI and data analytics company that helps global organizations turn complex data into actionable insights. Originally from a small town in interior Maharashtra, India, he’s a first-generation entrepreneur and immigrant to the U.S., with a background in mechanical engineering and over 30 years of experience leading technology and data-driven business solutions.
+## Employees
+## No. of Full Time Employees
+## No. of Contractual Employees
+## Year of Incorporation
+2009-08-11T04:00:00.000Z 12 Feb 2026 08:22 PM
+1 /
+
+CIN/Registration No.
+U74999MH2009PTC194842
+## GSTIN (if applicable)
+27AABCF3906G1ZV
+## UDYAM Registration (if any)
+## State
+Maharashtra
+## Registered Address
+## Website
+Https://www.findability.ai
+## PAN of Organization
+AABCF3906G
+## tion) if any
+## Financials
+## FY (24-25)
+## Field
+## Net Revenue
+20.69 (INR crore)
+## Expenses
+20.28
+## Net Profit
+0.43
+## Cash Reserves
+1.27
+## Avg. Burn Rate
+-
+## Funding raised till
+0.83
+## date
+## Unit economics (e.-
+## g. cost per farmer
+-
+## serviced/revenue per
+## transaction)
+## Committed pipeline
+-
+## or LOIs (if there are al-
+12 Feb 2026 08:22 PM
+## FY (23-24)
+## FY (22-23)
+17.27
+18.4
+18.14
+0.02
+-0.87
+17.21
+1.15
+1.73
+-
+-
+0.53
+0.53
+-
+-
+-
+-
+2 /
+
+## ready customers/pi-
+## lots’ agreements)
+## Upload financial documents (Past 3 years, Audited Balance Sheet, P&L Statement
+## etc)
+https://api-legacy.accubate.app/document/aiaic/7a0bdbab-1056-40e5-9011-0430c030aebd
+## Project/Product Name
+Stoma Sense: AI-Driven Remote Sensing, Moisture, Growth and Yield Intelligence for Sugarcane in Maharashtra
+## Solution Synopsis
+Stoma Sense is an integrated GEOAI platform that helps farmers track crop growth and optimise sugarcane harvest quality and productivity. It combines Sentinel-1/2 time-series, deep-learning cloud-free reconstruction, cane-moisture samples, yield history, irrigation telemetry and weather data to deliver continuous, plot-level intelligence. Its U-Net GAN engine reconstructs clean multispectral bands even during monsoon cloud cover, ensuring uninterrupted NDVI, NDRE, NDWI, HYDRO+, growth, Potential Growth Index (PGI), weed and stress indicators.
+A key differentiator is the cane-moisture model, which learns relationships between spectral indices, rainfall–ET balance, soil/climate/variety/irrigation factors and lab-measured moisture %, enabling accurate moisture estimation and its impact on TCH yield. PGI benchmarks each plot’s spectral trajectory against historical cohorts to detect stagnation or hidden stress that NDVI may miss.
+Building on this foundation, Stoma Sense forecasts moisture deficit, weed outbreaks, growth anomalies and TCH yield using ML models with SHAP-based explainability. Advisories are delivered via a simple field app, while managers use a web dashboard for planning and monitoring. The modular, cloud-native system scales across mills and districts and adapts to other irrigated crops, providing a blueprint for statewide digital agriculture transformation.
+## Target Beneficiaries (Class of Beneficiaries)
+Farmers
+Proposed Project Districts in Maharashtra.
+PuneChhatrapati Sambhajinagar
+## Proposed Project Taluka in Maharashtra - Pune
+Baramati
+## Proposed Project Taluka in Maharashtra - Chhatrapati Sambhajinagar
+Chhatrapati Sambhajinagar
+## Proposed Project Duration (months)
+## Total Project Cost (INR) ( AIAIC support + Own Funding/Private Funding)
+12 Feb 2026 08:22 PM
+3 /
+
+## Unique Value Proposition of the solution ( What value does your solution deliver
+## to your target customer ?)
+Stoma Sense unlocks the intelligence embedded in each farmer’s land. By integrating multi-season historical data with high-frequency satellite imagery, weather forecasts, irrigation telemetry and field observations, the platform builds a hyper-local, personalized GEOAI model for every plot. Its deep-learning cloud-removal engine reconstructs clean multispectral bands even during monsoon, delivering uninterrupted NDVI+, HYDRO+, growth- -curve deviation and stress insights - beyond what conventional NDVI dashboards can offer.
+This personalized intelligence supports actionable decisions: when to irrigate, where weeds are emerging, which zones are deviating from optimal growth, and when the crop is approaching harvest readiness. Farmers and factories benefit through improved yield stability, reduced input use, and a scientific understanding of how each field responds to climate, water and management practices.
+Product Slides Link: https://findabilitysciences-my.sharepoint.com/:p:/p/msagar/IQC2PaHZ5AFNQq-qptCuSBYQAdZWQMwXO6voBcKgEbAQAzg?e=tDk96q
+## Does the product have the potential to create employment ?
+It can create jobs directly through field officers, agronomy assistants, data annotators, and irrigation technicians, and indirectly by boosting demand for local agri-services, improving efficiency, and strengthening the rural agricultural ecosystem.
+## Core Technology Stack used/Innovation
+AI /ML(Artificial Intelligence/Machine Learning)Remote Sensing Computer VisionGIS NLP (Natural Language Processing) Edge Computing
+## Explain the technology you are using in detail
+Stoma Sense is built on a GEOAI architecture that integrates satellite analytics, agronomic modeling and cloud-native automation into a single operational pipeline. The system runs a multi-stage chain—ingestion of Sentinel-1/2 imagery, atmospheric correction, tiling, cloud-reconstruction inference, spectral index computation and plot-level aggregation—all executed on a scalable cloud environment to support continuous monitoring across large command areas.
+Its deep-learning reconstruction module, trained on paired cloudy and cloud-free imagery, restores per-band spectral information, ensuring temporal continuity even when optical data is obstructed. Pixel-level values are transformed into agronomic indicators using rule-based and ML methods. Plot boundaries, variety maps and irrigation metadata contextualize these signals so that predictions reflect real management conditions. Data fusion of radar, optical, moisture samples, telemetry and weather feeds the cane-moisture model, growth segmentation and TCH forecasting.
+The platform uses containerised microservices for preprocessing, modeling and alert generation, with autoscaling and asynchronous orchestration so each new satellite acquisition triggers updated analytics and advisories.
+Stoma Sense’s mobile and web layers access results via secure APIs, enabling real-time advisories, field reporting and zone-level dashboards without exposing any personal data.
+## Technology Readiness Level (TRL) is a measure used to assess the maturity of a
+## particular technology on a scale from 1 to 9
+TRL 9 (Technology proven and used in a real industry setting)
+## Does your project incorporate any open-source technologies, standards, or con-
+## tributions? If yes, could you specify which ones and how they are used?
+Yes. Stoma Sense extensively leverages open-source geospatial, remote-sensing and machine-learning technologies across its full pipeline. Satellite imagery is accessed through Copernicus Dataspace and processed using the openEO API, an open geospatial standard that enables scalable, cloud-agnostic processing of Sentinel- -1/2. Cloud-free reconstruction is implemented in PyTorch, using open-source architectures (U-Net, PatchGAN)
+12 Feb 2026 08:22 PM
+4 /
+
+adapted to 14-band Sentinel-2 data. Preprocessing and band-level operations rely on GDAL, Rasterio, xarray, rioxarray, NumPy, Pandas and scikit-learn, all of which are open-source scientific libraries. The system adheres to OGC-compliant formats such as GeoTIFF and Cloud-Optimized GeoTIFF, ensuring interoperability with government GIS systems. Vegetation and water indices (NDVI, NDRE, NDWI, EVI, SAVI) follow internationally published open formulas. These open-source components ensure transparency, reproducibility, and long-term sustainability, while Stoma Sense adds proprietary GEOAI layers (moisture model, yield predictors, stress segmentation, potential growth index) on top of this open technological foundation.
+## Data Sources Used
+Geospatial and Satellite Data (Land/crop mapping, drought monitoring)
+## Describe how the solution ensures compliance with data governance and privacy
+## requirements under DPDP Act, 2023
+Secure Data Storage (Encryption at Rest and Transit)
+## In your business model or technology, which of the following practices do you use
+## to evaluate model safety and ensure reliable and fair outcomes?
+Biases (Identifying and mitigating unfair biases in the model)
+## IP Status
+Background IP
+## Revenue Model
+Subscription fees
+## Target Market/Customer Segment ( Intended Customers/Beneficiaries such as
+## Farmers, FPOs, Food Processors, Agri Input Dealers, Agrifintech, etc)
+Stoma Sense is designed primarily for farmers, particularly those cultivating sugarcane in water-stressed or climate-variable regions who need timely, plot-level intelligence to manage irrigation, detect stress early, and optimise yield. The platform also serves organizations that work closely with farmer groups—such as FPOs, cooperatives, sugar mills, NGOs, and agri-extension programs—by providing continuous monitoring, operational insights, and decision-support tools for advisory teams. These stakeholders rely on accurate field intelligence to plan interventions, improve grower engagement, and enhance overall productivity. Together, individual farmers and their supporting institutions make up the core beneficiaries and customers of Stoma Sense.
+## Market size (Total Addressable Market, Serviceable Available Market, Serviceable
+## Obtainable Market), if any
+For Sugarcane Crop: In Maharashtra, approximately 3.67 million acres are under sugarcane cultivation annually.
+At a pricing of INR 59 per acre per month (INR 708 per acre per year), the Total Addressable Market (TAM) for Stoma Sense is estimated at INR 259.84 crore per year. Considering near- to medium-term deployment across organized sugarcane belts, irrigation command areas, and farms linked to sugar factories and digital extension programs, approximately 50% of this acreage is considered serviceable, resulting in a Serviceable Available Market (SAM) of about INR 129.9 crore per year. Based on phased adoption through pilots, factory-led rollouts, and government-supported programs, a conservative 10% penetration of the SAM is achievable over 3–5 years, translating to a Serviceable Obtainable Market (SOM) of approximately INR 13.0 crore per year.
+For all Crops: Stoma Sense is a crop-agnostic remote sensing and GEO-AI platform that can be extended beyond sugarcane to all major crops cultivated in Maharashtra. The state’s net sown area across all crops is approximately 42.74 million acres. At a pricing of ₹59 per acre per month (₹708 per acre per year), this 12 Feb 2026 08:22 PM
+5 /
+
+translates to a Total Addressable Market (TAM) of ~₹3,026 crore per year. Considering practical applicability to priority crops such as sugarcane, cotton, soybean, pulses, maize, wheat, and rice—together accounting for ~60% of the net sown area—the Serviceable Available Market (SAM) is approximately ₹1,815 crore per year. A realistic government-led pilot covering 5–10% of this SAM across selected districts would represent a Serviceable Obtainable Market (SOM) of ~₹90–180 crore annually, while creating a scalable digital agriculture foundation for statewide rollout.
+## Current Customers/ Pilots (if any)
+14,000 Ha monitored for Grupo Porres in Mexico: Remote sensing, weeds, harvest route, sugarcane freshnessCAC in Dominican Republic 50,000 Ha monitored for Pantaleon in Guatemala: Remote sensing, weeds, harvest route, sugarcane freshness Results from Grupo Porres: a. Porres Group: Sugarcane Detection: Analysis of the group's plantings showed high accuracy in identifying areas that were not planted, while reports indicated that planting had occurred (98% accuracy between the detection model and field samples). b. Porres Group:
+Sugarcane Freshness: Potential savings of $50,000 for each hour of freshness reduced between burning and milling. c. Porres Group: Fusarium Detection: An alarm event triggered the spread of a critical sugarcane disease, allowing for the implementation of sanitary barriers and preventing its spread to other sugarcane seed fields. Infected seed fields were identified, and the decision was made to burn them to prevent further spread. d.
+Porres Group: Weed Detection: The AI weed detection model supported application scheduling and improved weed control and effectiveness, with estimated savings of $35,000.
+## Strength of Business Model
+## Sustainability of the Business
+Stoma Sense is designed as a scalable, platform-based solution with low marginal cost and high reusability across geographies, customers, and crop types. The core architecture relies on satellite imagery, weather feeds, and farm-specific data—ensuring no hardware dependency and eliminating the need for costly on-ground installations. This allows the platform to be deployed rapidly across districts and states with minimal operational overhead. The deep-learning models, cloud-removal engine, and GEOAI prediction framework are built to generalize across clients, meaning the same training pipelines can be applied to new geographies with only incremental calibration. Crop-specific intelligence is incorporated through modular algorithms, enabling the platform to scale beyond sugarcane into other crops by embedding appropriate phenology, growth curves, and management practices. Because the platform is cloud-native and multi-tenant, it supports a wide customer base—farmers, FPOs, cooperatives, mills, and government programs—while maintaining cost efficiency. As more farms are onboarded, the model’s accuracy improves through data network effects, further strengthening long-term sustainability. This combination of platform reusability, low operating cost, cross-crop adaptability, and geographic scalabilityensures that Stoma Sense can grow sustainably while delivering consistent value to diverse agricultural markets.
+## Go-to-market Strategy
+Our go-to-market strategy leverages international experience, strategic partnerships, and a scalable GEOAI platform. Deployments in Central and North America with Grupo Porres and Pantaleon provide strong credibility as we expand into India through pilots and research collaborations. A key differentiator is that Stoma Sense requires no hardware and runs entirely on satellite and weather data. Its deep-learning cloud-removal engine enables uninterrupted monitoring during monsoon, supporting reliable growth curves, HYDRO+ moisture insights, and predictive harvest indicators that standard NDVI tools cannot deliver. The platform’s modular, multi-tenant architecture allows rapid, cost-efficient scaling across regions. AI/ML pipelines can be adapted to new geographies and crops with minimal re-training, giving Stoma Sense a low marginal cost and much faster deployment cycle than hardware-dependent competitors. We scale through institutional channels—FPOs, cooperatives, mills, NGOs, and government programs—supported by local partners who understand agronomy, language, and culture. Field engagement and change-management ensure adoption and generate feedback that improves the models. This combination of global traction, hardware-free scalability, cloud-free satellite 12 Feb 2026 08:22 PM
+6 /
+
+intelligence, and crop-adaptive algorithms positions Stoma Sense as a differentiated solution ready for districtand state-level expansion.
+## Please explain your pricing strategy. Additionally, describe how affordable your
+## solution will be for farmers and how you have assessed their ability to pay
+Stoma Sense uses a subscription model of ₹59 per acre per month (₹708 per acre annually), keeping costs low for small farmers while enabling large-scale adoption through FPOs, cooperatives, mills, and government programs.
+Affordability was benchmarked against Maharashtra sugarcane economics, where yields typically range from 80–100 tonnes per hectare (H32–40 tonnes per acre). At the 2025–26 FRP of ₹3,550 per tonne, farmers earn roughly ₹1.1–₹1.4 lakh per acre annually, with some reporting up to ₹3 lakh.
+Against this, the annual cost of ₹708 per acre is just 0.57% of gross revenue—far below typical losses from suboptimal irrigation, delayed stress detection, or poor harvest timing. In a 14,000-hectare field test, the platform delivered 100× ROI through avoidable-loss savings even after service costs.
+Affordability is especially important given current FRP delays in Maharashtra, where only ~53% of dues were paid by November 2025 and arrears exceeded ₹1,980 crore. With farmers facing cash-flow uncertainty, a low-cost digital advisory that stabilizes yields and reduces risk becomes critical. The subscription remains below the cost of a single irrigation cycle, ensuring adoption even in delayed-payment years.
+Because Stoma Sense has no hardware dependency, low marginal cost, and scalable GEOAI pipelines, the pricing model remains sustainable for district- and state-level expansion while addressing a TAM of ₹259.84 crore for sugarcane and ₹3,026 crore across major crops.
+How many farmers, farmer groups, or land plots do you plan to include in your
+## pilot, and what are your scale targets for expansion (e.g., number of farmers, area
+## covered in acres or hectares)?
+-
+## Workplan & Milestones (monthly/quarterly)
+Months 0–2: Setup & Data IntegrationConfirm pilot geography, mills and plots. Ingest historical yield, moisture, irrigation and variety data; validate polygons. Configure Sentinel-1/2 and weather ingestion, and deploy the cloud pipeline with basic dashboards.Milestone: Core data onboarded; infra live.Months 3–4: Cloud-Free & Spectral FoundationsTrain the U-Net GAN cloud-free model and generate stabilized NDVI/NDRE/NDWI series.
+Implement pixel-to-plot aggregation and begin HYDRO+ and PGI feature extraction.Milestone: Clean spectral stack + PGI baseline.Months 5–6: Moisture, HYDRO+ & PGIBuild the cane-moisture model, calibrate HYDRO+ thresholds and refine PGI curves. Conduct limited field sampling to verify moisture %, weeds and growth stage.- Milestone: Moisture + PGI models validated.Months 7–8: Monitoring & Advisory RolloutLaunch NDVI+, HYDRO+, PGI, weed maps and stress alerts. Release the mobile app with local-language advisories. Validate predictions via field visits; train agronomy and FPO teams.Milestone: Live advisory system active.Months 9–10: Yield & Operational IntelligenceDeploy the TCH yield model, publish plot-level maps and activate anomaly detection for stagnation, moisture shocks and weeds. Integrate insights into operational dashboards.Milestone: Yield model operational.Months 11–12: Evaluation & Scale PlanAssess accuracy and agronomic impact (moisture-deficit reduction, TCH improvement, timely interventions). Milestone: Pilot validated; ready for expansion.
+## Risk Assessment & Mitigation (technical, operational etc)
+1. Technical RisksRisk: Persistent cloud cover may reduce optical data quality.Mitigation: Use U-Net GAN
+cloud-free reconstruction, fuse Sentinel-1 radar (VV/VH), and maintain cached composites.Risk: Inconsistent 12 Feb 2026 08:22 PM
+7 /
+
+availability from weather/satellite APIs.Mitigation: Add retry logic, async queues, time-based fallbacks, and maintain local replicas of processed indices.Risk: Model drift due to seasonal, varietal or irrigation changes.- Mitigation: Monthly retraining, monitoring of distribution shifts and automated recalibration alerts.2. Data Quality & Governance RisksRisk: Incorrect or outdated plot boundaries, varieties or yield records.Mitigation: Automated geometry cleaning, field verification via mobile GPS and model weighting to reduce noisy-label impact.Risk:
+Data privacy issues under DPDP 2023.Mitigation: Encrypt data in transit and at rest, use anonymised IDs, and enforce strict RBAC with activity logs.3. Operational RisksRisk: Delayed field sampling (moisture %, crop cuts, weeds).Mitigation: Train multiple officers, standardize capture through mobile workflows; allow photo-based remote validation.Risk: Low app adoption or limited field engagement.Mitigation: Simple UI, vernacular content, regular training & f/b, plus demonstration of early wins.4. Infrastructure RisksRisk: High compute load during monsoon ingestion cycles.Mitigation: Auto-scaling microservices; scheduled parallel batch processing.Risk:
+Rural connectivity gaps.Mitigation: Offline caching for 48-72 hours
+## Training & CapacityBuilding Plan (Govt staff/SAUs/FPOs/Farmers)
+1. Government & SAU Orientation (Months 1–2) Workshops for agriculture department, ATMA, and SAU staff on
+using the Stoma Sense platform, interpreting indices (NDVI+, HYDRO+, growth-curve deviations), and integrating insights into advisories. SOPs for data flow and monitoring established. 2. FPO Capacity Building (Months 2–4)
+Training FPO managers and extension leaders to onboard farmers, verify field boundaries, interpret predictive insights, and support digital adoption. Creation of “Digital Agri Champions” within participating FPOs. 3. Field Team Training (Months 2–6) Hands-on training for field monitoring officers and agronomy assistants on sampling standards, mobile data collection, geotagging, and weekly coordination with the Stoma Sense technical team.
+4. Farmer Training & Demonstrations (Months 3–9) Village demonstrations and seasonal training sessions
+to help farmers interpret growth curves, moisture alerts, stress signals, and harvest forecasts. Continuous WhatsApp-based micro-learning and structured feedback loops. 5. Continuous Support & Change Management (Months 3–12) Rural digital facilitators provide on-ground assistance, conduct regular check-ins with farmers and FPO staff, and help refine advisory formats based on field feedback. 6. Knowledge Sharing & Scale Readiness (Months 10–12) Joint review sessions with FPOs, SAUs, and government stakeholders; documentation of learnings; and preparation of training manuals for expansion to additional districts.
+## Gender and Social Inclusion Plan
+-
+Number of farmers expected to be impacted by the end of the pilot.
+Output expected through this project.
+1. Remote-Sensing Crop Intelligence Layer Generation of satellite-derived vegetation indices (NDVI, NDRE) for
+all mapped fields within the 100 sq km pilot zone. Development of enhanced, context-aware indices (NDVI+, HYDRO+, Smart Growth Index) through integration of remote sensing data with crop-stage information and farm-level attributes. Evaluation of higher-resolution, more granular satellite data to determine suitability for Indian field sizes and mixed cropping environments. 2. Predictive & Forecasting Models Field-level plant moisture predictions using satellite and harvest data. Forecasts for TSH, crop maturation trajectory, and harvest timing, calibrated to local climatic and agronomic conditions. Integration of any available historical harvest datasets from ADEX (or other local sources) to begin building and training ML models tailored to the region. 3. Data Quality Assessment & Model Readiness A systematic evaluation of data availability, completeness, and quality in the pilot region, including satellite coverage consistency, cloud-free imagery performance, and reliability of historical crop data. Identification of data gaps and requirements needed for full-scale predictive modeling and accurate advisory generation. Development of a regional data-readiness profile to inform future scaling across Maharashtra. 4. Farmer-Facing Decision Support Participating farmers (n H 50) will receive individualized insights on crop growth, moisture conditions, and harvest-related forecasts. Collection of farmer feedback on how these 12 Feb 2026 08:22 PM
+8 /
+
+insights translate into real decisions (e.g., irrigation adjustments, scheduling of operations, early stress management). 5. Validation & Learning for Scale-Up Field validation of indices, predictions, and advisory workflows with support from the partnering KVK. Documentation of technical performance benchmarks, operational learnings, and requirements for district-level expansion.
+## Please specify the baseline values relevant to your project’s focus area, the target
+values you aim to achieve, and the methods you will use to measure these values.
+## Ensure the baseline you provide is directly related to the area or value your
+solution intends to impact.
+There is no operational, high-frequency, cloud-free satellite monitoring system in the pilot region. While studies in Maharashtra and other sugarcane areas show NDVI/NDRE can track crop condition, these remain isolated research efforts, not tools available to farmers or extension staff. Farmers also lack enhanced indices such as NDVI+, HYDRO+, or phenology-based growth deviations that integrate crop-stage and field-specific information.- Existing mill records provide harvest dates and cane weight, but no plot-linked historical dataset connects satellite time series with agronomic variables for TSH forecasting or harvest prediction. There are no digital decision-- support toolsthat allow farmers to visualize crop status or anomalies, and the data quality and availability for the region (satellite coverage, historical records, moisture data) have not been assessed. This leaves the pilot area without a structured, analytics-driven foundation for irrigation, stress detection or harvest planning.Target (End of Pilot)• Full remote-sensing coverage of the 100 sq km pilot area, with validated NDVI/NDRE and enhanced indices.• Functional moisture prediction and early maturation/harvest forecasts for participating farms.• Regional dataset integrating satellite, weather and available ADEX harvest records assembled and evaluated.• Improved farmer situational awareness, with 50 farmers able to view crop-stage insights for their own fields.• Established data-readiness profile and validated technical workflow to support district-level scale-up.Measurement MethodRemote-sensing outputs—indices, moisture predictions and forecasts—validated against field observations, farmer feedback and KVK agronomist assessments. Data quality assessed using satellite-coverage analytics, completeness of ADEX historical data and cloud-free model accuracy. Farmer-level outcomes measured through surveys.
+## Farmercentric Benefits (For e.g Increase in income, hour saved , accuracy, Im-
+proved Productivity, Yield Improvement, etc).
+Stoma Sense provides farmers with timely, plot-level advisories on irrigation, crop stress, weed risk, and harvest readiness, improving decision accuracy and reducing guesswork. This leads to better yield stability, improved productivity, and higher and more predictable farm income. The solution enables efficient water and input use, lowering irrigation, energy, and labour costs, while early stress and weed detection helps prevent yield loss.
+Mobile-based, local-language advisories reduce the need for manual field inspections, saving time and effort for farmers. Overall, the pilot supports yield improvement, cost reduction, and sustainable income growth.
+## Environmental & Social Outcomes (For e.g., reduced carbon footprint, employ-
+ment generation, etc).
+Stoma Sense contributes to reduced water consumption and lower carbon footprint by enabling precise irrigation scheduling, minimizing over-irrigation, and reducing electricity and diesel use for pumping. Optimized input application and early stress detection help lower unnecessary agrochemical usage, supporting soil health and environmental sustainability. Socially, the pilot generates local rural employment through field monitoring, agronomy support, digital facilitation, and irrigation maintenance roles. Local-language mobile advisories improve digital inclusion, strengthen agri-extension systems, and empower farmers with data-driven decision-making, contributing to climate-resilient and sustainable agricultural livelihoods.
+## Core Team and Leadership
+12 Feb 2026 08:22 PM
+9 /
+
+## Name
+## Role
+This role leads the
+end-to-end AI/ML
+pipeline, transforming satellite- , weather, and field
+data into reliable
+agronomic intelligence for farmers and institutions. They will Dr Naina BandyPhD
+also drive continopadhyay uous model refinement, manage MLOps workflows, and ensure that analytical outputs directly support operational decision-- making.
+The person will architect the cloud environment that
+powers Stoma
+Sense, optimizing
+compute, storage-
+, and dataflow
+pipelines for reliability and cost efficiency. They will MS in Computer
+Sanket Pathak
+also lead DeScience
+vOps operations-
+, enabling continuous deployment- , system observability, and automated recovery to keep all services
+running smoothly
+in production.
+The person will
+own the end-to-
+-end AI/ML and
+business analytics stack, inChaitanya Rai BTech
+cluding MLOps
+pipelines that
+keep models accurate, automated, and produc12 Feb 2026 08:22 PM
+## Expertise (Eg
+## LinkedIn URL
+## AI/ML, Agron-
+## years)
+## omist, etc)
+https://www.-
+linkedin.com/inAI/ML
+/10008377/
+https://linkedin.-
+Cloud Architectcom/in/sanket--
+, DevOps
+pathak-dv
+https://www.-
+linkedin.com/in/-
+chaitanya-raiMLOps
+-369881102?utm_source=-
+share&utm_cam10 /
+
+tion-ready. They
+will also translate
+analytical outputs
+into actionable advisories and measure impact to guide scale-up
+and government
+adoption.
+The person will
+own the AI/ML
+and business analytics components of the project-
+, building models
+and dashboards
+that convert raw
+Pranav Dhakulkar
+data into practiPGP, MBA cal advisory intelligence. They will also evaluate outcomes and ensure the analytical rigor
+needed for scale-
+-up and government adoption.
+The role focuses on implementing and optimizing machine learning
+components, including spectral feature engineering, anomaly detection, and caliGaurav Sharma bration of field-levM.Sc.
+el indicators. They
+will work closely with the AI/ML Lead to test model variants, document findings, and integrate improvements into the operational pipeline.
+The role focuses on exploratory modeling and error analysis, helpRatul Banik ing identify where
+M.Sc.
+models underperform and proposing targeted improvements. They 12 Feb 2026 08:22 PM
+paign=share_via&utm_content- =profile&utm_medium=ios_app https://www.-
+linkedin.com/in/-
+pranav--
+dhakulkar-6628a4342?utm_AI/ML, Business source=-
+Analytics
+share&utm_campaign=share_via&utm_content- =profile&utm_medium=ios_app https://www.-
+linkedin.com/in/-
+AI/ML
+gaurav-sharma-
+-957a14263/
+AI/ML
+11 /
+
+will run ablation
+studies, analyze
+field validation results, and support the integration of
+refined algorithms
+into the production
+workflow.
+This role will provide senior oversight across the technical architecture and business strategy of the pilot, ensuring that GEOAI capabilities align with operational needs, stakeholder priorities, and long-term Radhika KrishMBA
+scalability. They
+naswamy
+will guide cross--
+functional teams-
+, manage stakeholder expectations, and translate complex technical outputs into clear value pathways for mills- , government partners, and farmers.
+## Advisor/Mentor for this project
+## Expertise ( Eg
+## AI/ML, Ento-
+## Name
+## Qualifications
+## mologist, etc)
+## File Upload
+12 Feb 2026 08:22 PM
+https://www.-
+linkedin.com/in/-
+ratul-banik/
+https://www.-
+Business and
+linkedin.com/in/-
+Computer Sciradhika-krish-
+ence
+naswamy-
+-667711/
+## Strategic Part-
+## ners ( if any
+## Experience (-
+## LinkedIn URL
+## SAU or Institu-
+## years)
+## tion is a part of
+## advisory)
+MGM's College
+of Agricultural Biotechnology- , Aurangabad
+Baramati Agricultural University University of Kentucky, USA University of Tennessee, USA 12 /
+
+## Strategic impact on Maharashtra’s agriculture (policy alignment + scale potential
+## + sustainability)
+The proposed Stoma Sense pilot aligns closely with the Government of Maharashtra’s MahaAgri-AI Policy 2025–2029, which emphasizes farmer-centric adoption of AI, geospatial intelligence, and data-driven decision-making to improve productivity, climate resilience, and farmer income. The solution addresses a critical operational gap in agriculture by enabling continuous, plot-level crop monitoring even during the monsoon, when conventional remote-sensing tools are ineffective. Stoma Sense supports the state’s scale ambitions through a cloud-native, modular architecture that can be deployed across sugarcane belts and extended to other irrigated crops and agro-climatic zones with minimal configuration. This makes it suitable for phased, district-level and state-wide rollout through institutional and extension-led programs.
+From a sustainability perspective, the platform enables efficient water use, early stress detection, and optimized input application, directly supporting Maharashtra’s priorities around water management, climate resilience, and sustainable agricultural growth. The pilot provides a replicable blueprint for scalable, AI-driven agricultural transformation across the state.
+## Funding Support required from AIAIC (in ₹ lakhs)
+## Activity wise funds utilization plan
+## AIAIC Support (₹
+## Cofunding (₹ Lakhs ) Total Cost (₹ Lakhs)
+## Activity
+## Lakhs)
+Hosting, Cloud Computing with third party Hyper-
+scalers like Microsoft, IBM or AWS
+Human Resources. A team of 10 including Project Manager, Data Scientists- , AI engineers, Ag experts, Data Engineers and train-
+ing staff. Average cost of ₹2,50,000 per resource per month. This also includes resources based in United States and South America
+## Other Support required from the Government
+Government farms for trialsGovernment Labs supportAccess to Agriculture Data Exchange Platform
+## We comply with applicable laws, DPIIT/startup norms (if applicable), and data
+privacy/security regulations.
+Yes
+## We agree to periodic reviews, audits, and knowledgesharing with Government/-
+SAUs.
+Yes
+12 Feb 2026 08:22 PM
+13 /
+
+## We confirm the accuracy of information provided herein and ready to provide
+additional information if any required.
+Yes
+## I/We agree to the above terms and conditions and authorize processing of this
+application as per the stated consent.
+Yes
+12 Feb 2026 08:22 PM
+14 /

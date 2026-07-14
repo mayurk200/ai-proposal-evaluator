@@ -18,7 +18,7 @@ pdfplumber==0.11.4
 
 # OCR
 pytesseract==0.3.13
-Pillow==11.2.1
+Pillow==10.4.0
 easyocr==1.7.2
 # Deskew + denoise + binarize before OCR. On scanned forms this is the single
 # biggest extraction-quality win available.

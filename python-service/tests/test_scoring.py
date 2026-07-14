@@ -41,7 +41,7 @@ class TestWeighting:
             "compliance": agent_result("compliance", 100.0),                # 0.05
         }
         breakdown = sa._build_breakdown(results)
-        weighted, coverage, unevidenced = sa._weighted_score(breakdown)
+        weighted, coverage, unevidenced, _failed = sa._weighted_score(breakdown)
 
         expected = (
             80 * 0.15 + 60 * 0.20 + 70 * 0.20 + 50 * 0.15
@@ -64,7 +64,7 @@ class TestWeighting:
             "compliance": agent_result("compliance", None, evidenced=False),
         }
         breakdown = sa._build_breakdown(results)
-        weighted, _coverage, unevidenced = sa._weighted_score(breakdown)
+        weighted, _coverage, unevidenced, _failed = sa._weighted_score(breakdown)
 
         # Both scored parameters are 80, so the renormalized mean is exactly 80 —
         # NOT 80 * (0.35/0.40) = 70, which is what counting compliance as zero gives.
@@ -75,11 +75,115 @@ class TestWeighting:
         sa = ScoringAgent()
         results = {"compliance": agent_result("compliance", None, evidenced=False)}
         breakdown = sa._build_breakdown(results)
-        weighted, coverage, unevidenced = sa._weighted_score(breakdown)
+        weighted, coverage, unevidenced, _failed = sa._weighted_score(breakdown)
 
         assert weighted == 0.0
         assert coverage == 0.0
         assert unevidenced == ["Compliance & Governance"]
+
+
+class TestFailedIsNotUnevidenced:
+    """
+    The distinction that matters most in the whole scoring path.
+
+    A parameter our agent failed to assess (rate limit, timeout) must NEVER be reported
+    as "the proposal did not address this". One is a fact about our infrastructure; the
+    other is a finding against the applicant. Conflating them means an applicant loses a
+    parameter — and possibly a funding decision — because we hit a 429.
+
+    This is not hypothetical: it happened on a live run, where a Groq daily-token limit
+    knocked out two agents and the report told the evaluator the proposal was silent on
+    business model and farmer adoption. It was not.
+    """
+
+    def test_failed_agent_is_reported_separately_from_a_silent_proposal(self):
+        sa = ScoringAgent()
+
+        silent = agent_result("compliance", None, evidenced=False)  # proposal says nothing
+
+        broken = agent_result("scaleup", None, evidenced=False)     # OUR agent died
+        broken.status = "failed"
+        broken.error = "Error code: 429 - rate limit reached"
+
+        results = {
+            "problem_relevance": agent_result("problem_relevance", 80.0),
+            "compliance": silent,
+            "scaleup": broken,
+        }
+
+        breakdown = sa._build_breakdown(results)
+        weighted, coverage, unevidenced, failed = sa._weighted_score(breakdown)
+
+        assert breakdown["compliance"].status == "unevidenced"
+        assert breakdown["scaleup"].status == "failed"
+
+        assert unevidenced == ["Compliance & Governance"]
+        assert failed == ["Business Model & Scale-up"]
+
+        # The failed one must not leak into the applicant-facing gap list.
+        assert "Business Model & Scale-up" not in unevidenced
+
+    def test_a_failed_parameter_does_not_drag_the_score_down(self):
+        sa = ScoringAgent()
+
+        broken = agent_result("scaleup", None, evidenced=False)
+        broken.status = "failed"
+
+        results = {
+            "problem_relevance": agent_result("problem_relevance", 80.0),
+            "solution_readiness": agent_result("solution_readiness", 80.0),
+            "scaleup": broken,
+        }
+        breakdown = sa._build_breakdown(results)
+        weighted, _, _, _ = sa._weighted_score(breakdown)
+
+        # Both assessed parameters scored 80, so the renormalized mean is 80. The agent we
+        # broke contributes nothing rather than a zero.
+        assert weighted == 80.0
+
+    def test_coverage_ignores_parameters_we_never_managed_to_ask_about(self):
+        """
+        Evidence coverage measures how much of the DOCUMENT answered our questions. A
+        question we never got to ask cannot count against the document.
+        """
+        sa = ScoringAgent()
+
+        broken = agent_result("scaleup", None, evidenced=False)
+        broken.status = "failed"
+
+        results = {
+            "problem_relevance": agent_result("problem_relevance", 80.0),  # 1/1 evidenced
+            "scaleup": broken,                                             # never asked
+        }
+        breakdown = sa._build_breakdown(results)
+        _, coverage, _, _ = sa._weighted_score(breakdown)
+
+        assert coverage == 1.0, "the failed agent's questions must not dilute coverage"
+
+    def test_blind_context_tells_the_model_not_to_punish_the_applicant(self):
+        sa = ScoringAgent()
+
+        broken = agent_result("scaleup", None, evidenced=False)
+        broken.status = "failed"
+
+        breakdown = sa._build_breakdown({"scaleup": broken})
+        blind = sa._render_blind_context(
+            breakdown, 0.0, 0.0, [], ["Business Model & Scale-up"], None
+        )
+
+        assert "NOT ASSESSED" in blind
+        assert "NOT a gap in the proposal" in blind
+        assert "Do not penalise the applicant" in blind
+
+    def test_evaluation_flags_itself_as_partial(self):
+        from app.models.schemas import FinalEvaluation
+
+        partial = FinalEvaluation(failed_parameters=["Business Model & Scale-up"])
+        complete = FinalEvaluation(unevidenced_parameters=["Compliance & Governance"])
+
+        assert partial.is_partial is True
+        # A proposal that is merely silent on something is still a COMPLETE assessment.
+        assert complete.is_partial is False
 
 
 class TestAdjustmentBand:
@@ -112,7 +216,7 @@ class TestBlindSynthesis:
         sa = ScoringAgent()
         results = {"scaleup": agent_result("scaleup", 84.0)}
         breakdown = sa._build_breakdown(results)
-        blind = sa._render_blind_context(breakdown, 84.0, 1.0, [], None)
+        blind = sa._render_blind_context(breakdown, 84.0, 1.0, [], [], None)
 
         assert "Business Model & Scale-up" in blind
         assert "84.0" in blind
@@ -123,7 +227,7 @@ class TestBlindSynthesis:
         results = {"compliance": agent_result("compliance", None, evidenced=False)}
         breakdown = sa._build_breakdown(results)
         blind = sa._render_blind_context(
-            breakdown, 0.0, 0.0, ["Compliance & Governance"], None
+            breakdown, 0.0, 0.0, ["Compliance & Governance"], [], None
         )
 
         assert "UNEVIDENCED" in blind

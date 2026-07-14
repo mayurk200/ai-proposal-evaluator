@@ -178,6 +178,17 @@ class ParameterResult(BaseModel):
     parameter_key: str = ""
     parameter_score: Optional[float] = None     # 0-100
     weight: float = 0.0
+
+    # Why there is no score, when there is no score. `parameter_score is None` has two
+    # completely different causes and they must never be conflated:
+    #
+    #   "unevidenced" — the proposal genuinely does not address this. A finding about
+    #                   the APPLICANT, and a fair one.
+    #   "failed"      — our agent errored (rate limit, timeout, bad response). A fact
+    #                   about US. Reporting it as "the proposal did not address this"
+    #                   would blame the applicant for our outage.
+    status: str = "scored"                      # scored | unevidenced | failed
+    error: Optional[str] = None
     sub_questions: list[SubQuestionResult] = Field(default_factory=list)
     key_findings: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
@@ -253,6 +264,18 @@ class FinalEvaluation(BaseModel):
     # a low score, so an evaluator can tell "they didn't answer" apart from
     # "they answered badly".
     unevidenced_parameters: list[str] = Field(default_factory=list)
+
+    # Parameters WE failed to assess — a rate limit, a timeout, a bad response. These
+    # are emphatically NOT the applicant's fault and must never be presented as though
+    # the proposal was silent on them. An evaluation carrying any of these is partial
+    # and should be retried before anyone is judged on it.
+    failed_parameters: list[str] = Field(default_factory=list)
+
+    @property
+    def is_partial(self) -> bool:
+        """True when at least one parameter could not be assessed by us."""
+        return bool(self.failed_parameters)
+
     # Share of all sub-questions that the document actually answered, 0..1.
     evidence_coverage: float = 0.0
 

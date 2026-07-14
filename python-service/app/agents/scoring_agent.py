@@ -130,13 +130,20 @@ class ScoringAgent:
         start = time.time()
 
         breakdown = self._build_breakdown(agent_results)
-        weighted, coverage, unevidenced = self._weighted_score(breakdown)
+        weighted, coverage, unevidenced, failed = self._weighted_score(breakdown)
+
+        if failed:
+            logger.warning(
+                "evaluation_is_partial",
+                failed_parameters=failed,
+                note="these were not assessed by us; they are NOT applicant gaps",
+            )
 
         try:
             response = await get_llm_client().chat(
                 system_prompt=SYSTEM_PROMPT,
                 user_content=self._render_blind_context(
-                    breakdown, weighted, coverage, unevidenced, debate_result
+                    breakdown, weighted, coverage, unevidenced, failed, debate_result
                 ),
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
@@ -156,6 +163,7 @@ class ScoringAgent:
                 unsupported_claims=_str_list(raw.get("unsupported_claims")),
                 key_action_items=_str_list(raw.get("key_action_items")),
                 unevidenced_parameters=unevidenced,
+                failed_parameters=failed,
                 evidence_coverage=coverage,
                 parameter_breakdown=breakdown,
                 debate_summary=debate_result,
@@ -173,6 +181,7 @@ class ScoringAgent:
                     "score itself is unaffected."
                 ),
                 unevidenced_parameters=unevidenced,
+                failed_parameters=failed,
                 evidence_coverage=coverage,
                 parameter_breakdown=breakdown,
                 debate_summary=debate_result,
@@ -212,12 +221,25 @@ class ScoringAgent:
             if key not in WEIGHTS:
                 continue
 
+            # Three distinct outcomes, and the difference matters enormously:
+            #   scored      — we assessed it.
+            #   unevidenced — the proposal does not address it. About the APPLICANT.
+            #   failed      — our agent broke. About US, and never the applicant's fault.
+            if result.status == "failed":
+                status = "failed"
+            elif result.score is None:
+                status = "unevidenced"
+            else:
+                status = "scored"
+
             asked = len(result.sub_questions) or 1
             breakdown[key] = ParameterResult(
                 parameter_name=PARAMETER_LABELS.get(key, key),
                 parameter_key=key,
                 parameter_score=result.score,
                 weight=WEIGHTS[key],
+                status=status,
+                error=result.error,
                 sub_questions=result.sub_questions,
                 key_findings=result.key_findings,
                 red_flags=result.red_flags,
@@ -230,33 +252,50 @@ class ScoringAgent:
 
     def _weighted_score(
         self, breakdown: dict[str, ParameterResult]
-    ) -> tuple[float, float, list[str]]:
+    ) -> tuple[float, float, list[str], list[str]]:
         """
         Weighted mean over the parameters that HAVE a score.
 
-        Unscored parameters are excluded and the remaining weights renormalized,
-        rather than being counted as zero. Counting them as zero would mean a
-        proposal that never mentions DPDP compliance (weight 5%) loses 5 points
-        outright — which turns the overall score into a measure of how completely the
-        form was filled in, not of the idea's merit. The absence is reported
-        separately as `unevidenced_parameters`, where a human can weigh it properly.
+        Returns (weighted, coverage, unevidenced, failed).
+
+        Unscored parameters are excluded and the remaining weights renormalized rather
+        than being counted as zero. Counting them as zero would mean a proposal that
+        never mentions DPDP compliance (weight 5%) loses 5 points outright — which turns
+        the overall score into a measure of how completely the form was filled in, not of
+        the idea's merit.
+
+        `unevidenced` and `failed` are reported SEPARATELY and must never be merged. A
+        parameter the proposal did not address is a finding about the applicant. A
+        parameter our agent failed to assess is a fact about us — presenting it as
+        "the proposal did not address this" would blame the applicant for our rate limit.
         """
-        scored = {k: p for k, p in breakdown.items() if p.parameter_score is not None}
+        scored = {
+            k: p
+            for k, p in breakdown.items()
+            if p.parameter_score is not None and p.status == "scored"
+        }
         unevidenced = sorted(
             PARAMETER_LABELS.get(k, k)
             for k, p in breakdown.items()
-            if p.parameter_score is None
+            if p.status == "unevidenced"
+        )
+        failed = sorted(
+            PARAMETER_LABELS.get(k, k)
+            for k, p in breakdown.items()
+            if p.status == "failed"
         )
 
-        total_sub = sum(len(p.sub_questions) for p in breakdown.values())
+        # Coverage measures how much of the document answered our questions, so a
+        # parameter we never managed to ask about cannot count against it.
+        assessable = [p for p in breakdown.values() if p.status != "failed"]
+        total_sub = sum(len(p.sub_questions) for p in assessable)
         evidenced_sub = sum(
-            sum(1 for sq in p.sub_questions if sq.evidence_found)
-            for p in breakdown.values()
+            sum(1 for sq in p.sub_questions if sq.evidence_found) for p in assessable
         )
         coverage = round(evidenced_sub / total_sub, 3) if total_sub else 0.0
 
         if not scored:
-            return 0.0, coverage, unevidenced
+            return 0.0, coverage, unevidenced, failed
 
         total_weight = sum(p.weight for p in scored.values())
         weighted = (
@@ -264,7 +303,7 @@ class ScoringAgent:
             / total_weight
         )
 
-        return round(weighted, 2), coverage, unevidenced
+        return round(weighted, 2), coverage, unevidenced, failed
 
     def _apply_adjustment(self, weighted: float, raw: dict) -> float:
         """Let the model move the score, but only inside the band."""
@@ -295,6 +334,7 @@ class ScoringAgent:
         weighted: float,
         coverage: float,
         unevidenced: list[str],
+        failed: list[str],
         debate: Optional[DebateResult],
     ) -> str:
         """
@@ -313,14 +353,24 @@ class ScoringAgent:
             lines.append(
                 "Parameters the proposal did NOT address at all: " + ", ".join(unevidenced)
             )
+        if failed:
+            # The model must not read our outage as the applicant's silence and hold it
+            # against them.
+            lines.append(
+                "Parameters that COULD NOT BE ASSESSED because of a technical failure on "
+                "our side: " + ", ".join(failed) + ". This is NOT a gap in the proposal. "
+                "Do not penalise the applicant for it. Note in your summary that the "
+                "assessment is incomplete and should be re-run."
+            )
 
         for param in breakdown.values():
             lines.append("")
-            score = (
-                f"{param.parameter_score}/100"
-                if param.parameter_score is not None
-                else "UNEVIDENCED — the proposal did not address this"
-            )
+            if param.status == "failed":
+                score = "NOT ASSESSED — technical failure on our side, not a gap in the proposal"
+            elif param.parameter_score is None:
+                score = "UNEVIDENCED — the proposal did not address this"
+            else:
+                score = f"{param.parameter_score}/100"
             lines.append(f"--- {param.parameter_name} (weight {param.weight:.0%}): {score}")
 
             for sq in param.sub_questions:

@@ -1,186 +1,239 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, PieChart as PieIcon } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Building2, FolderTree, TrendingUp } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, Skeleton } from '@/components/ui';
-import { aiApi } from '@/services/proposal.service';
+import { Skeleton } from '@/components/ui';
+import { EmptyState } from '@/components/domain';
+import { analyticsApi } from '@/services/agrieval.service';
 
-const COLORS = ['#2E7D32', '#66BB6A', '#C8E6C9', '#81C784', '#A5D6A7', '#E8F5E9'];
+// A categorical palette for the timeline series. Distinct enough to tell apart, muted
+// enough to sit behind the data.
+const SERIES_COLOURS = [
+  '#10a37f', '#6366f1', '#d97706', '#dc2626',
+  '#0891b2', '#7c3aed', '#65a30d', '#db2777',
+];
 
 export default function AnalyticsPage() {
-  const { data: stats, isLoading, error } = useQuery({ queryKey: ['dashboard'], queryFn: aiApi.getDashboard });
+  const [groupBy, setGroupBy] = useState<'category' | 'company'>('category');
+
+  const { data: overview, isLoading } = useQuery({
+    queryKey: ['analytics', 'overview'],
+    queryFn: analyticsApi.overview,
+  });
+
+  const { data: timeline } = useQuery({
+    queryKey: ['analytics', 'timeline', groupBy],
+    queryFn: () => analyticsApi.timeline(groupBy),
+  });
+
+  // Pivot the flat timeline rows into one row per period with a column per series, which
+  // is the shape a multi-line chart needs.
+  const periods = [...new Set((timeline ?? []).map((p) => p.period))].sort();
+  const seriesNames = [
+    ...new Set(
+      (timeline ?? []).map((p) => (groupBy === 'category' ? p.category : p.company) ?? '—'),
+    ),
+  ];
+  const timelineData = periods.map((period) => {
+    const row: Record<string, string | number> = { period };
+    seriesNames.forEach((name) => {
+      row[name] =
+        (timeline ?? [])
+          .filter(
+            (p) =>
+              p.period === period &&
+              ((groupBy === 'category' ? p.category : p.company) ?? '—') === name,
+          )
+          .reduce((sum, p) => sum + p.approved_count, 0) || 0;
+    });
+    return row;
+  });
 
   if (isLoading) {
     return (
       <AppLayout>
-        <div className="space-y-6">
-          {[1, 2, 3].map(i => (
-            <Card key={i} hover={false}>
-              <Skeleton className="h-64 w-full" />
-            </Card>
-          ))}
-        </div>
+        <Skeleton className="h-96 rounded-2xl" />
       </AppLayout>
     );
   }
 
-  if (error) {
-    return (
-      <AppLayout>
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
-            <BarChart3 className="w-8 h-8 text-red-400" />
-          </div>
-          <h2 className="text-lg font-semibold text-text mb-2">Failed to load analytics</h2>
-          <p className="text-sm text-text-muted">Please try refreshing the page</p>
-        </div>
-      </AppLayout>
-    );
-  }
-
-  const history = stats?.scoreHistory?.map((s: any, i: number) => ({
-    name: `#${i + 1}`,
-    overall: s.overallScore ?? 0,
-    problemRelevance: s.problemRelevanceScore ?? 0,
-    solutionReadiness: s.solutionReadinessScore ?? 0,
-    pilotDesign: s.pilotDesignScore ?? 0,
-    farmerAdoption: s.farmerAdoptionScore ?? 0,
-    scaleUp: s.scaleUpScore ?? 0,
-    teamCapacity: s.teamCapacityScore ?? 0,
-    compliance: s.complianceScore ?? 0,
-  })) || [];
-
-  const catData = stats?.categoryStats?.map((c: any) => ({
-    name: c.recommendation || 'Unknown',
-    value: c._count || 0,
-    avg: Math.round(c._avg?.overallScore || 0),
-  })) || [];
-
-  const scoreDistribution = [
-    { range: '0-20', count: stats?.scoreHistory?.filter((s: any) => s.overallScore <= 20)?.length || 0 },
-    { range: '21-40', count: stats?.scoreHistory?.filter((s: any) => s.overallScore > 20 && s.overallScore <= 40)?.length || 0 },
-    { range: '41-60', count: stats?.scoreHistory?.filter((s: any) => s.overallScore > 40 && s.overallScore <= 60)?.length || 0 },
-    { range: '61-80', count: stats?.scoreHistory?.filter((s: any) => s.overallScore > 60 && s.overallScore <= 80)?.length || 0 },
-    { range: '81-100', count: stats?.scoreHistory?.filter((s: any) => s.overallScore > 80)?.length || 0 },
-  ];
-
-  const pieData = catData.length > 0 ? catData : [{ name: 'No data yet', value: 1, avg: 0 }];
+  const categories = overview?.by_category ?? [];
+  const companies = overview?.by_company ?? [];
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <h1 className="text-2xl font-bold text-text">Analytics</h1>
-          <p className="text-sm text-text-muted mt-1">Track evaluation performance and trends</p>
-        </motion.div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold text-text">Approval analytics</h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          Where funding has gone, to whom, and when. Counts reflect approvals — a rejected
+          idea appears nowhere here.
+        </p>
+      </header>
 
-        {/* Stat cards */}
-        <div className="grid md:grid-cols-3 gap-5">
-          {[
-            { icon: BarChart3, label: 'Total Evaluated', val: stats?.evaluatedProposals || 0 },
-            { icon: TrendingUp, label: 'Avg Score', val: stats?.averageScore || 0 },
-            { icon: PieIcon, label: 'Categories', val: catData.length },
-          ].map((s, i) => (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-              <Card>
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-accent/40 flex items-center justify-center">
-                    <s.icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-muted">{s.label}</p>
-                    <p className="text-2xl font-bold">{s.val}</p>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+      {/* -------------------------------------------------------------- (d) */}
+      <section className="glass-card-static mb-5 rounded-2xl p-5">
+        <header className="mb-4 flex items-center gap-2">
+          <FolderTree className="h-4 w-4 text-text-secondary" />
+          <h2 className="text-sm font-semibold text-text">Approvals by category</h2>
+        </header>
 
-        {/* Charts row */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Score Trends */}
-          <Card hover={false}>
-            <h3 className="text-base font-semibold mb-4">Score Trends</h3>
-            {history.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={history}>
-                  <defs>
-                    <linearGradient id="aOverall" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2E7D32" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#2E7D32" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="aReadiness" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D97706" stopOpacity={0.15} />
-                      <stop offset="100%" stopColor="#D97706" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                  <XAxis dataKey="name" fontSize={11} stroke="#94A3B8" />
-                  <YAxis domain={[0, 100]} fontSize={11} stroke="#94A3B8" />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'rgba(255,255,255,0.9)',
-                      backdropFilter: 'blur(12px)',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(255,255,255,0.4)',
-                    }}
-                  />
-                  <Area type="monotone" dataKey="overall" stroke="#2E7D32" strokeWidth={2} fill="url(#aOverall)" name="Overall" />
-                  <Area type="monotone" dataKey="solutionReadiness" stroke="#D97706" strokeWidth={1.5} fill="url(#aReadiness)" name="Solution Readiness" />
-                  <Legend />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-sm text-text-muted">
-                No evaluation data yet. Evaluate proposals to see trends.
-              </div>
-            )}
-          </Card>
-
-          {/* Recommendation Distribution */}
-          <Card hover={false}>
-            <h3 className="text-base font-semibold mb-4">Recommendation Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={4}
-                  dataKey="value"
-                  label={(props: any) =>
-                    `${props.name || ''} (${((props.percent || 0) * 100).toFixed(0)}%)`
-                  }
-                  labelLine={false}
-                >
-                  {pieData.map((_: any, i: number) => (
-                    <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
+        {categories.length === 0 ? (
+          <EmptyState
+            icon={FolderTree}
+            title="No approvals yet"
+            description="Categories are discovered from the ideas themselves — nothing is predefined, so this list grows as proposals arrive."
+          />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={Math.max(220, categories.length * 34)}>
+              <BarChart data={categories} layout="vertical" margin={{ left: 8, right: 24 }}>
+                <CartesianGrid horizontal={false} stroke="#f0f0ee" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="label" width={150} tick={{ fontSize: 11 }} />
+                <Tooltip cursor={{ fill: '#f7f7f5' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                <Bar dataKey="approved_count" name="Approved" radius={[0, 4, 4, 0]}>
+                  {categories.map((entry) => (
+                    <Cell
+                      key={entry.category_id}
+                      fill={entry.approved_count > 1 ? '#d97706' : '#10a37f'}
+                    />
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
-          </Card>
-        </div>
+            <p className="mt-2 text-[11px] text-text-muted">
+              Amber marks a category holding more than one approved idea — the
+              concentration this system exists to help you avoid.
+            </p>
+          </>
+        )}
+      </section>
 
-        {/* Score Distribution */}
-        <Card hover={false}>
-          <h3 className="text-base font-semibold mb-4">Score Distribution</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={scoreDistribution}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-              <XAxis dataKey="range" fontSize={11} stroke="#94A3B8" />
-              <YAxis fontSize={11} stroke="#94A3B8" allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#2E7D32" radius={[6, 6, 0, 0]} />
-            </BarChart>
+      {/* -------------------------------------------------------------- (e) */}
+      <section className="glass-card-static mb-5 rounded-2xl p-5">
+        <header className="mb-4 flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-text-secondary" />
+          <h2 className="text-sm font-semibold text-text">Approvals by company</h2>
+        </header>
+
+        {companies.length === 0 ? (
+          <EmptyState icon={Building2} title="No approvals yet" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-text-muted">
+                  <th className="pb-2 font-medium">Company</th>
+                  <th className="pb-2 text-center font-medium">Approved</th>
+                  <th className="pb-2 text-center font-medium">Categories</th>
+                  <th className="pb-2 font-medium">Flag</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {companies.map((company) => (
+                  <tr key={company.company_id}>
+                    <td className="py-2.5 font-medium text-text">{company.name}</td>
+                    <td className="py-2.5 text-center tabular-nums">
+                      {company.approved_count}
+                    </td>
+                    <td className="py-2.5 text-center tabular-nums">
+                      {company.categories_spanned}
+                    </td>
+                    <td className="py-2.5">
+                      {company.multi_category && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          <AlertTriangle className="h-3 w-3" />
+                          Winning across domains
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-3 text-[11px] text-text-muted">
+              Companies are matched on a normalised name, so “Acme Agri Pvt. Ltd.” and
+              “ACME AGRI” count as one company — otherwise the same firm could quietly take
+              a slot in every section.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* -------------------------------------------------------------- (f) */}
+      <section className="glass-card-static rounded-2xl p-5">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-text-secondary" />
+            <h2 className="text-sm font-semibold text-text">Approvals over time</h2>
+          </div>
+
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+            {(['category', 'company'] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setGroupBy(option)}
+                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                  groupBy === option
+                    ? 'bg-white text-text shadow-sm'
+                    : 'text-text-muted hover:text-text'
+                }`}
+              >
+                by {option}
+              </button>
+            ))}
+          </div>
+        </header>
+
+        {timelineData.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            title="No approval history yet"
+            description="Each approval is recorded against the year and month it happened in, and stays there even if the idea is recategorised later."
+          />
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={timelineData} margin={{ left: -18, right: 8 }}>
+              <CartesianGrid stroke="#f0f0ee" />
+              <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {seriesNames.map((name, i) => (
+                <Line
+                  key={name}
+                  type="monotone"
+                  dataKey={name}
+                  stroke={SERIES_COLOURS[i % SERIES_COLOURS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              ))}
+            </LineChart>
           </ResponsiveContainer>
-        </Card>
-      </div>
+        )}
+      </section>
+
+      <p className="mt-5 text-center text-xs text-text-muted">
+        Looking for something to act on?{' '}
+        <Link to="/review" className="text-primary hover:underline">
+          Duplicate review queue
+        </Link>
+      </p>
     </AppLayout>
   );
 }
