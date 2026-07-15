@@ -1,12 +1,19 @@
 /**
- * Tests for src/middleware/auth.ts — auth & optional-auth middleware.
+ * Auth and RBAC — the gateway's security boundary.
+ *
+ * These rules decide who may read a proposal and who may approve funding.
+ * `optionalAuthMiddleware` used to exist and waved tokenless requests through, treating
+ * them as an "anonymous owner" — every route in the system was reachable logged-out. It
+ * is gone, and these tests exist so that it does not come back.
  */
 import { describe, it, expect, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
-import { authMiddleware, optionalAuthMiddleware } from '../src/middleware/auth';
+import { authMiddleware, requireRole, AuthRequest } from '../src/middleware/auth';
 
-function mockReq(headers: Record<string, string> = {}): any {
-  return { headers };
+const SECRET = process.env.JWT_SECRET!;
+
+function mockReq(headers: Record<string, string> = {}, extra: Partial<AuthRequest> = {}): any {
+  return { headers, ...extra };
 }
 
 function mockRes(): any {
@@ -16,108 +23,108 @@ function mockRes(): any {
   return res;
 }
 
+const tokenFor = (userId: string, role: string) => jwt.sign({ userId, role }, SECRET);
+
 describe('authMiddleware', () => {
-  const secret = process.env.JWT_SECRET!;
-
-  it('rejects when no Authorization header', () => {
-    const req = mockReq();
+  it('rejects a request with no Authorization header', () => {
     const res = mockRes();
     const next = vi.fn();
 
-    authMiddleware(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('No token') }),
-    );
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('rejects when Authorization header missing Bearer prefix', () => {
-    const req = mockReq({ authorization: 'Token abc' });
-    const res = mockRes();
-    const next = vi.fn();
-
-    authMiddleware(req, res, next);
+    authMiddleware(mockReq(), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid token', () => {
-    const req = mockReq({ authorization: 'Bearer invalid.token.value' });
+  it('rejects a header that is not a Bearer token', () => {
     const res = mockRes();
     const next = vi.fn();
 
-    authMiddleware(req, res, next);
+    authMiddleware(mockReq({ authorization: 'Basic abc123' }), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('Invalid') }),
-    );
+    expect(next).not.toHaveBeenCalled();
   });
 
-  it('accepts valid token and sets userId/role', () => {
-    const token = jwt.sign({ userId: 'user-123', role: 'admin' }, secret);
-    const req = mockReq({ authorization: `Bearer ${token}` });
+  it('rejects a token signed with the wrong secret', () => {
+    const forged = jwt.sign({ userId: 'u1', role: 'ADMIN' }, 'not-the-real-secret');
+    const res = mockRes();
+    const next = vi.fn();
+
+    authMiddleware(mockReq({ authorization: `Bearer ${forged}` }), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired token', () => {
+    const expired = jwt.sign({ userId: 'u1', role: 'ADMIN' }, SECRET, { expiresIn: '-1s' });
+    const res = mockRes();
+    const next = vi.fn();
+
+    authMiddleware(mockReq({ authorization: `Bearer ${expired}` }), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid token and attaches the identity', () => {
+    const req = mockReq({ authorization: `Bearer ${tokenFor('user-1', 'DESK2')}` });
     const res = mockRes();
     const next = vi.fn();
 
     authMiddleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
-    expect(req.userId).toBe('user-123');
-    expect(req.userRole).toBe('admin');
-  });
-
-  it('rejects expired token', () => {
-    const token = jwt.sign({ userId: 'u1', role: 'user' }, secret, { expiresIn: '-1s' });
-    const req = mockReq({ authorization: `Bearer ${token}` });
-    const res = mockRes();
-    const next = vi.fn();
-
-    authMiddleware(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    // The identity is forwarded to the Python service, which attributes decisions to it.
+    // An approval with nobody's name on it is not much of an approval.
+    expect(req.userId).toBe('user-1');
+    expect(req.userRole).toBe('DESK2');
   });
 });
 
-describe('optionalAuthMiddleware', () => {
-  const secret = process.env.JWT_SECRET!;
-
-  it('proceeds without token', () => {
-    const req = mockReq();
+describe('requireRole', () => {
+  it('lets an ADMIN through an ADMIN-only route', () => {
     const res = mockRes();
     const next = vi.fn();
 
-    optionalAuthMiddleware(req, res, next);
+    requireRole('ADMIN')(mockReq({}, { userId: 'u1', userRole: 'ADMIN' }), res, next);
 
     expect(next).toHaveBeenCalled();
-    expect(req.userId).toBeUndefined();
+    expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('sets userId on valid token', () => {
-    const token = jwt.sign({ userId: 'user-456', role: 'reviewer' }, secret);
-    const req = mockReq({ authorization: `Bearer ${token}` });
+  it('blocks DESK2 from an ADMIN-only route', () => {
+    // DESK2 uploads, processes, retries and reads everything. It must not be able to
+    // approve funding, resolve the duplicate gate, or delete a proposal.
     const res = mockRes();
     const next = vi.fn();
 
-    optionalAuthMiddleware(req, res, next);
+    requireRole('ADMIN')(mockReq({}, { userId: 'u2', userRole: 'DESK2' }), res, next);
 
-    expect(next).toHaveBeenCalled();
-    expect(req.userId).toBe('user-456');
-    expect(req.userRole).toBe('reviewer');
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
   });
 
-  it('proceeds on invalid token without setting userId', () => {
-    const req = mockReq({ authorization: 'Bearer bad.token' });
+  it('allows a role that is one of several permitted', () => {
     const res = mockRes();
     const next = vi.fn();
 
-    optionalAuthMiddleware(req, res, next);
+    requireRole('ADMIN', 'DESK2')(mockReq({}, { userId: 'u2', userRole: 'DESK2' }), res, next);
 
     expect(next).toHaveBeenCalled();
-    expect(req.userId).toBeUndefined();
+  });
+
+  it('rejects a request carrying no role at all', () => {
+    // requireRole always runs after authMiddleware, so a missing role means something is
+    // wired wrong. Fail closed, not open.
+    const res = mockRes();
+    const next = vi.fn();
+
+    requireRole('ADMIN')(mockReq(), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
   });
 });

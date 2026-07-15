@@ -1,3 +1,12 @@
+> [!WARNING]
+> **Superseded — this document describes the system before the 2026 rebuild.**
+>
+> It refers to things that no longer exist: the Node.js fallback agent pipeline, Firebase
+> Firestore, the 9-agent taxonomy, chunk-based processing, and the open registration flow.
+> Following it will mislead you.
+>
+> The current design is in **[REPORT.md](../REPORT.md)**; setup is in **[README.md](../README.md)**.
+
 # API Reference
 
 ## Python AI Service (Port 8000)
