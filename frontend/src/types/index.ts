@@ -1,17 +1,31 @@
 // ===== User Types =====
 export interface User {
   id: string;
+  username?: string;
   email: string;
   name: string;
-  company?: string;
+  company?: string | null;
   role: 'USER' | 'ADMIN';
+  isActive?: boolean;
+  emailVerified?: boolean;
+  lastLogin?: string | null;
   createdAt: string;
   _count?: { proposals: number };
 }
 
 export interface AuthResponse {
   user: User;
+  /** Short-lived access token; the refresh token lives in an HttpOnly cookie. */
   token: string;
+}
+
+export interface AuthSession {
+  id: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+  current: boolean;
 }
 
 // ===== Proposal Types =====

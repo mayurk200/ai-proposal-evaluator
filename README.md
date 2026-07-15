@@ -47,7 +47,7 @@ User uploads file → Node.js Backend → Python AI Service
 - **Section-aware chunking** — Splits on headings, not arbitrary token counts
 - **SWOT analysis** — Auto-generated strengths, weaknesses, opportunities, threats
 - **Radar & bar charts** — Visual score breakdowns with Recharts
-- **JWT authentication** — Register, login, claim proposals
+- **Hardened authentication** — Argon2id password hashing, rotating refresh-token sessions (HttpOnly cookies), account lockout, audit logging, session management
 - **Report comparison** — Parameter-level comparison of 2–5 evaluation reports
 
 ## Tech Stack
@@ -64,7 +64,7 @@ User uploads file → Node.js Backend → Python AI Service
 | **Document Processing** | PyMuPDF, python-docx, python-pptx |
 | **Database** | PostgreSQL (Docker; local JSON fallback for zero-config dev) |
 | **Object Storage** | MinIO (S3-compatible, Docker) |
-| **Auth** | JWT + bcrypt |
+| **Auth** | JWT (15-min access) + rotating refresh cookies + Argon2id |
 | **Testing** | pytest (Python), Vitest (Node.js) — 398 tests |
 
 ## Run the App

@@ -12,6 +12,21 @@ export interface VersionEntry {
 
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: '0.3.0',
+    date: '2026-07-12',
+    summary:
+      'Complete authentication overhaul: hardened login with account lockout, secure session management with automatic token refresh, and a full set of account security endpoints backed by PostgreSQL.',
+    details: [
+      'User accounts, sessions and an authentication audit trail now live in normalized PostgreSQL tables (existing accounts are migrated automatically).',
+      'Passwords are hashed with Argon2id; accounts created earlier are upgraded transparently on their next sign-in.',
+      'Sign-in is protected against brute force: 5 failed attempts temporarily lock the account, and credential endpoints are rate-limited per IP.',
+      'Sessions use a short-lived (15 min) access token plus a 30-day rotating refresh token stored in a secure HttpOnly cookie — the app silently refreshes expired sessions instead of logging you out.',
+      'New account endpoints: change password, forgot/reset password, view active sessions, revoke a session, and sign out of all devices.',
+      'Stronger password policy for new passwords: minimum 12 characters with upper/lower case, a number and a symbol.',
+      'Every authentication event (sign-ins, failures, lockouts, password changes, session revocations) is recorded in an audit log with IP and browser details.',
+    ],
+  },
+  {
     version: '0.2.2',
     date: '2026-07-11',
     summary: 'Rankings leaderboard rows now show the proposal ID with the name beside it, and the ID copy interaction is simpler.',

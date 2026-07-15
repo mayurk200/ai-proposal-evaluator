@@ -14,6 +14,14 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(10),
   PORT: z.string().default('3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+
+  // Authentication
+  JWT_ACCESS_EXPIRY: z.string().default('15m'),
+  JWT_REFRESH_EXPIRY_DAYS: z.coerce.number().default(30),
+  AUTH_MAX_FAILED_LOGINS: z.coerce.number().default(5),
+  AUTH_LOCKOUT_MINUTES: z.coerce.number().default(15),
+  // Cookie Secure flag: defaults to true in production, false otherwise.
+  COOKIE_SECURE: z.enum(['true', 'false']).optional(),
   
   // LLM Provider
   LLM_PROVIDER: z.enum(['groq', 'openai', 'gemini', 'ollama']).default('groq'),
@@ -65,3 +73,7 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/** Whether auth cookies should carry the Secure flag. */
+export const cookieSecure =
+  env.COOKIE_SECURE !== undefined ? env.COOKIE_SECURE === 'true' : env.NODE_ENV === 'production';

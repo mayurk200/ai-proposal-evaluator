@@ -114,11 +114,25 @@ Base URL: `http://localhost:3001/api`
 
 ### Authentication
 
+Passwords are hashed with Argon2id. Login/register return a 15-minute JWT
+access token in the body and set a 30-day rotating refresh token in an
+HttpOnly `SameSite=Lax` cookie scoped to `/api/auth`. Five failed logins lock
+the account for 15 minutes; credential endpoints are also rate-limited per IP.
+All auth events are recorded in `auth.audit_logs`.
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/auth/register` | Register a new user |
-| `POST` | `/auth/login` | Login and receive JWT token |
-| `GET` | `/auth/profile` | Get current user profile (requires auth) |
+| `POST` | `/auth/register` | Register a new user (password: 12+ chars with upper/lower/number/symbol) |
+| `POST` | `/auth/login` | Login → access token + refresh cookie |
+| `POST` | `/auth/refresh` | Rotate the refresh cookie, mint a new access token |
+| `POST` | `/auth/logout` | Revoke the current session (uses the refresh cookie) |
+| `POST` | `/auth/logout-all` | Revoke all sessions for the current user (requires auth) |
+| `GET` | `/auth/me` | Current user profile (requires auth; `/auth/profile` is a legacy alias) |
+| `POST` | `/auth/change-password` | Change password; revokes all other sessions (requires auth) |
+| `POST` | `/auth/forgot-password` | Request a password-reset token (response never reveals whether the email exists) |
+| `POST` | `/auth/reset-password` | Reset password with a valid token; revokes all sessions |
+| `GET` | `/auth/sessions` | List active sessions with IP/device (requires auth) |
+| `DELETE` | `/auth/sessions/:id` | Revoke one session (requires auth) |
 
 ### Uploads & Evaluation (primary flow)
 

@@ -20,8 +20,23 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Mirrors the backend password policy (which is authoritative).
+  const passwordIssue = (pw: string): string | null => {
+    if (pw.length < 12) return 'Password must be at least 12 characters.';
+    if (!/[a-z]/.test(pw)) return 'Password must contain a lowercase letter.';
+    if (!/[A-Z]/.test(pw)) return 'Password must contain an uppercase letter.';
+    if (!/[0-9]/.test(pw)) return 'Password must contain a number.';
+    if (!/[^A-Za-z0-9]/.test(pw)) return 'Password must contain a special character.';
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const issue = passwordIssue(form.password);
+    if (issue) {
+      setError(issue);
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -137,7 +152,7 @@ export default function RegisterPage() {
                   id="password"
                   label="Password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Min 8 characters"
+                  placeholder="Min 12 chars, mixed case, number, symbol"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required

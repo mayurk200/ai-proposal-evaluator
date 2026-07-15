@@ -15,6 +15,7 @@ import reportsRoutes from './modules/reports/reports.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { initSettings, runtime } from './modules/settings/settings.service';
 import { connectWithRetry, closePool, isDbReady, isDbConfigured } from './config/pg';
+import { initAuthSchema } from './modules/auth/auth.db';
 import { checkPythonServiceHealth } from './utils/pythonProxy';
 import { createStorageProvider } from './providers/storage/factory';
 import { StorageProvider } from './providers/storage/types';
@@ -134,6 +135,19 @@ initSettings()
           '  - Or unset DATABASE_URL to run on the local JSON store.'
       );
       process.exit(1);
+    }
+
+    // Create/upgrade the normalized auth tables (idempotent). Auth requires
+    // PostgreSQL; without it the auth endpoints will fail with DB errors while
+    // the anonymous upload/evaluation flow keeps working on the JSON store.
+    if (isDbReady()) {
+      try {
+        await initAuthSchema();
+        console.log('[startup] Auth schema:    ready');
+      } catch (err: any) {
+        console.error('[startup] FATAL: auth schema migration failed:', err?.message ?? err);
+        process.exit(1);
+      }
     }
 
     // Readiness summary for the remaining dependencies (informational — the

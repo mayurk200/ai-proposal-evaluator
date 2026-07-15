@@ -51,6 +51,9 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in the root .env}
+      # Local compose serves plain HTTP; browsers drop Secure cookies there.
+      # Remove (or set true) when running behind TLS.
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
       # Inside the compose network Postgres is reachable as "postgres".
       - DATABASE_URL=postgresql://${POSTGRES_USER:-agrieval}:${POSTGRES_PASSWORD:-agrieval123}@postgres:5432/${POSTGRES_DB:-agrieval}
       # The Python service runs on the host in dev; reach it via the gateway.

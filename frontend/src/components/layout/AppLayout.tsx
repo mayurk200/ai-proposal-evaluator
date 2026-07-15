@@ -6,6 +6,7 @@ import {
   Settings, LogOut, Leaf, Menu, X, ChevronRight, Info
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { authApi } from '@/services/auth.service';
 import { APP_VERSION } from '@/version';
 
 
@@ -27,6 +28,8 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(true);
 
   const handleLogout = () => {
+    // Revoke the server-side session (best effort), then clear local state.
+    authApi.logout().catch(() => {});
     logout();
     navigate('/login');
   };
