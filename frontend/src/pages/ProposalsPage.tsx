@@ -15,7 +15,8 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge, Button, Checkbox, IconButton, Select, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/ui/page';
-import { ConfirmDialog, useToast } from '@/components/ui/overlays';
+import { ConfirmDialog } from '@/components/ui/overlays';
+import { useToast } from '@/components/ui/toast-context';
 import {
   Pagination,
   SearchInput,
@@ -175,7 +176,7 @@ export default function ProposalsPage() {
     placeholderData: (previous) => previous,
   });
 
-  const proposals = data?.proposals ?? [];
+  const proposals = useMemo(() => data?.proposals ?? [], [data]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['proposals'] });
@@ -244,7 +245,8 @@ export default function ProposalsPage() {
 
   const toggleOne = (id: string) => {
     const next = new Set(selected);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setSelected(next);
   };
 

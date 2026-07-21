@@ -134,3 +134,20 @@ export function scoreBgClass(score: number | null): string {
     neutral: 'bg-gray-300',
   }[scoreTone(score)];
 }
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+/**
+ * The message the gateway sent, if it sent one.
+ *
+ * Every page was reaching into `err.response.data.message` through an `any`,
+ * which is both untyped and wrong when the failure is a network error with no
+ * response at all. One narrowing, in one place, with a usable fallback.
+ */
+export function apiErrorMessage(error: unknown, fallback?: string): string | undefined {
+  const response = (error as { response?: { data?: { message?: unknown } } })?.response;
+  const message = response?.data?.message;
+  return typeof message === 'string' ? message : fallback;
+}

@@ -16,7 +16,7 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge, Button, IconButton, Skeleton } from '@/components/ui';
 import { PageHeader, SegmentedControl } from '@/components/ui/page';
-import { useToast } from '@/components/ui/overlays';
+import { useToast } from '@/components/ui/toast-context';
 import {
   Pagination,
   Table,

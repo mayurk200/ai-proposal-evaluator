@@ -33,10 +33,10 @@ import type {
 // Scores
 // ===========================================================================
 
-// Re-exported under their old names so the thresholds live in one file. They
-// used to be defined here at 70/45 and again in utils at 80/60, so the same
-// score rendered amber in a list and green on the detail page.
-export const scoreColour = scoreTextClass;
+// Thresholds live in `utils`, in one place. They used to be defined here at
+// 70/45 and again in utils at 80/60, so the same score rendered amber in a list
+// and green on the detail page.
+const scoreColour = scoreTextClass;
 const scoreBg = scoreBgClass;
 
 /**

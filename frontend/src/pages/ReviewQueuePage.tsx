@@ -7,14 +7,13 @@ import {
   Ban,
   Building2,
   CheckCircle2,
-  Copy,
   ExternalLink,
   FolderTree,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge, Button, Skeleton } from '@/components/ui';
 import { PageHeader, Section } from '@/components/ui/page';
-import { useToast } from '@/components/ui/overlays';
+import { useToast } from '@/components/ui/toast-context';
 import { EmptyState } from '@/components/domain';
 import { proposalApi, reviewApi } from '@/services/agrieval.service';
 import { useAuthStore } from '@/store/authStore';

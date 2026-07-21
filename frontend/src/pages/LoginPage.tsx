@@ -5,6 +5,7 @@ import { Eye, EyeOff, Leaf, ShieldCheck } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
+import { apiErrorMessage } from '@/utils';
 
 /**
  * The only unauthenticated page in the system.
@@ -35,8 +36,8 @@ export default function LoginPage() {
       const result = await authApi.login(form);
       setAuth(result.user, result.token);
       navigate(from, { replace: true });
-    } catch (err: any) {
-      setError(err.response?.data?.message ?? 'Sign-in failed. Please try again.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Sign-in failed. Please try again.')!);
     } finally {
       setLoading(false);
     }

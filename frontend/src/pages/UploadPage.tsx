@@ -16,10 +16,10 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge, Button, IconButton, Progress } from '@/components/ui';
 import { PageHeader, Section } from '@/components/ui/page';
-import { useToast } from '@/components/ui/overlays';
+import { useToast } from '@/components/ui/toast-context';
 import { StatusBadge } from '@/components/domain';
 import { batchApi, proposalApi } from '@/services/agrieval.service';
-import { formatFileSize } from '@/utils';
+import { apiErrorMessage, formatFileSize } from '@/utils';
 import type { IngestResult } from '@/types';
 
 const ACCEPTED = {
@@ -79,8 +79,8 @@ export default function UploadPage() {
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
-    onError: (err: any) =>
-      toast.error('Upload failed', err?.response?.data?.message ?? 'Nothing was stored.'),
+    onError: (err) =>
+      toast.error('Upload failed', apiErrorMessage(err, 'Nothing was stored.')),
   });
 
   // Once uploaded, watch the batch move through extraction, metadata and the
@@ -94,7 +94,7 @@ export default function UploadPage() {
 
   const evaluateBatch = useMutation({
     mutationFn: () => batchApi.evaluate(result!.batch_id!),
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       toast.success(
         `${data.queued} evaluation${data.queued === 1 ? '' : 's'} queued`,
         data.awaiting_review > 0

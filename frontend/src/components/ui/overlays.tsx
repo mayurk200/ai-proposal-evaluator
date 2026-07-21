@@ -2,6 +2,8 @@ import React from 'react';
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { cn } from '@/utils';
 import { Button } from '@/components/ui';
+import { ToastContext } from '@/components/ui/toast-context';
+import type { Toast, ToastContextValue, ToastTone } from '@/components/ui/toast-context';
 
 /**
  * Toasts and confirmation.
@@ -15,31 +17,6 @@ import { Button } from '@/components/ui';
 // ===========================================================================
 // Toast
 // ===========================================================================
-
-export type ToastTone = 'success' | 'error' | 'info' | 'warning';
-
-export interface Toast {
-  id: number;
-  tone: ToastTone;
-  title: string;
-  description?: string;
-}
-
-interface ToastContextValue {
-  toast: (toast: Omit<Toast, 'id'>) => void;
-  success: (title: string, description?: string) => void;
-  error: (title: string, description?: string) => void;
-}
-
-const ToastContext = React.createContext<ToastContextValue | null>(null);
-
-export function useToast(): ToastContextValue {
-  const context = React.useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used inside <ToastProvider>');
-  }
-  return context;
-}
 
 const TONE_META: Record<ToastTone, { icon: React.ElementType; className: string }> = {
   success: { icon: CheckCircle2, className: 'text-emerald-600' },

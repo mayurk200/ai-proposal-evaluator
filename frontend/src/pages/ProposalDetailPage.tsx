@@ -27,7 +27,8 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Badge, Button, Clamp, Skeleton } from '@/components/ui';
 import { BackLink, PageHeader, Section, Tabs } from '@/components/ui/page';
-import { ConfirmDialog, useToast } from '@/components/ui/overlays';
+import { ConfirmDialog } from '@/components/ui/overlays';
+import { useToast } from '@/components/ui/toast-context';
 import {
   DecisionBadge,
   EmptyState,
@@ -43,7 +44,13 @@ import {
   proposalApi,
 } from '@/services/agrieval.service';
 import { useAuthStore } from '@/store/authStore';
-import { formatDateTime, formatDuration, formatFileSize, formatRelative } from '@/utils';
+import {
+  apiErrorMessage,
+  formatDateTime,
+  formatDuration,
+  formatFileSize,
+  formatRelative,
+} from '@/utils';
 import type { ApprovalConflict, DecisionType, Proposal } from '@/types';
 
 /**
@@ -111,8 +118,7 @@ export default function ProposalDetailPage() {
       );
       invalidate();
     },
-    onError: (err: any) =>
-      toast.error('Could not queue this evaluation', err?.response?.data?.message),
+    onError: (err) => toast.error('Could not queue this evaluation', apiErrorMessage(err)),
   });
 
   const retry = useMutation({
@@ -121,7 +127,7 @@ export default function ProposalDetailPage() {
       toast.success('Reprocessing queued', 'The stored document is re-read from the start.');
       invalidate();
     },
-    onError: (err: any) => toast.error('Could not retry', err?.response?.data?.message),
+    onError: (err) => toast.error('Could not retry', apiErrorMessage(err)),
   });
 
   const markDuplicate = useMutation({
@@ -136,9 +142,9 @@ export default function ProposalDetailPage() {
       );
       invalidate();
     },
-    onError: (err: any) => {
+    onError: (err) => {
       setConfirmDuplicate(false);
-      toast.error('Could not update', err?.response?.data?.message);
+      toast.error('Could not update', apiErrorMessage(err));
     },
   });
 

@@ -108,14 +108,14 @@ export interface Proposal {
   updated_at: string;
 }
 
-export interface Paginated<T> {
+export interface Paginated {
   total: number;
   page: number;
   limit: number;
   total_pages: number;
 }
 
-export interface ProposalList extends Paginated<Proposal> {
+export interface ProposalList extends Paginated {
   proposals: Proposal[];
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
@@ -163,7 +163,7 @@ export interface Job {
   finished_at: string | null;
 }
 
-export interface JobList extends Paginated<Job> {
+export interface JobList extends Paginated {
   jobs: Job[];
 }
 
@@ -562,6 +562,17 @@ export interface BatchStatus {
   /** Still moving through the pipeline — not yet in a terminal state. */
   in_progress: number;
   proposals: Proposal[];
+}
+
+/** What queueing a whole batch actually did. */
+export interface BatchEvaluateResult {
+  batch_id: string;
+  total: number;
+  queued: number;
+  awaiting_review: number;
+  skipped_as_duplicate: number;
+  already_evaluated: number;
+  results: Array<{ proposal_id: string; filename: string; job_id: string }>;
 }
 
 export interface IngestResult {

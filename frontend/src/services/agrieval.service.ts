@@ -3,6 +3,7 @@ import type {
   AnalyticsOverview,
   ApiResponse,
   ApprovalConflict,
+  BatchEvaluateResult,
   BatchStatus,
   BulkResult,
   Category,
@@ -239,9 +240,18 @@ export class ConflictError extends Error {
   }
 }
 
-function rethrowConflict(err: any): never {
-  if (err?.response?.status === 409) {
-    const detail = err.response.data?.details ?? err.response.data;
+/** The shape of a gateway error, as far as the client needs to care. */
+interface ApiError {
+  response?: { status?: number; data?: { message?: string; details?: unknown } };
+}
+
+function rethrowConflict(err: unknown): never {
+  const error = err as ApiError;
+  if (error?.response?.status === 409) {
+    const data = error.response.data;
+    const detail = (data?.details ?? data) as
+      | { message?: string; conflicts?: ApprovalConflict[] }
+      | undefined;
     throw new ConflictError(
       detail?.message ?? 'This approval conflicts with an existing one.',
       detail?.conflicts ?? [],
@@ -377,6 +387,8 @@ export const batchApi = {
   get: (batchId: string) =>
     api.get<ApiResponse<BatchStatus>>(`/batches/${batchId}`).then(unwrap),
 
+  /** Queues every proposal in the batch that has cleared the duplicate gate.
+   *  Anything still awaiting a ruling is skipped, not driven through. */
   evaluate: (batchId: string) =>
-    api.post<ApiResponse<unknown>>(`/batches/${batchId}/evaluate`).then(unwrap),
+    api.post<ApiResponse<BatchEvaluateResult>>(`/batches/${batchId}/evaluate`).then(unwrap),
 };

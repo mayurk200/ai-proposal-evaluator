@@ -280,9 +280,16 @@ export const SearchInput: React.FC<{
   className?: string;
 }> = ({ value, onChange, placeholder = 'Search', delay = 300, className }) => {
   const [local, setLocal] = React.useState(value);
+  const [lastValue, setLastValue] = React.useState(value);
 
   // Keep in step when the value is reset from outside (clearing all filters).
-  React.useEffect(() => setLocal(value), [value]);
+  // Adjusted during render rather than in an effect: an effect would render the
+  // stale value once, then immediately re-render — visible as a flicker of the
+  // old search term after the Reset button is pressed.
+  if (value !== lastValue) {
+    setLastValue(value);
+    setLocal(value);
+  }
 
   React.useEffect(() => {
     if (local === value) return;
