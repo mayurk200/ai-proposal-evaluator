@@ -1,0 +1,5 @@
+Proposal: Solar-powered cold storage for smallholder vegetable farmers in Nashik district.
+Problem: Smallholder vegetable farmers in Nashik lose between 30 and 40 percent of their harvest to spoilage before it reaches a mandi, because there is no affordable cold storage within reach of a village. Diesel-run cold rooms cost 18,000 rupees a month to operate, which is more than the margin on the produce they would protect.
+Solution: A 5-tonne modular cold room running on a 6kW solar array with 8 hours of thermal storage, financed as a pay-per-crate service rather than sold as equipment. Farmers pay 4 rupees per crate per day. A pilot with 3 units serving 240 farmers ran for 14 months and reduced spoilage to 9 percent.
+Team: Four engineers and one agronomist, two with prior deployments in Maharashtra.
+Technology readiness level 7. Districts: Nashik, Ahmednagar.

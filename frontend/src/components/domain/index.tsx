@@ -12,31 +12,31 @@ import {
   ShieldAlert,
   XCircle,
 } from 'lucide-react';
-import { cn } from '@/utils';
+import { Badge } from '@/components/ui';
+import {
+  cn,
+  SCORE_FAIR,
+  SCORE_GOOD,
+  scoreBgClass,
+  scoreTextClass,
+} from '@/utils';
 import type {
   Citation,
   ParameterResult,
   ParameterStatus,
   ProposalStatus,
+  ReviewDecision,
 } from '@/types';
 
 // ===========================================================================
 // Scores
 // ===========================================================================
 
-export function scoreColour(score: number | null): string {
-  if (score === null) return 'text-gray-400';
-  if (score >= 70) return 'text-emerald-600';
-  if (score >= 45) return 'text-amber-600';
-  return 'text-red-600';
-}
-
-function scoreBg(score: number | null): string {
-  if (score === null) return 'bg-gray-300';
-  if (score >= 70) return 'bg-emerald-500';
-  if (score >= 45) return 'bg-amber-500';
-  return 'bg-red-500';
-}
+// Re-exported under their old names so the thresholds live in one file. They
+// used to be defined here at 70/45 and again in utils at 80/60, so the same
+// score rendered amber in a list and green on the detail page.
+export const scoreColour = scoreTextClass;
+const scoreBg = scoreBgClass;
 
 /**
  * A parameter score. Three states, three different renderings, never collapsed:
@@ -95,7 +95,7 @@ export const ScoreRing: React.FC<{ score: number; size?: number }> = ({
   const offset = circumference * (1 - Math.min(score, 100) / 100);
 
   const stroke =
-    score >= 70 ? '#059669' : score >= 45 ? '#d97706' : '#dc2626';
+    score >= SCORE_GOOD ? '#059669' : score >= SCORE_FAIR ? '#d97706' : '#dc2626';
 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
@@ -160,6 +160,55 @@ export const StatusBadge: React.FC<{ status: ProposalStatus; className?: string 
       <Icon className={cn('w-3.5 h-3.5', spinning && 'animate-spin')} />
       {meta.label}
     </span>
+  );
+};
+
+/**
+ * A score in a table cell.
+ *
+ * Compact on purpose — this appears once per row on a page of fifty. The three
+ * non-numeric states are still never collapsed into a zero: an unevaluated idea
+ * reads as a dash, not as a failing grade.
+ */
+export const ScoreCell: React.FC<{
+  score: number | null;
+  recommendation?: string | null;
+}> = ({ score, recommendation }) => {
+  if (score === null) {
+    return <span className="text-sm text-text-muted">—</span>;
+  }
+
+  return (
+    <span
+      className="inline-flex items-baseline gap-1"
+      title={recommendation ?? undefined}
+    >
+      <span className={cn('text-sm font-semibold tabular-nums', scoreColour(score))}>
+        {score.toFixed(0)}
+      </span>
+      <span className="text-[10px] text-text-muted">/100</span>
+    </span>
+  );
+};
+
+/**
+ * How a proposal stands with respect to duplicates.
+ *
+ * Rendered only when it is not the boring answer. A row that reads
+ * "approved_for_eval" on every line teaches the eye to skip the column, and
+ * then the one row that says "duplicate" gets skipped too.
+ */
+export const DuplicateBadge: React.FC<{ decision: ReviewDecision }> = ({ decision }) => {
+  if (decision === 'approved_for_eval') return null;
+
+  return decision === 'pending' ? (
+    <Badge tone="warning" size="sm" icon={Copy}>
+      Possible duplicate
+    </Badge>
+  ) : (
+    <Badge tone="neutral" size="sm" icon={Ban}>
+      Duplicate
+    </Badge>
   );
 };
 
