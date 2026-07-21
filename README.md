@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/FastAPI-Python_3.11+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/Postgres-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="Postgres + pgvector" />
   <img src="https://img.shields.io/badge/LLM-Groq_LLaMA_3.3_70B-F55036?style=flat-square&logo=meta&logoColor=white" alt="Groq" />
-  <img src="https://img.shields.io/badge/Tests-183_passing-brightgreen?style=flat-square" alt="183 tests" />
+  <img src="https://img.shields.io/badge/Tests-201_passing-brightgreen?style=flat-square" alt="201 tests" />
 </p>
 
 ---
@@ -147,6 +147,18 @@ sees: an applicant's email address is not evidence about their pilot design.
 ingested today can be evaluated a year from now straight from the database, with no
 re-upload and no re-extraction.
 
+**None of this runs inside a request.** Uploading a document enqueues a job in Postgres,
+and a worker pool inside the AI service drains it. Upload twenty proposals, close your
+laptop, come back tomorrow: the metadata is there and the ideas are waiting to be
+evaluated. Ask for an evaluation and the call returns in ~100ms with a job id; the several
+minutes of rate-limited agent work happen server-side whether or not the browser is still
+open. A job whose worker died mid-run keeps a stale lease and is reclaimed on the next
+sweep, so a restart delays work rather than losing it.
+
+Ingest jobs outrank evaluations and the pool reserves slots for them, so a queue of
+ten-minute evaluations never delays the cheap work that turns a fresh upload into
+something an admin can make a decision about.
+
 ### The seven parameters
 
 | Parameter | Weight | Reads |
@@ -162,6 +174,39 @@ re-upload and no re-extraction.
 Plus a **metadata agent** (runs once at ingest, on the small model), a **debate agent**
 (runs only when the parameter scores actually contradict each other), and the **blind
 synthesis agent**.
+
+## The console
+
+Six screens, built for an archive that grows for years rather than for a demo with four
+rows in it.
+
+**Proposals** is the working surface. A dense table, sortable by name, score or date, with
+page numbers and a page size — all of it server-side, because sorting the current page in
+the browser would mean page 2 of "highest score first" is the wrong twenty rows. Search
+covers the problem statement as well as the title, so an idea is findable by what it is
+about. Every filter, sort and page lives in the URL, which makes a view a link you can send
+and means opening a proposal and pressing **Back** returns you to the list you left.
+
+Rows are selectable. *Evaluate* queues the whole selection; *Mark duplicate* rules the
+whole selection. Both report per item and name the reason anything was skipped — "6
+skipped" is not actionable, "already evaluated" is.
+
+**A proposal** leads with the verdict: score, recommendation, risk, red flags, and the
+numbers that matter. The seven parameters are one scannable row each; expanding one shows
+every sub-score with the verbatim quote behind it. Nothing was removed in getting there —
+an evaluation is around two thousand words of generated prose, and presenting it as one
+undifferentiated column meant none of it got read.
+
+**Activity** shows the work queue: what is running, what is waiting, what failed and why.
+It exists because processing moved to the server — without somewhere to look, a busy
+system and a broken one are indistinguishable.
+
+**Dashboard** is ordered by urgency: what is blocked on a human, then what the server is
+working through, then the portfolio. **Analytics** splits into approvals (the ledger),
+scoring (distribution, medians, per-category averages, the strongest ideas nobody has
+ruled on) and pipeline (the funnel, received-vs-scored, tokens, failures by stage, what the
+duplicate gate saved). **System** reports the running configuration — the actual model, the
+token budget, the similarity threshold — read from the service rather than hardcoded.
 
 ## Architecture
 
@@ -200,7 +245,7 @@ There is no public sign-up. Accounts are seeded, and only an admin can create mo
 
 ### The database
 
-Eight tables. Two carry most of the weight:
+Nine tables. Two carry most of the weight:
 
 - **`companies`** — interned on a *normalized* name, so `Acme Agri Pvt. Ltd.`, `ACME AGRI`
   and `Acme Agri Private Limited` are **one** company. Without this, the same firm submits
@@ -208,6 +253,10 @@ Eight tables. Two carry most of the weight:
 - **`decisions`** — an append-only ledger. The category and company are *frozen onto the
   row at decision time*: if an idea is recategorised next year, last March's approval must
   not silently move to a different category.
+
+- **`jobs`** — the work queue. Not a library, a table: workers claim rows with
+  `FOR UPDATE SKIP LOCKED` and heartbeat while they work, which is what makes processing
+  survive a closed laptop *and* a restarted server. A queue held in a process dies with it.
 
 Plus `users`, `proposals` (with a `vector(384)` column), `categories` (**minted on first
 sight — not predefined**), `evaluations`, `similarity_matches`, and `audit_log`.
@@ -252,11 +301,14 @@ All application routes sit behind the gateway at `/api`, authenticated with a Be
 | Method | Endpoint | |
 |---|---|---|
 | `POST` | `/api/auth/login` | The only unauthenticated route |
-| `POST` | `/api/proposals/upload` | Upload 1–25 documents |
-| `GET` | `/api/proposals` | List, filter (`status`, `is_evaluated`, `category_id`, …) |
+| `POST` | `/api/proposals/upload` | Upload 1–25 documents. Queues processing, returns at once |
+| `GET` | `/api/proposals` | List, filter, **sort** (`sort_by=score&sort_order=desc`, `exclude_duplicates`) |
 | `GET` | `/api/proposals/:id` | Detail, with evidence, similar ideas and company track record |
 | `GET` | `/api/proposals/:id/file` | Stream the original document |
-| `POST` | `/api/proposals/:id/evaluate` | Run the agent pipeline |
+| `POST` | `/api/proposals/:id/evaluate` | **Queues** the agent pipeline; returns a job id |
+| `POST` | `/api/proposals/bulk/evaluate` | Queue many at once; reports which were skipped and why |
+| `POST` | `/api/proposals/:id/duplicate` | Rule an idea a duplicate, or undo it — **ADMIN** |
+| `POST` | `/api/proposals/bulk/duplicate` | The same, in bulk — **ADMIN** |
 | `POST` | `/api/proposals/:id/retry` | Retry a failed proposal |
 | `GET` | `/api/proposals/:id/similar` | The duplicate gate's matches |
 | `POST` | `/api/proposals/:id/review` | Resolve the gate — **ADMIN** |
@@ -264,17 +316,22 @@ All application routes sit behind the gateway at `/api`, authenticated with a Be
 | `POST` | `/api/proposals/:id/decision` | Approve / reject — **ADMIN** |
 | `POST` | `/api/proposals/:id/funding` | Mark selected for funding — **ADMIN** |
 | `GET` | `/api/evaluations/:id/export` | PDF report, with the cited evidence |
+| `GET` | `/api/jobs`, `/api/jobs/stats` | What the server is working on |
 | `GET` | `/api/analytics/overview` | Everything the dashboard needs |
 | `GET` | `/api/analytics/{categories,companies,timeline}` | Approvals by category, company, month |
-| `POST` | `/api/batches/:id/evaluate` | Evaluate a batch |
+| `GET` | `/api/analytics/{pipeline,scores,throughput,operations}` | Where ideas are stuck, how scoring came out, what it cost |
+| `GET` | `/api/system` | Live dependency status and the running configuration |
+| `POST` | `/api/batches/:id/evaluate` | Queue a whole batch |
 | `GET` | `/api/health` | Public |
 
-Interactive docs for the AI service: **http://localhost:8000/docs**
+Full detail, including every query parameter and the role rules:
+**[docs/API_REFERENCE.md](docs/API_REFERENCE.md)**. Interactive docs for the AI service:
+**http://localhost:8000/docs**
 
 ## Tests
 
 ```bash
-cd python-service && ./venv/bin/python -m pytest tests/ -q     # 157
+cd python-service && ./venv/bin/python -m pytest tests/ -q     # 175
 cd backend        && npm test                                  # 26
 ```
 
