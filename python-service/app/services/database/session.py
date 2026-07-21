@@ -80,6 +80,29 @@ _ADDITIVE_MIGRATIONS = (
     "CREATE INDEX IF NOT EXISTS ix_proposals_duplicate_of ON proposals (duplicate_of_id)",
     "CREATE INDEX IF NOT EXISTS ix_proposals_latest_score ON proposals (latest_score)",
     "CREATE INDEX IF NOT EXISTS ix_proposals_evaluated_at ON proposals (evaluated_at)",
+    # Backfill the denormalized verdict from the evaluations that already exist.
+    # Without this, every proposal scored before the column was added reads as
+    # unscored: it drops out of the score distribution, and sorting the archive
+    # by score silently buries the entire back catalogue.
+    #
+    # Touches only rows that are still NULL, so it is a no-op on the second boot
+    # and never overwrites a live value.
+    """
+    UPDATE proposals AS p
+       SET latest_score = e.overall_score,
+           latest_recommendation = e.recommendation,
+           latest_evaluation_id = e.id,
+           evaluated_at = COALESCE(e.completed_at, e.created_at)
+      FROM (
+            SELECT DISTINCT ON (proposal_id)
+                   proposal_id, id, overall_score, recommendation, completed_at, created_at
+              FROM evaluations
+             WHERE status = 'completed'
+             ORDER BY proposal_id, created_at DESC
+           ) AS e
+     WHERE e.proposal_id = p.id
+       AND p.latest_score IS NULL
+    """,
 )
 
 

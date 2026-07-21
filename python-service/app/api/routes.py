@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import Actor, get_actor, verify_llm_connection
 from app.config import settings
 from app.models.schemas import HealthResponse, SupportedFormatsResponse
+from app.services.database.analytics_repository import get_analytics_repository
 from app.services.database.job_repository import get_job_repository
 from app.services.database.proposal_repository import get_proposal_repository
 from app.services.database.registry_repository import get_registry_repository
@@ -932,36 +933,54 @@ async def analytics_overview():
     """Everything the dashboard needs, in one round trip."""
     registry = get_registry_repository()
     proposals = get_proposal_repository()
+    analytics = get_analytics_repository()
 
     # These are independent reads — issue them together rather than in series.
     (
         categories,
         companies,
         timeline,
+        pipeline,
+        duplicates,
         pending_review,
         failed,
         unevaluated,
         evaluated,
+        queue,
     ) = await asyncio.gather(
         registry.approvals_by_category(),
         registry.approvals_by_company(),
         registry.approval_timeline(),
+        analytics.pipeline(),
+        analytics.duplicates(),
         proposals.list_proposals(review_decision="pending", limit=1),
         proposals.list_proposals(status="failed", limit=1),
         proposals.list_proposals(is_evaluated=False, limit=1),
         proposals.list_proposals(is_evaluated=True, limit=1),
+        get_job_repository().stats(),
     )
 
     return {
         "totals": {
+            "total": pipeline["total"],
             "evaluated": evaluated["total"],
             "not_evaluated": unevaluated["total"],
+            # Not-evaluated minus the ones ruled duplicates and the ones still
+            # waiting on a ruling: the ideas an admin can actually act on today.
+            "ready_to_evaluate": pipeline["awaiting_evaluation"],
             "awaiting_review": pending_review["total"],
+            "marked_duplicate": duplicates["confirmed_duplicates"],
             "failed": failed["total"],
             "approved": sum(c["approved_count"] for c in categories),
             "categories": len(categories),
             "companies": len(companies),
         },
+        # The queue is on the overview on purpose. Since processing left the
+        # request cycle, "the server is working on 14 things right now" is
+        # otherwise invisible, and an operator would read an empty screen as a
+        # broken system rather than a busy one.
+        "queue": queue,
+        "pipeline": pipeline["stages"],
         "by_category": categories,
         "by_company": companies,
         "timeline": timeline,
@@ -969,6 +988,52 @@ async def analytics_overview():
         # (e) exists to surface.
         "multi_category_companies": [c for c in companies if c["multi_category"]],
     }
+
+
+@router.get("/analytics/pipeline")
+async def analytics_pipeline():
+    """Where every idea in the archive currently sits, in lifecycle order."""
+    return await get_analytics_repository().pipeline()
+
+
+@router.get("/analytics/scores")
+async def analytics_scores():
+    """
+    The shape of the scoring, not just its average.
+
+    A mean of 62 could be every proposal scoring 62, or half at 30 and half at
+    94 — two portfolios that call for completely different decisions.
+    """
+    analytics = get_analytics_repository()
+    distribution, by_category, top = await asyncio.gather(
+        analytics.score_distribution(),
+        analytics.score_by_category(),
+        analytics.top_proposals(limit=10),
+    )
+    return {
+        "distribution": distribution,
+        "by_category": by_category,
+        # Strongest ideas with no decision recorded — a worklist, not a leaderboard.
+        "top_undecided": top,
+    }
+
+
+@router.get("/analytics/throughput")
+async def analytics_throughput(months: int = Query(default=12, ge=1, le=60)):
+    """Ideas received vs ideas scored, by month. The gap is the backlog."""
+    return {"throughput": await get_analytics_repository().throughput(months=months)}
+
+
+@router.get("/analytics/operations")
+async def analytics_operations():
+    """What the pipeline has cost, how reliably it runs, and where it fails."""
+    analytics = get_analytics_repository()
+    operations, duplicates, queue = await asyncio.gather(
+        analytics.operations(),
+        analytics.duplicates(),
+        get_job_repository().stats(),
+    )
+    return {"operations": operations, "duplicates": duplicates, "queue": queue}
 
 
 # =============================================================================
