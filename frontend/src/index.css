@@ -8,14 +8,22 @@
   --color-secondary-light: #81C784;
   --color-accent: #C8E6C9;
   --color-accent-light: #E8F5E9;
-  --color-background: #F5F7FA;
+  --color-background: #F7F8FA;
   --color-surface: #FFFFFF;
   --color-card: rgba(255, 255, 255, 0.7);
-  --color-border: rgba(46, 125, 50, 0.12);
+
+  /* Two border weights, deliberately.
+     `border` separates content that is already grouped — table rows, the edge
+     of a card — and should barely register. `border-strong` outlines a control
+     you can click or type into, and has to be visible enough to read as one.
+     A single mid-weight border made inputs look like dividers. */
+  --color-border: #E7E9EE;
+  --color-border-strong: #D3D8E0;
   --color-border-light: rgba(255, 255, 255, 0.4);
-  --color-text: #1A1A2E;
-  --color-text-secondary: #64748B;
-  --color-text-muted: #94A3B8;
+
+  --color-text: #16181D;
+  --color-text-secondary: #4A5261;
+  --color-text-muted: #7C8698;
   --color-success: #22C55E;
   --color-warning: #F59E0B;
   --color-danger: #EF4444;
@@ -23,10 +31,14 @@
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 
+  /* Shadows are for elevation only — a card that sits on the page gets almost
+     nothing, and only something genuinely floating (toast, dialog, selection
+     bar) gets a real one. The previous set gave every card a 24px green glow,
+     which read as decoration and made a screen of cards look like a pile. */
   --shadow-glass: 0 8px 32px rgba(46, 125, 50, 0.08);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(46, 125, 50, 0.06);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(46, 125, 50, 0.1);
-  --shadow-elevated: 0 20px 60px rgba(46, 125, 50, 0.12);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-card-hover: 0 2px 8px rgba(16, 24, 40, 0.08);
+  --shadow-elevated: 0 12px 32px rgba(16, 24, 40, 0.14), 0 2px 6px rgba(16, 24, 40, 0.06);
 }
 
 @layer base {
@@ -53,28 +65,33 @@
 }
 
 @layer components {
-  .glass-card {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 1rem;
-    box-shadow: var(--shadow-card);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .glass-card:hover {
-    box-shadow: var(--shadow-card-hover);
-    transform: translateY(-2px);
-  }
-
+  /* Inside the console, a card is a plain surface. A blurred translucent panel
+     over a table lets the text behind it show through, and a card that lifts on
+     hover makes a screen of forty rows twitch as the cursor crosses it. Both
+     read as decoration on a tool people use all day. */
+  .glass-card,
   .glass-card-static {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* The translucent treatment survives where it earns its place: on the
+     marketing landing page, floating over the hero gradient. */
+  .glass-panel {
     background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 1rem;
-    box-shadow: var(--shadow-card);
+    box-shadow: 0 8px 32px rgba(46, 125, 50, 0.08);
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+  }
+
+  .glass-panel:hover {
+    box-shadow: 0 12px 36px rgba(46, 125, 50, 0.12);
+    transform: translateY(-2px);
   }
 
   .gradient-primary {
@@ -89,39 +106,9 @@
     background: linear-gradient(135deg, #F5F7FA 0%, #E8F5E9 30%, #C8E6C9 60%, #E8F5E9 100%);
   }
 
-  .btn-primary {
-    background: linear-gradient(135deg, #2E7D32 0%, #43A047 100%);
-    color: white;
-    font-weight: 600;
-    padding: 0.625rem 1.5rem;
-    border-radius: 0.75rem;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.25);
-  }
-
-  .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(46, 125, 50, 0.35);
-  }
-
-  .btn-primary:active {
-    transform: translateY(0);
-  }
-
-  .btn-secondary {
-    background: white;
-    color: var(--color-primary);
-    font-weight: 600;
-    padding: 0.625rem 1.5rem;
-    border-radius: 0.75rem;
-    border: 1.5px solid var(--color-accent);
-    transition: all 0.2s ease;
-  }
-
-  .btn-secondary:hover {
-    background: var(--color-accent-light);
-    border-color: var(--color-secondary);
-  }
+  /* Button styling lives in the Button component, not here. Two sources of
+     truth for what a primary button looks like is how you end up with three
+     different greens on one toolbar. */
 
   .text-gradient {
     background: linear-gradient(135deg, #2E7D32 0%, #66BB6A 100%);
@@ -130,42 +117,16 @@
     background-clip: text;
   }
 
-  .score-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.75rem;
-    font-weight: 700;
-    font-size: 0.875rem;
-  }
-
-  .score-high {
-    background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
-    color: #1B5E20;
-  }
-
-  .score-medium {
-    background: linear-gradient(135deg, #FFF8E1, #FFECB3);
-    color: #F57F17;
-  }
-
-  .score-low {
-    background: linear-gradient(135deg, #FFEBEE, #FFCDD2);
-    color: #B71C1C;
-  }
-
   .sidebar-link {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.625rem 1rem;
-    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
     font-weight: 500;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     color: var(--color-text-secondary);
-    transition: all 0.2s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .sidebar-link:hover {
@@ -174,32 +135,22 @@
   }
 
   .sidebar-link.active {
-    background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
-    color: var(--color-primary);
+    background: var(--color-accent-light);
+    color: var(--color-primary-dark);
     font-weight: 600;
   }
 
-  .upload-zone {
-    border: 2px dashed var(--color-accent);
-    border-radius: 1rem;
-    padding: 3rem;
-    text-align: center;
-    transition: all 0.3s ease;
-    background: rgba(232, 245, 233, 0.3);
-  }
-
-  .upload-zone:hover,
-  .upload-zone.active {
-    border-color: var(--color-primary);
-    background: rgba(232, 245, 233, 0.6);
-    transform: scale(1.01);
-  }
-
   .skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, #eef0f3 25%, #e3e6ea 50%, #eef0f3 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 0.5rem;
+  }
+
+  /* Numbers that sit in a column must not jitter as they update. Every count,
+     score and token total in this app polls. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 
   @keyframes shimmer {

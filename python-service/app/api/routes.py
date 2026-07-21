@@ -111,6 +111,77 @@ async def health_check():
     )
 
 
+@router.get("/system")
+async def system_info():
+    """
+    Configuration and live status, in one place.
+
+    The settings screen used to invent its answers — a hardcoded model name that
+    had been wrong since the model changed, toggles wired to nothing. Everything
+    here is read from the running configuration, so the screen either tells the
+    truth or fails visibly.
+
+    Nothing secret is exposed: keys are reported as present or absent, never
+    echoed.
+    """
+    services: dict[str, str] = {}
+
+    try:
+        await get_repository().list_evaluations(page=1, limit=1)
+        services["database"] = "connected"
+    except Exception as exc:
+        services["database"] = f"disconnected: {exc}"
+
+    try:
+        get_storage_backend()
+        services["storage"] = "ok"
+    except Exception as exc:
+        services["storage"] = f"unavailable: {exc}"
+
+    services["llm"] = "connected" if verify_llm_connection() else "disconnected"
+
+    try:
+        import pytesseract
+
+        pytesseract.get_tesseract_version()
+        services["ocr"] = "available"
+    except Exception:
+        services["ocr"] = "unavailable"
+
+    return {
+        "environment": settings.ENV,
+        "services": services,
+        "queue": await get_job_repository().stats(),
+        "evaluation": {
+            # The model that produces the scores, and the small one that does
+            # metadata. Reported, not guessed.
+            "model": settings.LLM_MODEL,
+            "fast_model": settings.LLM_MODEL_FAST,
+            "provider": settings.LLM_PROVIDER,
+            "api_key_configured": bool(settings.GROQ_API_KEY),
+            "tokens_per_minute": settings.LLM_TPM,
+            "max_concurrency": settings.LLM_MAX_CONCURRENCY,
+            "max_retries": settings.MAX_EVALUATION_RETRIES,
+        },
+        "ingestion": {
+            "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
+            "supported_formats": settings.supported_formats_list,
+            "ocr_enabled": settings.OCR_ENABLED,
+        },
+        "duplicate_gate": {
+            # The number that decides whether two ideas are shown side by side.
+            "similarity_threshold": settings.SIMILARITY_THRESHOLD,
+            "candidates_considered": settings.SIMILARITY_TOP_K,
+            "embedding_model": settings.EMBEDDING_MODEL,
+        },
+        "worker": {
+            "enabled": settings.WORKER_ENABLED,
+            "ingest_slots": settings.WORKER_INGEST_SLOTS,
+            "evaluate_slots": settings.WORKER_EVALUATE_SLOTS,
+        },
+    }
+
+
 @router.get("/supported-formats", response_model=SupportedFormatsResponse)
 async def supported_formats():
     return SupportedFormatsResponse(

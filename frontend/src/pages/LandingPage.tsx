@@ -174,7 +174,7 @@ export default function LandingPage() {
                 viewport={{ once: true }}
                 variants={fadeUp}
               >
-                <div className="glass-card p-7 h-full">
+                <div className="glass-panel p-7 h-full">
                   <div className="w-12 h-12 rounded-xl bg-accent/50 flex items-center justify-center mb-4">
                     <f.icon className="w-6 h-6 text-primary" />
                   </div>
@@ -228,7 +228,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
               <motion.div key={t.name} custom={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}>
-                <div className="glass-card p-7 h-full">
+                <div className="glass-panel p-7 h-full">
                   <div className="flex gap-1 mb-4">
                     {Array.from({ length: t.rating }).map((_, j) => (
                       <Star key={j} className="w-4 h-4 text-yellow-400 fill-yellow-400" />
@@ -253,7 +253,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="glass-card-static gradient-primary p-12 md:p-16 text-center text-white rounded-3xl"
+            className="glass-panel gradient-primary p-12 md:p-16 text-center text-white rounded-3xl"
           >
             <h2 className="text-3xl md:text-4xl font-bold">Evaluation you can defend</h2>
             <p className="mt-4 text-white/80 text-lg max-w-xl mx-auto">

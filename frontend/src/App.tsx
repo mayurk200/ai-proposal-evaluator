@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { ToastProvider } from '@/components/ui/overlays';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import LandingPage from '@/pages/LandingPage';
 import LoginPage from '@/pages/LoginPage';
@@ -28,6 +29,10 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Above the router: work is queued on the server now, so the outcome of
+          an action is often invisible on the page that triggered it. The toast
+          is the acknowledgement, and it has to survive navigation. */}
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -104,6 +109,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

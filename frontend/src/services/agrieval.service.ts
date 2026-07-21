@@ -4,14 +4,23 @@ import type {
   ApiResponse,
   ApprovalConflict,
   BatchStatus,
+  BulkResult,
   Category,
   CategoryApprovals,
   CompanyApprovals,
   DecisionType,
   Evaluation,
   IngestResult,
+  Job,
+  JobList,
+  OperationsAnalytics,
   ProposalDetail,
   ProposalList,
+  ProposalSortKey,
+  QueueStats,
+  ScoreAnalytics,
+  SystemInfo,
+  ThroughputPoint,
   TimelinePoint,
 } from '@/types';
 
@@ -30,12 +39,18 @@ const unwrap = <T,>(res: { data: ApiResponse<T> }) => res.data.data;
 export interface ProposalFilters {
   page?: number;
   limit?: number;
+  /** One status, or several comma-separated. */
   status?: string;
   review_decision?: string;
   is_evaluated?: boolean;
   category_id?: string;
   company_id?: string;
+  batch_id?: string;
   search?: string;
+  /** Hide the ideas an admin has ruled duplicates. */
+  exclude_duplicates?: boolean;
+  sort_by?: ProposalSortKey;
+  sort_order?: 'asc' | 'desc';
 }
 
 export const proposalApi = {
@@ -97,6 +112,36 @@ export const proposalApi = {
     // Give the new tab time to load before revoking.
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
+
+  /**
+   * Rule an idea a duplicate, or take the ruling back. ADMIN only.
+   *
+   * Not the same as resolving the similarity gate: this applies to any stored
+   * idea, including ones the gate never flagged. Reversible, and the metadata
+   * survives either way — the idea stays searchable, it just leaves the working
+   * list and never costs an evaluation.
+   */
+  markDuplicate: (
+    id: string,
+    isDuplicate: boolean,
+    opts: { duplicateOf?: string; note?: string } = {},
+  ) =>
+    api
+      .post<ApiResponse<unknown>>(`/proposals/${id}/duplicate`, {
+        is_duplicate: isDuplicate,
+        duplicate_of: opts.duplicateOf,
+        note: opts.note,
+      })
+      .then(unwrap),
+
+  bulkMarkDuplicate: (ids: string[], isDuplicate: boolean, note?: string) =>
+    api
+      .post<ApiResponse<BulkResult>>('/proposals/bulk/duplicate', {
+        proposal_ids: ids,
+        is_duplicate: isDuplicate,
+        note,
+      })
+      .then(unwrap),
 };
 
 // ---------------------------------------------------------------------------
@@ -123,16 +168,38 @@ export const reviewApi = {
 // Evaluation
 // ---------------------------------------------------------------------------
 
+export interface QueuedEvaluation {
+  proposal_id: string;
+  job_id: string;
+  status: 'queued';
+  already_queued?: boolean;
+}
+
 export const evaluationApi = {
-  /** Runs the agent pipeline. Minutes, not seconds — the token budget is the limit. */
+  /**
+   * Queue the agent pipeline.
+   *
+   * Returns as soon as the work is recorded, not when it finishes — an
+   * evaluation is minutes of paced LLM calls and the server runs it whether or
+   * not this browser is still open. Watch the proposal's status for the result.
+   */
   run: (proposalId: string, force = false) =>
     api
-      .post<ApiResponse<Evaluation>>(`/proposals/${proposalId}/evaluate`, { force })
+      .post<ApiResponse<QueuedEvaluation>>(`/proposals/${proposalId}/evaluate`, { force })
+      .then(unwrap),
+
+  /** Queue evaluations for many proposals. Reports which were skipped and why. */
+  runMany: (proposalIds: string[], force = false) =>
+    api
+      .post<ApiResponse<BulkResult>>('/proposals/bulk/evaluate', {
+        proposal_ids: proposalIds,
+        force,
+      })
       .then(unwrap),
 
   retry: (proposalId: string) =>
     api
-      .post<ApiResponse<Evaluation>>(`/proposals/${proposalId}/evaluate/retry`)
+      .post<ApiResponse<QueuedEvaluation>>(`/proposals/${proposalId}/evaluate/retry`)
       .then(unwrap),
 
   get: (id: string) =>
@@ -254,6 +321,52 @@ export const analyticsApi = {
     api
       .get<ApiResponse<{ categories: Category[] }>>('/categories')
       .then((r) => unwrap(r).categories),
+
+  /** The shape of the scoring, plus the strongest ideas nobody has ruled on. */
+  scores: () => api.get<ApiResponse<ScoreAnalytics>>('/analytics/scores').then(unwrap),
+
+  /** Ideas received vs ideas scored, by month. The gap is the backlog. */
+  throughput: (months = 12) =>
+    api
+      .get<ApiResponse<{ throughput: ThroughputPoint[] }>>('/analytics/throughput', {
+        params: { months },
+      })
+      .then((r) => unwrap(r).throughput),
+
+  /** Cost, reliability, and what the duplicate gate has saved. */
+  operations: () =>
+    api.get<ApiResponse<OperationsAnalytics>>('/analytics/operations').then(unwrap),
+};
+
+// ---------------------------------------------------------------------------
+// The work queue
+// ---------------------------------------------------------------------------
+
+/**
+ * Since processing left the request cycle, this is the only way the UI can say
+ * whether the server is busy or idle. Without it an operator who uploads and
+ * walks away has no evidence anything happened.
+ */
+export const jobApi = {
+  list: (params: { page?: number; limit?: number; status?: string; kind?: string } = {}) =>
+    api.get<ApiResponse<JobList>>('/jobs', { params }).then(unwrap),
+
+  stats: () => api.get<ApiResponse<QueueStats>>('/jobs/stats').then(unwrap),
+
+  get: (id: string) => api.get<ApiResponse<Job>>(`/jobs/${id}`).then(unwrap),
+
+  /** Only a job that has not started can be cancelled — a running one is
+   *  already spending tokens, and killing it leaves half an evaluation. */
+  cancel: (id: string) =>
+    api.post<ApiResponse<unknown>>(`/jobs/${id}/cancel`).then(unwrap),
+};
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+export const systemApi = {
+  info: () => api.get<ApiResponse<SystemInfo>>('/system').then(unwrap),
 };
 
 // ---------------------------------------------------------------------------

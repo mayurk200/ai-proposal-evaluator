@@ -81,6 +81,15 @@ export interface Proposal {
   status: ProposalStatus;
   is_evaluated: boolean;
   review_decision: ReviewDecision;
+  /** Set when an admin ruled this a duplicate of a specific stored idea. */
+  duplicate_of_id: string | null;
+
+  /** The current verdict, denormalized onto the row so a list can show and sort
+   *  by it without loading every report. Null until evaluated. */
+  latest_score: number | null;
+  latest_recommendation: string | null;
+  latest_evaluation_id: string | null;
+  evaluated_at: string | null;
 
   total_pages: number;
   total_words: number;
@@ -108,6 +117,72 @@ export interface Paginated<T> {
 
 export interface ProposalList extends Paginated<Proposal> {
   proposals: Proposal[];
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+}
+
+/** Columns the server will sort by. Anything else falls back to newest first. */
+export type ProposalSortKey =
+  | 'created_at'
+  | 'updated_at'
+  | 'title'
+  | 'filename'
+  | 'status'
+  | 'score'
+  | 'evaluated_at'
+  | 'pages'
+  | 'words';
+
+// ===========================================================================
+// Background work
+// ===========================================================================
+
+/**
+ * A unit of server-side work.
+ *
+ * Processing does not happen inside a request any more, so this is how the UI
+ * answers "is anything still happening?" after an upload — a question that would
+ * otherwise have no answer at all.
+ */
+export type JobKind = 'ingest' | 'evaluate';
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface Job {
+  id: string;
+  kind: JobKind;
+  proposal_id: string | null;
+  batch_id: string | null;
+  status: JobStatus;
+  priority: number;
+  attempts: number;
+  max_attempts: number;
+  error: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface JobList extends Paginated<Job> {
+  jobs: Job[];
+}
+
+export interface QueueStats {
+  by_kind: Record<string, Record<string, number>>;
+  totals: Record<JobStatus, number>;
+  /** Queued + running. The one number worth showing in a header. */
+  pending: number;
+  oldest_queued_at: string | null;
+}
+
+/** What a bulk action actually did. The skipped items are the interesting part. */
+export interface BulkResult {
+  requested: number;
+  queued?: number;
+  updated?: number;
+  skipped: number;
+  queued_items?: Array<{ proposal_id: string; job_id: string }>;
+  skipped_items: Array<{ proposal_id: string; title?: string; reason: string }>;
 }
 
 // ===========================================================================
@@ -350,20 +425,127 @@ export interface TimelinePoint {
   approved_count: number;
 }
 
+export interface PipelineStage {
+  key: ProposalStatus | string;
+  label: string;
+  count: number;
+}
+
 export interface AnalyticsOverview {
   totals: {
+    total: number;
     evaluated: number;
     not_evaluated: number;
+    /** Not evaluated, not a duplicate, not awaiting a ruling — actionable today. */
+    ready_to_evaluate: number;
     awaiting_review: number;
+    marked_duplicate: number;
     failed: number;
     approved: number;
     categories: number;
     companies: number;
   };
+  queue: QueueStats;
+  pipeline: PipelineStage[];
   by_category: CategoryApprovals[];
   by_company: CompanyApprovals[];
   timeline: TimelinePoint[];
   multi_category_companies: CompanyApprovals[];
+}
+
+export interface ScoreDistribution {
+  scored: number;
+  average: number | null;
+  median: number | null;
+  lowest: number | null;
+  highest: number | null;
+  bands: Array<{ band: string; count: number }>;
+  by_recommendation: Array<{ recommendation: string; count: number }>;
+}
+
+export interface CategoryScores {
+  category_id: string;
+  label: string;
+  evaluated_count: number;
+  average_score: number | null;
+  lowest: number | null;
+  highest: number | null;
+}
+
+export interface ScoreAnalytics {
+  distribution: ScoreDistribution;
+  by_category: CategoryScores[];
+  /** Strongest ideas with no decision recorded — a worklist, not a leaderboard. */
+  top_undecided: Array<{
+    proposal_id: string;
+    title: string;
+    score: number;
+    recommendation: string | null;
+    category: string | null;
+  }>;
+}
+
+export interface ThroughputPoint {
+  period: string;
+  received: number;
+  evaluated: number;
+}
+
+export interface OperationsAnalytics {
+  operations: {
+    evaluations_completed: number;
+    evaluations_failed: number;
+    evaluations_in_flight: number;
+    total_tokens: number;
+    average_tokens_per_evaluation: number;
+    average_seconds_per_evaluation: number;
+    average_evidence_coverage: number | null;
+    model: string | null;
+    failures_by_stage: Array<{ stage: string; count: number }>;
+  };
+  duplicates: {
+    flagged_by_gate: number;
+    confirmed_duplicates: number;
+    awaiting_review: number;
+    dismissed_as_distinct: number;
+    /** Null when nothing has been evaluated yet — no average to estimate from. */
+    estimated_tokens_saved: number | null;
+  };
+  queue: QueueStats;
+}
+
+// ===========================================================================
+// System
+// ===========================================================================
+
+export interface SystemInfo {
+  environment: string;
+  services: Record<string, string>;
+  queue: QueueStats;
+  evaluation: {
+    model: string;
+    fast_model: string;
+    provider: string;
+    api_key_configured: boolean;
+    tokens_per_minute: number;
+    max_concurrency: number;
+    max_retries: number;
+  };
+  ingestion: {
+    max_file_size_mb: number;
+    supported_formats: string[];
+    ocr_enabled: boolean;
+  };
+  duplicate_gate: {
+    similarity_threshold: number;
+    candidates_considered: number;
+    embedding_model: string;
+  };
+  worker: {
+    enabled: boolean;
+    ingest_slots: number;
+    evaluate_slots: number;
+  };
 }
 
 // ===========================================================================
@@ -377,6 +559,8 @@ export interface BatchStatus {
   evaluated: number;
   awaiting_review: number;
   failed: number;
+  /** Still moving through the pipeline — not yet in a terminal state. */
+  in_progress: number;
   proposals: Proposal[];
 }
 
