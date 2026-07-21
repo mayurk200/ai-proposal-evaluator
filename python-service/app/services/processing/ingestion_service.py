@@ -479,6 +479,104 @@ class IngestionService:
         )
         return {"proposal_id": proposal_id, "status": outcome}
 
+    async def mark_duplicate(
+        self,
+        proposal_id: str,
+        *,
+        is_duplicate: bool,
+        marked_by: Optional[str],
+        duplicate_of: Optional[str] = None,
+        note: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        An admin's own duplicate ruling, on any proposal — not just one the gate
+        flagged.
+
+        The similarity gate is a machine's suspicion and it only fires above a
+        threshold. An admin reading the metadata of two ideas will sometimes see a
+        duplicate the embedding missed: same programme resubmitted with a new
+        problem statement, two subsidiaries of one group, a pilot re-pitched as a
+        scale-up. Requiring the gate to have flagged it first would leave that admin
+        with nowhere to put the judgement, and the archive would carry a duplicate
+        it knows about but cannot express.
+
+        Marking is reversible and never destructive. The row, its metadata and its
+        extracted text all stay — the idea remains searchable and can be un-marked
+        and evaluated later if the judgement changes. It simply stops appearing in
+        the working list and never costs an evaluation.
+        """
+        proposal = await self.proposals.get(proposal_id)
+        if not proposal:
+            raise ValueError(f"Proposal {proposal_id} not found")
+
+        if is_duplicate and proposal.get("is_evaluated"):
+            # An evaluated idea has already cost its tokens and may already carry a
+            # decision in the approval ledger. Hiding it behind a duplicate flag
+            # would quietly remove a scored idea from the working list.
+            raise ValueError(
+                "This idea has already been evaluated. Marking it a duplicate now "
+                "would hide a scored result — reject it instead if it should not "
+                "proceed."
+            )
+
+        if is_duplicate and duplicate_of:
+            original = await self.proposals.get(duplicate_of)
+            if not original:
+                raise ValueError("The idea this duplicates was not found")
+            if duplicate_of == proposal_id:
+                raise ValueError("A proposal cannot be a duplicate of itself")
+
+        if is_duplicate:
+            await self.proposals.update(
+                proposal_id,
+                status="skipped",
+                review_decision="skipped_duplicate",
+                duplicate_of_id=duplicate_of,
+                reviewed_by=marked_by,
+                reviewed_at=_now(),
+            )
+            await self.proposals.resolve_similarity(
+                proposal_id,
+                status="confirmed_duplicate",
+                reviewed_by=marked_by,
+                note=note,
+            )
+        else:
+            # Un-marking puts it back where it was before the ruling: ready to be
+            # evaluated, with no pending gate to clear (the admin has just looked at
+            # it, which is what the gate was asking for).
+            await self.proposals.update(
+                proposal_id,
+                status="queued",
+                review_decision="approved_for_eval",
+                duplicate_of_id=None,
+                reviewed_by=marked_by,
+                reviewed_at=_now(),
+            )
+            await self.proposals.resolve_similarity(
+                proposal_id, status="dismissed", reviewed_by=marked_by, note=note
+            )
+
+        await self.registry.audit(
+            action="duplicate_marked" if is_duplicate else "duplicate_unmarked",
+            entity_type="proposal",
+            entity_id=proposal_id,
+            actor_id=marked_by,
+            payload={"duplicate_of": duplicate_of, "note": note},
+        )
+
+        logger.info(
+            "duplicate_mark_updated",
+            proposal_id=proposal_id,
+            is_duplicate=is_duplicate,
+            marked_by=marked_by,
+        )
+        return {
+            "proposal_id": proposal_id,
+            "review_decision": "skipped_duplicate" if is_duplicate else "approved_for_eval",
+            "duplicate_of": duplicate_of if is_duplicate else None,
+        }
+
 
 def _now():
     from datetime import datetime, timezone

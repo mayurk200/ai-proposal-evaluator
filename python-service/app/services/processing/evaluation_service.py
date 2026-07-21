@@ -20,6 +20,7 @@ re-uploading" cheap rather than a full re-ingest.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.agents.orchestrator import orchestrator
@@ -34,6 +35,10 @@ from app.services.processing.sectioniser import (
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class EvaluationError(RuntimeError):
@@ -135,10 +140,17 @@ class EvaluationService:
             model_used=response.model_used,
         )
 
+        # The verdict is copied onto the proposal row as well as living in
+        # `evaluations`. A listing of a thousand proposals sorted by score must
+        # not join the report table and pull JSONB for every row it displays.
         await self.proposals.update(
             proposal_id,
             status="evaluated",
             is_evaluated=True,
+            latest_score=final.overall_score,
+            latest_recommendation=final.recommendation,
+            latest_evaluation_id=evaluation_id,
+            evaluated_at=_utcnow(),
             error_message=None,
             error_stage=None,
         )

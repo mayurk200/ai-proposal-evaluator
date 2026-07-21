@@ -125,6 +125,11 @@ router.get(
 const ADMIN_ONLY: Array<{ method: string; pattern: RegExp }> = [
   // Resolve the duplicate gate: evaluate this idea, or skip it as a duplicate.
   { method: 'POST', pattern: /^\/proposals\/[^/]+\/review$/ },
+  // Rule an idea a duplicate (or un-rule it) outside the gate. Same
+  // consequence as resolving the gate — the idea drops out of the working
+  // list — so the same role requirement. `/proposals/bulk/duplicate` is
+  // matched by this pattern too, which is the intent.
+  { method: 'POST', pattern: /^\/proposals\/[^/]+\/duplicate$/ },
   // Approve / reject an idea — writes to the append-only approval ledger.
   { method: 'POST', pattern: /^\/proposals\/[^/]+\/decision$/ },
   // Mark an idea selected for funding.

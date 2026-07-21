@@ -112,6 +112,20 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
 
+    # Background worker
+    #
+    # Work is queued in Postgres and drained by a pool inside this process, so
+    # processing continues after the uploader's browser is gone. Set
+    # WORKER_ENABLED=false to run this instance as API-only — useful when you
+    # want a separate process (or container) to own the queue.
+    WORKER_ENABLED: bool = True
+    # Reserved for extraction/OCR/metadata: cheap, local, and the thing that
+    # turns an uploaded file into something an admin can decide about.
+    WORKER_INGEST_SLOTS: int = 2
+    # Slots that will take anything. Kept low because the real limiter on
+    # evaluation is the LLM token budget, not the number of coroutines.
+    WORKER_EVALUATE_SLOTS: int = 2
+
     @property
     def supported_formats_list(self) -> list[str]:
         return [fmt.strip().lower() for fmt in self.SUPPORTED_FORMATS.split(",")]

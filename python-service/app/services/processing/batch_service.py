@@ -5,45 +5,41 @@ Batch *upload* is already just the ingest endpoint with several files — they s
 `batch_id` and each is processed independently, so one bad PDF in a set of twenty fails
 only itself.
 
-Batch *evaluation* is this. The old implementation ran files strictly one after another
-with a hardcoded `await asyncio.sleep(2)` between them, on the theory that spacing would
-keep Groq happy. It was a guess: too slow when the budget had room, and still not enough
-when it did not — the sleep is unrelated to what the rate limit actually measures, which
-is tokens, not files.
+Batch *evaluation* is this, and it is now a submission rather than a run. The previous
+version awaited every evaluation inside the HTTP handler: twenty proposals at several
+minutes each, held open on one connection, and the whole thing lost if the caller
+disconnected or the gateway timed out. Queueing instead means the call returns in
+milliseconds and the work survives the browser, the gateway and the process.
 
-Now the TPM limiter is the pacing mechanism. Batch evaluation simply submits the work and
-the limiter admits it exactly as fast as the token budget allows — no faster, and no
-slower. Concurrency is bounded only to keep the queue from being unboundedly deep.
+Pacing is not this module's problem either. Jobs are drained by the worker pool, and
+within an evaluation the TPM limiter admits agent calls exactly as fast as the token
+budget allows.
 
-Failures are per-proposal. A batch of twenty in which three documents fail extraction
+Failures stay per-proposal. A batch of twenty in which three documents fail extraction
 produces seventeen evaluations and three retryable failures, not a dead batch.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Optional
 
+from app.services.database.job_repository import get_job_repository
 from app.services.database.proposal_repository import get_proposal_repository
 from app.services.database.repository import get_repository
-from app.services.processing.evaluation_service import (
-    EvaluationError,
-    get_evaluation_service,
-)
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# How many evaluations to have in flight. Each one internally runs its seven agents
-# under the shared TPM budget, so this is about queue depth, not throughput — the token
-# budget is what actually governs the rate.
-MAX_CONCURRENT_EVALUATIONS = 2
+# A batch is capped at 25 files on upload, but a caller can group more under one
+# batch_id, so read generously rather than assuming.
+BATCH_READ_LIMIT = 200
 
 
 class BatchService:
     def __init__(self) -> None:
         self.proposals = get_proposal_repository()
         self.evaluations = get_repository()
+        self.jobs = get_job_repository()
 
     async def evaluate_batch(
         self,
@@ -52,13 +48,15 @@ class BatchService:
         triggered_by: Optional[str] = None,
     ) -> dict[str, Any]:
         """
-        Evaluate every proposal in a batch that is ready for it.
+        Queue an evaluation for every proposal in a batch that is ready for one.
 
         Skips proposals still awaiting a duplicate ruling and those the admin already
         marked duplicates — the gate is a gate, and a batch run must not drive straight
         through it.
         """
-        listing = await self.proposals.list_proposals(batch_id=batch_id, limit=100)
+        listing = await self.proposals.list_proposals(
+            batch_id=batch_id, limit=BATCH_READ_LIMIT
+        )
         proposals = listing["proposals"]
 
         if not proposals:
@@ -73,72 +71,45 @@ class BatchService:
         skipped = [p for p in proposals if p["review_decision"] == "skipped_duplicate"]
         already = [p for p in proposals if p["is_evaluated"]]
 
+        queued = []
+        for proposal in ready:
+            job = await self.jobs.enqueue(
+                kind="evaluate",
+                proposal_id=proposal["id"],
+                batch_id=batch_id,
+                requested_by=triggered_by,
+            )
+            queued.append(
+                {
+                    "proposal_id": proposal["id"],
+                    "filename": proposal["filename"],
+                    "job_id": job["id"],
+                }
+            )
+
         logger.info(
-            "batch_evaluation_started",
+            "batch_evaluation_queued",
             batch_id=batch_id,
             total=len(proposals),
-            ready=len(ready),
+            queued=len(queued),
             awaiting_review=len(blocked),
-        )
-
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_EVALUATIONS)
-        service = get_evaluation_service()
-
-        async def run(proposal: dict) -> dict:
-            async with semaphore:
-                try:
-                    result = await service.evaluate(
-                        proposal["id"], triggered_by=triggered_by, batch_id=batch_id
-                    )
-                    return {
-                        "proposal_id": proposal["id"],
-                        "filename": proposal["filename"],
-                        "status": "completed",
-                        "overall_score": result["overall_score"],
-                        "recommendation": result["recommendation"],
-                    }
-                except (EvaluationError, Exception) as exc:
-                    # The proposal row already carries the failure and its retry count;
-                    # the batch keeps going.
-                    logger.warning(
-                        "batch_item_failed",
-                        batch_id=batch_id,
-                        proposal_id=proposal["id"],
-                        error=str(exc),
-                    )
-                    return {
-                        "proposal_id": proposal["id"],
-                        "filename": proposal["filename"],
-                        "status": "failed",
-                        "error": str(exc),
-                    }
-
-        results = await asyncio.gather(*(run(p) for p in ready)) if ready else []
-
-        completed = sum(1 for r in results if r["status"] == "completed")
-        failed = sum(1 for r in results if r["status"] == "failed")
-
-        logger.info(
-            "batch_evaluation_completed",
-            batch_id=batch_id,
-            completed=completed,
-            failed=failed,
         )
 
         return {
             "batch_id": batch_id,
             "total": len(proposals),
-            "evaluated": completed,
-            "failed": failed,
+            "queued": len(queued),
             "awaiting_review": len(blocked),
             "skipped_as_duplicate": len(skipped),
             "already_evaluated": len(already),
-            "results": results,
+            "results": queued,
         }
 
     async def get_batch(self, batch_id: str) -> dict[str, Any]:
         """Current state of a batch — what is done, what is stuck, and why."""
-        listing = await self.proposals.list_proposals(batch_id=batch_id, limit=100)
+        listing = await self.proposals.list_proposals(
+            batch_id=batch_id, limit=BATCH_READ_LIMIT
+        )
         proposals = listing["proposals"]
 
         if not proposals:
@@ -157,6 +128,15 @@ class BatchService:
                 1 for p in proposals if p["review_decision"] == "pending"
             ),
             "failed": sum(1 for p in proposals if p["status"] == "failed"),
+            # Still moving: anything the pipeline has not yet parked in a terminal
+            # state. Drives "7 of 12 processed" without the client having to know
+            # which statuses are terminal.
+            "in_progress": sum(
+                1
+                for p in proposals
+                if p["status"]
+                not in ("evaluated", "failed", "skipped", "pending_review", "queued")
+            ),
             "proposals": proposals,
         }
 

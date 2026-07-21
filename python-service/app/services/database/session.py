@@ -63,6 +63,26 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+# Columns added after the first release. `create_all` creates missing *tables*
+# but never alters an existing one, so a database seeded by an earlier version
+# would come up without these and every query touching them would fail.
+#
+# Each statement is idempotent, so this runs on every boot and does nothing on a
+# database that is already current. That is the whole migration story this
+# service needs: the schema only ever grows, and Postgres does these as metadata
+# changes without rewriting the table.
+_ADDITIVE_MIGRATIONS = (
+    "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS duplicate_of_id VARCHAR(36)",
+    "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS latest_score DOUBLE PRECISION",
+    "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS latest_recommendation VARCHAR(64)",
+    "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS latest_evaluation_id VARCHAR(36)",
+    "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS evaluated_at TIMESTAMP",
+    "CREATE INDEX IF NOT EXISTS ix_proposals_duplicate_of ON proposals (duplicate_of_id)",
+    "CREATE INDEX IF NOT EXISTS ix_proposals_latest_score ON proposals (latest_score)",
+    "CREATE INDEX IF NOT EXISTS ix_proposals_evaluated_at ON proposals (evaluated_at)",
+)
+
+
 async def init_db() -> None:
     """
     Create the pgvector extension, then all tables and indexes.
@@ -78,6 +98,10 @@ async def init_db() -> None:
         # the vector search.
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
+
+    async with engine.begin() as conn:
+        for statement in _ADDITIVE_MIGRATIONS:
+            await conn.execute(text(statement))
 
     # The ANN index cannot live in `Base.metadata` because its operator class is
     # pgvector-specific. HNSW over cosine distance: this is what keeps the

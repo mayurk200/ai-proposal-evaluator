@@ -198,11 +198,26 @@ class ProposalRepository:
         company_id: Optional[str] = None,
         batch_id: Optional[str] = None,
         search: Optional[str] = None,
+        exclude_duplicates: bool = False,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
     ) -> dict:
-        """Paginated, filtered listing. Never returns full extracted text."""
+        """
+        Paginated, filtered, sorted listing. Never returns full extracted text.
+
+        Sorting happens in SQL, not in the client. An archive that holds years of
+        submissions cannot be sorted by fetching it all and sorting in JavaScript —
+        the sort has to agree with the pagination, or page two of "highest score
+        first" is simply the wrong twenty rows.
+        """
         filters = []
         if status:
-            filters.append(Proposal.status == status)
+            # Comma-separated, so "show me everything still in flight" is one query
+            # rather than four.
+            values = [s.strip() for s in status.split(",") if s.strip()]
+            filters.append(
+                Proposal.status.in_(values) if len(values) > 1 else Proposal.status == values[0]
+            )
         if review_decision:
             filters.append(Proposal.review_decision == review_decision)
         if is_evaluated is not None:
@@ -213,19 +228,26 @@ class ProposalRepository:
             filters.append(Proposal.company_id == company_id)
         if batch_id:
             filters.append(Proposal.batch_id == batch_id)
+        if exclude_duplicates:
+            # The point of letting an admin mark duplicates: they drop out of the
+            # working list without being deleted.
+            filters.append(Proposal.review_decision != "skipped_duplicate")
         if search:
             pattern = f"%{search.lower()}%"
             filters.append(
                 func.lower(Proposal.title).like(pattern)
                 | func.lower(Proposal.filename).like(pattern)
+                | func.lower(Proposal.problem_statement).like(pattern)
             )
+
+        order = self._order_clause(sort_by, sort_order)
 
         async with self._sessions() as session:
             count_q = select(func.count()).select_from(Proposal)
             list_q = (
                 select(Proposal)
                 .options(selectinload(Proposal.company), selectinload(Proposal.category))
-                .order_by(Proposal.created_at.desc())
+                .order_by(*order)
             )
             for f in filters:
                 count_q = count_q.where(f)
@@ -244,7 +266,40 @@ class ProposalRepository:
                 "page": page,
                 "limit": limit,
                 "total_pages": (total + limit - 1) // limit if limit else 0,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
             }
+
+    # Sortable columns, allow-listed. Taking a column name from the query string
+    # and handing it to `getattr(Proposal, ...)` would let a caller sort by
+    # `extracted_text` — megabytes per row — or by a column that does not exist.
+    SORTABLE = {
+        "created_at": Proposal.created_at,
+        "updated_at": Proposal.updated_at,
+        "title": Proposal.title,
+        "filename": Proposal.filename,
+        "status": Proposal.status,
+        "score": Proposal.latest_score,
+        "evaluated_at": Proposal.evaluated_at,
+        "pages": Proposal.total_pages,
+        "words": Proposal.total_words,
+    }
+
+    def _order_clause(self, sort_by: str, sort_order: str):
+        column = self.SORTABLE.get(sort_by, Proposal.created_at)
+        descending = sort_order.lower() != "asc"
+
+        # Unscored proposals sort last either way. An unevaluated idea is not "the
+        # worst one" and must not head the list when you ask for lowest score
+        # first; it simply has no score yet.
+        clause = column.desc().nulls_last() if descending else column.asc().nulls_last()
+
+        # `created_at` as the tiebreaker keeps pagination stable: without it, rows
+        # sharing a sort value can come back in a different order on page two and
+        # an item is shown twice, or never.
+        if column is Proposal.created_at:
+            return (clause, Proposal.id.desc())
+        return (clause, Proposal.created_at.desc(), Proposal.id.desc())
 
     async def get_full_text(self, proposal_id: str) -> Optional[str]:
         """
@@ -456,6 +511,13 @@ class ProposalRepository:
             "status": row.status,
             "is_evaluated": row.is_evaluated,
             "review_decision": row.review_decision,
+            "duplicate_of_id": row.duplicate_of_id,
+            # The current verdict, denormalized onto the row so a listing can show
+            # and sort by it without loading the report.
+            "latest_score": row.latest_score,
+            "latest_recommendation": row.latest_recommendation,
+            "latest_evaluation_id": row.latest_evaluation_id,
+            "evaluated_at": row.evaluated_at.isoformat() if row.evaluated_at else None,
             "total_pages": row.total_pages,
             "total_words": row.total_words,
             "total_tables": row.total_tables,

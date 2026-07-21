@@ -41,7 +41,22 @@ async def lifespan(app: FastAPI):
     get_storage_backend()
     logger.info("storage_ready", provider=settings.STORAGE_PROVIDER)
 
+    # The queue worker. Everything expensive — extraction, metadata, the agent
+    # pipeline — runs here rather than inside a request, which is what lets an
+    # operator upload twenty documents, close their laptop, and come back to
+    # twenty processed ideas. Starting it also resumes anything a previous
+    # process was holding when it died.
+    worker = None
+    if settings.WORKER_ENABLED:
+        from app.services.processing.job_worker import get_job_worker
+
+        worker = get_job_worker()
+        await worker.start()
+
     yield
+
+    if worker is not None:
+        await worker.stop()
 
     await close_db()
     logger.info("shutting_down_python_service")

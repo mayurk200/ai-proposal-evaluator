@@ -209,6 +209,20 @@ class Proposal(Base):
     reviewed_by = Column(String(36), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
 
+    # The idea this one duplicates, when an admin says so. Distinct from the
+    # similarity gate: the gate is the machine's suspicion, this is a human's
+    # ruling, and a human may rule on an idea the gate never flagged at all.
+    duplicate_of_id = Column(String(36), ForeignKey("proposals.id"), nullable=True, index=True)
+
+    # --- Current verdict, denormalized -------------------------------------
+    # The score lives in `evaluations`; a copy lives here so a listing of a
+    # thousand proposals can sort and filter on score without joining the
+    # report table and dragging JSONB across the wire for every row.
+    latest_score = Column(Float, nullable=True, index=True)
+    latest_recommendation = Column(String(64), nullable=True)
+    latest_evaluation_id = Column(String(36), nullable=True)
+    evaluated_at = Column(DateTime, nullable=True, index=True)
+
     # --- Failure handling (requirement g) ----------------------------------
     # A failed idea is NOT silently marked successful. It stays failed, keeps
     # its error, and is retryable.
@@ -370,6 +384,76 @@ class Decision(Base):
         Index("ix_decisions_cat_time", "decision", "category_id", "decision_year", "decision_month"),
         # ...and "approvals per company per month".
         Index("ix_decisions_co_time", "decision", "company_id", "decision_year", "decision_month"),
+    )
+
+
+# =============================================================================
+# Background work
+# =============================================================================
+
+
+class Job(Base):
+    """
+    A unit of background work, owned by the database rather than by a request.
+
+    The previous design attached processing to FastAPI `BackgroundTasks` and ran
+    evaluation inline in the HTTP handler. Both tie the work's survival to
+    something outside the work: the first dies with the process, the second dies
+    with the browser tab (or the gateway's timeout, whichever comes first). An
+    operator who uploads twelve documents and shuts their laptop must come back
+    to twelve processed ideas, not twelve abandoned ones.
+
+    So the queue is a table. A worker inside the service claims rows with
+    `FOR UPDATE SKIP LOCKED`, heartbeats while it works, and writes the outcome
+    back. If the process dies mid-job the row stays `running` with a stale
+    heartbeat and is reclaimed on the next sweep — the work resumes, it does not
+    evaporate. Nothing about that path involves a client being connected.
+    """
+
+    __tablename__ = "jobs"
+
+    id = Column(String(36), primary_key=True)
+
+    # ingest   — extract, metadata, embed, duplicate gate (cheap, one small LLM call)
+    # evaluate — the full agent pipeline (expensive, ~35k tokens)
+    kind = Column(String(32), nullable=False, index=True)
+
+    proposal_id = Column(String(36), ForeignKey("proposals.id"), nullable=True, index=True)
+    batch_id = Column(String(36), nullable=True, index=True)
+    payload = Column(JSONB, nullable=True)
+
+    # queued -> running -> succeeded | failed | cancelled
+    status = Column(String(16), nullable=False, default="queued", index=True)
+    # Lower runs first. Ingestion outranks evaluation on purpose: it is cheap and
+    # it is what turns an uploaded file into something an admin can make a
+    # decision about, so a long evaluation backlog must never starve it.
+    priority = Column(Integer, nullable=False, default=100)
+
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=3)
+    error = Column(Text, nullable=True)
+    result = Column(JSONB, nullable=True)
+
+    requested_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+
+    # Lease. `heartbeat_at` going stale is how we tell "a worker is on this" from
+    # "a worker died holding this".
+    worker_id = Column(String(64), nullable=True)
+    heartbeat_at = Column(DateTime, nullable=True)
+    # Retries come back with a delay rather than immediately, so a failure that
+    # is really a rate limit is not hammered three times in three seconds.
+    available_at = Column(DateTime, nullable=False, default=_utcnow, index=True)
+
+    created_at = Column(DateTime, nullable=False, default=_utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        # The claim query, exactly.
+        Index("ix_jobs_claim", "status", "available_at", "priority"),
+        # "is there already a job for this proposal?" — the enqueue-time dedupe
+        # that keeps a double-click from paying for two evaluations.
+        Index("ix_jobs_pending", "kind", "proposal_id", "status"),
     )
 
 

@@ -18,7 +18,6 @@ from typing import Optional
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -32,6 +31,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import Actor, get_actor, verify_llm_connection
 from app.config import settings
 from app.models.schemas import HealthResponse, SupportedFormatsResponse
+from app.services.database.job_repository import get_job_repository
 from app.services.database.proposal_repository import get_proposal_repository
 from app.services.database.registry_repository import get_registry_repository
 from app.services.database.repository import get_repository
@@ -149,7 +149,6 @@ def _validate_upload(filename: str, content: bytes) -> str:
 
 @router.post("/proposals/ingest")
 async def ingest_proposals(
-    background: BackgroundTasks,
     file: Optional[UploadFile] = File(default=None),
     files: Optional[list[UploadFile]] = File(default=None),
     batch_id: Optional[str] = Form(default=None),
@@ -188,6 +187,7 @@ async def ingest_proposals(
         batch_id = str(uuid.uuid4())
 
     service = get_ingestion_service()
+    jobs = get_job_repository()
     results = []
 
     for content, filename, content_type in payloads:
@@ -201,8 +201,18 @@ async def ingest_proposals(
         results.append(accepted)
 
         # Only schedule work for files that are actually new and actually stored.
+        #
+        # The job goes in the database, not in FastAPI's BackgroundTasks. A
+        # BackgroundTask lives and dies with this process; a row survives it. The
+        # operator who uploads twenty files and shuts their laptop is relying on
+        # exactly that difference.
         if not accepted.get("deduplicated") and accepted["status"] == "uploaded":
-            background.add_task(_process_proposal, accepted["proposal_id"])
+            await jobs.enqueue(
+                kind="ingest",
+                proposal_id=accepted["proposal_id"],
+                batch_id=batch_id,
+                requested_by=actor.user_id,
+            )
 
     return {
         "batch_id": batch_id,
@@ -213,27 +223,8 @@ async def ingest_proposals(
     }
 
 
-async def _process_proposal(proposal_id: str) -> None:
-    """
-    Background worker.
-
-    Swallows exceptions on purpose: `process()` has already recorded the failure on
-    the proposal row (stage + message + retry count), so re-raising here would only
-    produce an unhandled-task traceback in the logs with nowhere to go. The failure
-    is visible in the retry queue, which is where an operator will actually see it.
-    """
-    try:
-        await get_ingestion_service().process(proposal_id)
-    except Exception as exc:
-        logger.error("background_processing_failed", proposal_id=proposal_id, error=str(exc))
-
-
 @router.post("/proposals/{proposal_id}/retry")
-async def retry_proposal(
-    proposal_id: str,
-    background: BackgroundTasks,
-    actor: Actor = Depends(get_actor),
-):
+async def retry_proposal(proposal_id: str, actor: Actor = Depends(get_actor)):
     """
     Re-run processing on a failed proposal.
 
@@ -261,7 +252,12 @@ async def retry_proposal(
         )
 
     await proposals.update(proposal_id, status="uploaded", error_message=None, error_stage=None)
-    background.add_task(_process_proposal, proposal_id)
+    job = await get_job_repository().enqueue(
+        kind="ingest",
+        proposal_id=proposal_id,
+        batch_id=proposal.get("batch_id"),
+        requested_by=actor.user_id,
+    )
 
     await get_registry_repository().audit(
         action="proposal_retry",
@@ -271,7 +267,12 @@ async def retry_proposal(
         payload={"attempt": proposal["retry_count"] + 1},
     )
 
-    return {"proposal_id": proposal_id, "status": "uploaded", "retrying": True}
+    return {
+        "proposal_id": proposal_id,
+        "status": "uploaded",
+        "retrying": True,
+        "job_id": job["id"],
+    }
 
 
 # =============================================================================
@@ -282,20 +283,25 @@ async def retry_proposal(
 @router.get("/proposals")
 async def list_proposals(
     page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
-    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=200),
+    status: Optional[str] = Query(default=None, description="One status, or several comma-separated"),
     review_decision: Optional[str] = Query(default=None),
     is_evaluated: Optional[bool] = Query(default=None),
     category_id: Optional[str] = Query(default=None),
     company_id: Optional[str] = Query(default=None),
+    batch_id: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
+    exclude_duplicates: bool = Query(default=False),
+    sort_by: str = Query(default="created_at"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
 ):
     """
-    List proposals, filtered.
+    List proposals, filtered and sorted.
 
-    `is_evaluated=false` is the "ideas we hold metadata for but have never scored"
-    view — the one an admin uses to pick a stored idea and evaluate it later,
-    without re-uploading the document.
+    `is_evaluated=false` combined with `exclude_duplicates=true` is the view the
+    client asked for by name: ideas we hold metadata for, have never scored, and
+    have not ruled out as duplicates. That is the working list an admin picks from
+    when deciding what to spend an evaluation on.
     """
     return await get_proposal_repository().list_proposals(
         page=page,
@@ -305,7 +311,11 @@ async def list_proposals(
         is_evaluated=is_evaluated,
         category_id=category_id,
         company_id=company_id,
+        batch_id=batch_id,
         search=search,
+        exclude_duplicates=exclude_duplicates,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
 
 
@@ -451,6 +461,83 @@ async def review_proposal(
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+class MarkDuplicateRequest(BaseModel):
+    """An admin's own duplicate ruling on a stored idea."""
+
+    is_duplicate: bool = True
+    # Optional: which existing idea this duplicates. Recorded so the ruling can be
+    # explained later, and so the pair can be shown side by side.
+    duplicate_of: Optional[str] = None
+    note: Optional[str] = None
+
+
+class BulkDuplicateRequest(BaseModel):
+    proposal_ids: list[str] = Field(min_length=1, max_length=500)
+    is_duplicate: bool = True
+    note: Optional[str] = None
+
+
+# NOTE: every `/proposals/bulk/...` route must be declared BEFORE the
+# `/proposals/{proposal_id}/...` route with the same shape. Starlette matches in
+# declaration order, so the parameterised route would otherwise win and bind
+# proposal_id="bulk" — a 404 that looks like a database problem.
+@router.post("/proposals/bulk/duplicate")
+async def bulk_mark_duplicate(
+    request: BulkDuplicateRequest, actor: Actor = Depends(get_actor)
+):
+    """Mark or un-mark many ideas as duplicates in one go. ADMIN only."""
+    service = get_ingestion_service()
+
+    updated: list[str] = []
+    skipped: list[dict] = []
+
+    for proposal_id in request.proposal_ids:
+        try:
+            await service.mark_duplicate(
+                proposal_id,
+                is_duplicate=request.is_duplicate,
+                marked_by=actor.user_id,
+                note=request.note,
+            )
+            updated.append(proposal_id)
+        except ValueError as exc:
+            # One un-markable item must not abort the other thirty-nine.
+            skipped.append({"proposal_id": proposal_id, "reason": str(exc)})
+
+    return {
+        "requested": len(request.proposal_ids),
+        "updated": len(updated),
+        "skipped": len(skipped),
+        "skipped_items": skipped,
+    }
+
+
+@router.post("/proposals/{proposal_id}/duplicate")
+async def mark_duplicate(
+    proposal_id: str,
+    request: MarkDuplicateRequest,
+    actor: Actor = Depends(get_actor),
+):
+    """
+    Mark (or un-mark) a stored idea as a duplicate. ADMIN only.
+
+    Distinct from `/review`, which resolves a gate the machine opened. This is the
+    admin acting on their own judgement about any idea in the archive, including
+    ones the similarity gate never flagged. Reversible, and the metadata is kept
+    either way.
+    """
+    try:
+        return await get_ingestion_service().mark_duplicate(
+            proposal_id,
+            is_duplicate=request.is_duplicate,
+            marked_by=actor.user_id,
+            duplicate_of=request.duplicate_of,
+            note=request.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/review-queue")
 async def review_queue(
     page: int = Query(default=1, ge=1),
@@ -492,6 +579,95 @@ class EvaluateRequest(BaseModel):
     force: bool = False
 
 
+def _why_not_evaluatable(proposal: dict, *, force: bool) -> Optional[str]:
+    """
+    Whether this proposal can be evaluated, and if not, why — in words an operator
+    can act on.
+
+    Checked at submit time rather than only in the worker so that selecting forty
+    proposals and clicking Evaluate tells you immediately that six of them are
+    blocked, instead of silently queueing six jobs that will fail one by one.
+    """
+    if proposal["review_decision"] == "pending":
+        return "Awaiting a duplicate review — an admin must rule on it first"
+    if proposal["review_decision"] == "skipped_duplicate":
+        return "Marked as a duplicate. Un-mark it to evaluate"
+    if proposal["is_evaluated"] and not force:
+        return "Already evaluated — re-run it explicitly to score it again"
+    if proposal["status"] in ("uploaded", "extracting", "extracted"):
+        return "Still being processed — no metadata yet"
+    if proposal["status"] == "failed":
+        return "Processing failed; retry processing before evaluating"
+    return None
+
+
+class BulkEvaluateRequest(BaseModel):
+    proposal_ids: list[str] = Field(min_length=1, max_length=500)
+    force: bool = False
+
+
+# Declared before `/proposals/{proposal_id}/evaluate` — see the note above
+# `bulk_mark_duplicate`.
+@router.post("/proposals/bulk/evaluate")
+async def bulk_evaluate(
+    request: BulkEvaluateRequest, actor: Actor = Depends(get_actor)
+):
+    """
+    Queue many evaluations at once.
+
+    Reports per-proposal what happened rather than a single count, because "37 of
+    43 queued" is only useful if you can also see which six were not and why. The
+    six are almost always the interesting ones.
+    """
+    proposals = get_proposal_repository()
+    jobs = get_job_repository()
+
+    queued: list[dict] = []
+    skipped: list[dict] = []
+
+    for proposal_id in request.proposal_ids:
+        proposal = await proposals.get(proposal_id)
+        if not proposal:
+            skipped.append({"proposal_id": proposal_id, "reason": "Not found"})
+            continue
+
+        blocked = _why_not_evaluatable(proposal, force=request.force)
+        if blocked:
+            skipped.append(
+                {
+                    "proposal_id": proposal_id,
+                    "title": proposal.get("title") or proposal["filename"],
+                    "reason": blocked,
+                }
+            )
+            continue
+
+        job = await jobs.enqueue(
+            kind="evaluate",
+            proposal_id=proposal_id,
+            batch_id=proposal.get("batch_id"),
+            payload={"force": request.force},
+            requested_by=actor.user_id,
+        )
+        queued.append({"proposal_id": proposal_id, "job_id": job["id"]})
+
+    await get_registry_repository().audit(
+        action="bulk_evaluate",
+        entity_type="proposal",
+        entity_id=None,
+        actor_id=actor.user_id,
+        payload={"requested": len(request.proposal_ids), "queued": len(queued)},
+    )
+
+    return {
+        "requested": len(request.proposal_ids),
+        "queued": len(queued),
+        "skipped": len(skipped),
+        "queued_items": queued,
+        "skipped_items": skipped,
+    }
+
+
 @router.post("/proposals/{proposal_id}/evaluate")
 async def evaluate_proposal(
     proposal_id: str,
@@ -499,38 +675,69 @@ async def evaluate_proposal(
     actor: Actor = Depends(get_actor),
 ):
     """
-    Run the agent pipeline over a stored proposal.
+    Queue the agent pipeline over a stored proposal.
 
-    Works on any proposal that has been ingested and cleared the duplicate gate —
-    including one ingested months ago and never evaluated. The document is not
-    re-read: sections were persisted at ingestion, so this costs the agent calls
-    and nothing else. That is what makes "let the admin evaluate a stored idea from
-    the database, without re-uploading it" practical.
+    Returns as soon as the work is recorded, not when it finishes. An evaluation is
+    minutes of paced LLM calls, and holding an HTTP connection open for it made the
+    whole thing hostage to the browser: close the tab (or hit the gateway's timeout)
+    and the run was orphaned. Now it is a row in the queue — the caller can leave,
+    the server finishes the work, and the result is waiting on the proposal.
 
-    Idempotent: a proposal that already has a completed evaluation returns it,
-    unless `force`.
+    Works on any proposal that has been ingested and cleared the duplicate gate,
+    including one ingested months ago and never evaluated: the sections were
+    persisted at ingestion, so this costs the agent calls and nothing else.
     """
-    try:
-        result = await get_evaluation_service().evaluate(
-            proposal_id,
-            triggered_by=actor.user_id,
-            force=bool(request and request.force),
-        )
-    except EvaluationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    proposal = await get_proposal_repository().get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
 
-    return result
+    force = bool(request and request.force)
+    blocked = _why_not_evaluatable(proposal, force=force)
+    if blocked:
+        raise HTTPException(status_code=400, detail=blocked)
+
+    job = await get_job_repository().enqueue(
+        kind="evaluate",
+        proposal_id=proposal_id,
+        batch_id=proposal.get("batch_id"),
+        payload={"force": force},
+        requested_by=actor.user_id,
+    )
+
+    return {
+        "proposal_id": proposal_id,
+        "job_id": job["id"],
+        "status": "queued",
+        # True when an evaluation was already in the queue for this proposal — a
+        # double-click costs nothing.
+        "already_queued": job.get("deduplicated", False),
+    }
 
 
 @router.post("/proposals/{proposal_id}/evaluate/retry")
 async def retry_evaluation(proposal_id: str, actor: Actor = Depends(get_actor)):
     """Retry an evaluation that failed. Budget-limited (see MAX_EVALUATION_RETRIES)."""
-    try:
-        return await get_evaluation_service().retry(
-            proposal_id, triggered_by=actor.user_id
+    proposal = await get_proposal_repository().get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    if proposal["retry_count"] >= settings.MAX_EVALUATION_RETRIES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This proposal has already failed {proposal['retry_count']} times. "
+                "It needs to be looked at rather than retried again."
+            ),
         )
-    except EvaluationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+
+    job = await get_job_repository().enqueue(
+        kind="evaluate",
+        proposal_id=proposal_id,
+        batch_id=proposal.get("batch_id"),
+        payload={"force": True},
+        requested_by=actor.user_id,
+    )
+    return {"proposal_id": proposal_id, "job_id": job["id"], "status": "queued"}
 
 
 @router.get("/evaluations/{evaluation_id}")
@@ -781,10 +988,11 @@ async def get_batch(batch_id: str):
 @router.post("/batches/{batch_id}/evaluate")
 async def evaluate_batch(batch_id: str, actor: Actor = Depends(get_actor)):
     """
-    Evaluate every proposal in a batch that has cleared the duplicate gate.
+    Queue an evaluation for every proposal in a batch that has cleared the gate.
 
     Proposals still awaiting an admin's ruling are skipped, not driven through — the
-    gate is a gate. Per-proposal failures do not stop the batch.
+    gate is a gate. Returns as soon as the work is queued; the worker drains it
+    whether or not anyone is watching.
     """
     try:
         return await get_batch_service().evaluate_batch(
@@ -792,6 +1000,62 @@ async def evaluate_batch(batch_id: str, actor: Actor = Depends(get_actor)):
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+# =============================================================================
+# The work queue
+# =============================================================================
+
+
+@router.get("/jobs")
+async def list_jobs(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=25, ge=1, le=100),
+    status: Optional[str] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    proposal_id: Optional[str] = Query(default=None),
+):
+    """
+    What the server is working on, has finished, and gave up on.
+
+    Worth having a UI for: since processing no longer happens inside a request,
+    "did anything actually happen after I uploaded?" would otherwise be
+    unanswerable from the outside.
+    """
+    return await get_job_repository().list_jobs(
+        page=page, limit=limit, status=status, kind=kind, proposal_id=proposal_id
+    )
+
+
+@router.get("/jobs/stats")
+async def job_stats():
+    """Queue depth, by kind and status. Cheap enough to poll."""
+    return await get_job_repository().stats()
+
+
+@router.get("/jobs/{job_id}")
+async def get_job(job_id: str):
+    job = await get_job_repository().get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str, actor: Actor = Depends(get_actor)):
+    """
+    Cancel a job that has not started yet.
+
+    A running job is left alone: it is already spending tokens, and killing it
+    part-way would leave a half-written evaluation behind.
+    """
+    cancelled = await get_job_repository().cancel(job_id)
+    if not cancelled:
+        raise HTTPException(
+            status_code=400,
+            detail="Only a job that has not started can be cancelled.",
+        )
+    return {"job_id": job_id, "status": "cancelled"}
 
 
 # =============================================================================
