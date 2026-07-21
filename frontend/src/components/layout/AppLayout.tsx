@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3, ChevronRight, Copy, FileText, LayoutDashboard,
+  Activity, BarChart3, ChevronRight, Copy, FileText, LayoutDashboard,
   Leaf, LogOut, Menu, Settings, Upload, X
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
@@ -16,8 +16,14 @@ interface NavItem {
   path: string;
   /** Restrict the link to these roles. Cosmetic — the gateway enforces the real rule. */
   roles?: Role[];
-  /** Show a count badge from the overview (the work-waiting-on-you signal). */
-  badge?: 'awaiting_review';
+  /**
+   * A live count next to the link.
+   *
+   * `awaiting_review` is work blocked on this person; `queue` is work the
+   * server is doing on its own. Different meanings, so they are toned
+   * differently — amber for "you are the blocker", blue for "it is in hand".
+   */
+  badge?: 'awaiting_review' | 'queue';
 }
 
 const navItems: NavItem[] = [
@@ -26,8 +32,11 @@ const navItems: NavItem[] = [
   { icon: FileText, label: 'Proposals', path: '/proposals' },
   // The duplicate gate. Badged, because an idea sitting here is blocking work.
   { icon: Copy, label: 'Duplicate review', path: '/review', badge: 'awaiting_review' },
+  // Badged with what the server is chewing through, so an upload that is still
+  // processing is visible from anywhere in the app.
+  { icon: Activity, label: 'Activity', path: '/activity', badge: 'queue' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-  { icon: Settings, label: 'Settings', path: '/settings', roles: ['ADMIN'] },
+  { icon: Settings, label: 'System', path: '/settings', roles: ['ADMIN'] },
 ];
 
 export function Sidebar() {
@@ -84,7 +93,12 @@ export function Sidebar() {
         {visible.map((item) => {
           const isActive = location.pathname.startsWith(item.path);
           const count =
-            item.badge === 'awaiting_review' ? overview?.totals.awaiting_review ?? 0 : 0;
+            item.badge === 'awaiting_review'
+              ? overview?.totals.awaiting_review ?? 0
+              : item.badge === 'queue'
+                ? overview?.queue?.pending ?? 0
+                : 0;
+          const blocking = item.badge === 'awaiting_review';
 
           return (
             <Link key={item.path} to={item.path}>
@@ -98,7 +112,11 @@ export function Sidebar() {
                   {/* When collapsed there is no room for a number, but the user still
                       needs to know something is waiting. */}
                   {count > 0 && collapsed && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />
+                    <span
+                      className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${
+                        blocking ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}
+                    />
                   )}
                 </div>
 
@@ -116,7 +134,11 @@ export function Sidebar() {
                 </AnimatePresence>
 
                 {!collapsed && count > 0 && (
-                  <span className="ml-auto rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
+                  <span
+                    className={`ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+                      blocking ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
                     {count}
                   </span>
                 )}

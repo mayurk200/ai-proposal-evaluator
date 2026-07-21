@@ -11,6 +11,7 @@ import UploadPage from '@/pages/UploadPage';
 import ProposalsPage from '@/pages/ProposalsPage';
 import ProposalDetailPage from '@/pages/ProposalDetailPage';
 import ReviewQueuePage from '@/pages/ReviewQueuePage';
+import ActivityPage from '@/pages/ActivityPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SettingsPage from '@/pages/SettingsPage';
 
@@ -84,6 +85,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <ReviewQueuePage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Processing happens on the server now, so there has to be somewhere
+              to look and see that it is happening. */}
+          <Route
+            path="/activity"
+            element={
+              <ProtectedRoute>
+                <ActivityPage />
               </ProtectedRoute>
             }
           />
