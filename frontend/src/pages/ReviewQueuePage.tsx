@@ -12,7 +12,9 @@ import {
   FolderTree,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Button, Skeleton } from '@/components/ui';
+import { Badge, Button, Skeleton } from '@/components/ui';
+import { PageHeader, Section } from '@/components/ui/page';
+import { useToast } from '@/components/ui/overlays';
 import { EmptyState } from '@/components/domain';
 import { proposalApi, reviewApi } from '@/services/agrieval.service';
 import { useAuthStore } from '@/store/authStore';
@@ -35,6 +37,7 @@ import type { Proposal, SimilarityMatch } from '@/types';
  */
 export default function ReviewQueuePage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const isAdmin = useAuthStore((s) => s.hasRole('ADMIN'));
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -55,12 +58,19 @@ export default function ReviewQueuePage() {
   const resolve = useMutation({
     mutationFn: ({ id, evaluate }: { id: string; evaluate: boolean }) =>
       reviewApi.resolve(id, evaluate),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       setSelected(null);
+      toast.success(
+        variables.evaluate ? 'Sent for evaluation' : 'Skipped as a duplicate',
+        variables.evaluate
+          ? 'It is now in the queue and can be evaluated.'
+          : 'The metadata is kept — it stays searchable and can be revived later.',
+      );
       queryClient.invalidateQueries({ queryKey: ['review-queue'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
     },
+    onError: () => toast.error('Could not record that ruling'),
   });
 
   const proposal = detail?.proposal;
@@ -68,19 +78,14 @@ export default function ReviewQueuePage() {
 
   return (
     <AppLayout>
-      <header className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-text">
-          <Copy className="h-6 w-6 text-amber-500" />
-          Duplicate review
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-text-muted">
-          These ideas closely resemble something already in the database. Compare them and
-          decide whether to evaluate. Nothing is spent on an evaluation until you do.
-        </p>
-      </header>
+      <PageHeader
+        title="Duplicate review"
+        meta={queue?.total ? <Badge tone="warning">{queue.total} waiting</Badge> : undefined}
+        description="These ideas closely resemble something already in the database. Compare them and decide whether to evaluate — nothing is spent until you do. Matching is semantic, so a reworded resubmission is caught where a text comparison would sail straight past."
+      />
 
       {isLoading ? (
-        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-64 rounded-xl" />
       ) : !queue?.proposals.length ? (
         <EmptyState
           icon={CheckCircle2}
@@ -88,28 +93,29 @@ export default function ReviewQueuePage() {
           description="No incoming idea currently resembles an existing one closely enough to need a second look."
         />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-          {/* Queue */}
-          <aside className="glass-card-static h-fit rounded-2xl p-3">
-            <p className="px-2 pb-2 text-xs font-medium text-text-muted">
+        <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+          {/* The queue. A list rather than a stack of cards: an admin working
+              through fifteen of these wants to move between them quickly. */}
+          <aside className="h-fit overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+            <p className="border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
               {queue.total} awaiting review
             </p>
-            <div className="space-y-1">
+            <div className="max-h-[70vh] divide-y divide-border overflow-y-auto">
               {queue.proposals.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => setSelected(p.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${
+                  className={`w-full px-3 py-2.5 text-left transition-colors ${
                     p.id === activeId
-                      ? 'bg-accent-light text-primary'
-                      : 'hover:bg-accent-light/40'
+                      ? 'border-l-2 border-l-primary bg-accent-light/60'
+                      : 'border-l-2 border-l-transparent hover:bg-gray-50'
                   }`}
                 >
-                  <p className="truncate text-sm font-medium">
+                  <p className="truncate text-[13px] font-medium text-text">
                     {p.title || p.filename}
                   </p>
                   <p className="truncate text-xs text-text-muted">
-                    {p.company_name ?? 'Unknown company'}
+                    {p.company_name ?? 'Company not identified'}
                   </p>
                 </button>
               ))}
@@ -117,9 +123,9 @@ export default function ReviewQueuePage() {
           </aside>
 
           {/* Side-by-side comparison */}
-          <section className="space-y-5">
+          <section className="space-y-4">
             {!proposal ? (
-              <Skeleton className="h-64 rounded-2xl" />
+              <Skeleton className="h-64 rounded-xl" />
             ) : (
               <>
                 {matches.map((match) => (
@@ -130,46 +136,38 @@ export default function ReviewQueuePage() {
                   <EmptyState
                     icon={AlertTriangle}
                     title="No matches recorded"
-                    description="This proposal is in the review queue but its matches are missing. It can be safely sent for evaluation."
+                    description="This proposal is in the review queue but its matches are missing. It can safely be sent for evaluation."
                   />
                 )}
 
-                {/* The decision */}
-                <div className="glass-card-static rounded-2xl p-5">
-                  <h3 className="text-sm font-semibold text-text">Your decision</h3>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Skipping keeps the idea and its metadata in the database — it simply
-                    never costs an evaluation, and can be revived later.
-                  </p>
-
+                <Section
+                  title="Your decision"
+                  description="Skipping keeps the idea and its metadata in the database — it simply never costs an evaluation, and can be revived later."
+                >
                   {!isAdmin ? (
-                    <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-muted">
+                    <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-muted">
                       Only an administrator can resolve a duplicate review.
                     </p>
                   ) : (
-                    <div className="mt-4 flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2">
                       <Button
-                        onClick={() =>
-                          resolve.mutate({ id: proposal.id, evaluate: true })
-                        }
+                        icon={ArrowRight}
+                        onClick={() => resolve.mutate({ id: proposal.id, evaluate: true })}
                         loading={resolve.isPending}
                       >
-                        <ArrowRight className="h-4 w-4" />
                         Not a duplicate — evaluate it
                       </Button>
                       <Button
-                        variant="secondary"
-                        onClick={() =>
-                          resolve.mutate({ id: proposal.id, evaluate: false })
-                        }
+                        variant="outline"
+                        icon={Ban}
+                        onClick={() => resolve.mutate({ id: proposal.id, evaluate: false })}
                         loading={resolve.isPending}
                       >
-                        <Ban className="h-4 w-4" />
                         It is a duplicate — skip it
                       </Button>
                     </div>
                   )}
-                </div>
+                </Section>
               </>
             )}
           </section>
@@ -191,22 +189,23 @@ function ComparisonCard({
   const existing = match.matched_proposal;
 
   return (
-    <div className="glass-card-static rounded-2xl p-5">
-      <header className="mb-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="rounded-lg bg-amber-100 px-2.5 py-1 text-sm font-bold text-amber-800 tabular-nums">
-            {(match.similarity * 100).toFixed(0)}% similar
-          </span>
-          <span className="text-xs text-text-muted">
-            compared on the substance of the idea, not the wording
-          </span>
-        </div>
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <header className="mb-3 flex flex-wrap items-center gap-2">
+        {/* Above 85% is very likely the same idea; between the threshold and
+            there it is a genuine judgement call. Toning them the same would
+            flatten that distinction away. */}
+        <Badge tone={match.similarity > 0.85 ? 'danger' : 'warning'}>
+          {(match.similarity * 100).toFixed(0)}% similar
+        </Badge>
+        <span className="text-xs text-text-muted">
+          compared on the substance of the idea, not the wording
+        </span>
       </header>
 
       {/* Why it was flagged. "Same company resubmitting" and "a different company with
           the same idea" call for opposite decisions, so this is the important part. */}
       {match.match_reasons?.length > 0 && (
-        <ul className="mb-4 space-y-1 rounded-lg bg-amber-50/60 px-3 py-2">
+        <ul className="mb-3 space-y-1 rounded-lg bg-amber-50 px-3 py-2">
           {match.match_reasons.map((reason, i) => (
             <li key={i} className="flex gap-2 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
@@ -216,7 +215,7 @@ function ComparisonCard({
         </ul>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         <IdeaColumn label="Incoming" proposal={incoming} highlight />
         <IdeaColumn label="Already in the database" proposal={existing} />
       </div>

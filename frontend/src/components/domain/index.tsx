@@ -482,25 +482,37 @@ export const StatTile: React.FC<{
     success: 'text-emerald-700 bg-emerald-100',
   };
 
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'glass-card-static rounded-2xl p-4',
-        onClick && 'cursor-pointer transition-shadow hover:shadow-md',
-      )}
-    >
+  const body = (
+    <>
       <div className="flex items-center gap-3">
-        <div className={cn('flex h-9 w-9 items-center justify-center rounded-xl', tones[tone])}>
+        <div className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg', tones[tone])}>
           <Icon className="h-[18px] w-[18px]" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 text-left">
           <p className="text-xs text-text-muted">{label}</p>
-          <p className="text-xl font-bold leading-tight text-text tabular-nums">{value}</p>
+          <p className="text-xl font-semibold leading-tight tabular-nums text-text">{value}</p>
         </div>
       </div>
-      {hint && <p className="mt-2 text-[11px] leading-snug text-text-muted">{hint}</p>}
-    </div>
+      {hint && <p className="mt-2 text-left text-[11px] leading-snug text-text-muted">{hint}</p>}
+    </>
+  );
+
+  const className = cn(
+    'block w-full rounded-xl border border-border bg-surface p-4 shadow-card',
+    onClick &&
+      'cursor-pointer transition-colors hover:border-border-strong hover:bg-gray-50 ' +
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+  );
+
+  // A clickable tile is a button, not a div with a handler. Otherwise it is
+  // unreachable by keyboard and announced as nothing — and these tiles are the
+  // primary navigation into the queues.
+  return onClick ? (
+    <button type="button" onClick={onClick} className={className}>
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   );
 };
 
