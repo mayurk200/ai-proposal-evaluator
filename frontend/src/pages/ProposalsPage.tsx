@@ -395,9 +395,13 @@ export default function ProposalsPage() {
                       aria-label="Select all on this page"
                     />
                   </TH>
-                  <SortHeader label="Proposal" sortKey="title" sort={sort} onSort={(s) => patchParams({ sort: s.by, order: s.order })} defaultOrder="asc" />
-                  <TH className="hidden lg:table-cell">Category</TH>
-                  <TH>Status</TH>
+                  {/* w-full on the name column: in a table, the cell asking for
+                      100% absorbs whatever the fixed columns leave, so the title
+                      gets the room and everything else stays exactly as wide as
+                      its content. */}
+                  <SortHeader label="Proposal" sortKey="title" sort={sort} onSort={(s) => patchParams({ sort: s.by, order: s.order })} defaultOrder="asc" className="w-full" />
+                  <TH className="hidden whitespace-nowrap lg:table-cell">Category</TH>
+                  <TH className="whitespace-nowrap">Status</TH>
                   <SortHeader label="Score" sortKey="score" sort={sort} onSort={(s) => patchParams({ sort: s.by, order: s.order })} align="right" />
                   <SortHeader label="Added" sortKey="created_at" sort={sort} onSort={(s) => patchParams({ sort: s.by, order: s.order })} align="right" className="hidden sm:table-cell" />
                   <TH align="right" className="w-24">
@@ -519,7 +523,10 @@ function ProposalRow({
         />
       </TD>
 
-      <TD className="max-w-0">
+      {/* max-w-0 with w-full on the header is the idiom that makes `truncate`
+          work inside a table cell: without a resolved width the cell grows to
+          fit its content instead of clipping it. */}
+      <TD className="w-full max-w-0">
         <Link
           to={`/proposals/${proposal.id}`}
           className="block truncate text-[13px] font-medium text-text hover:text-primary"
@@ -535,7 +542,7 @@ function ProposalRow({
         </div>
       </TD>
 
-      <TD className="hidden lg:table-cell">
+      <TD className="hidden whitespace-nowrap lg:table-cell">
         <span className="text-xs text-text-secondary">
           {proposal.category_label ?? '—'}
         </span>

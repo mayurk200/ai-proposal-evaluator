@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Clock,
   CircleDashed,
   Copy,
@@ -277,45 +278,102 @@ export const CitationBlock: React.FC<{ citation: Citation }> = ({ citation }) =>
   </blockquote>
 );
 
-/** One parameter, with every sub-score and the quotes behind it. Requirement (b). */
-export const ParameterCard: React.FC<{ parameter: ParameterResult }> = ({ parameter }) => {
+/**
+ * One parameter: its score, and — on request — every sub-score and the quotes
+ * behind it. Requirement (b).
+ *
+ * Collapsed by default, and that is the whole point of the change. Seven
+ * parameters, each with four or five sub-questions, each carrying a verbatim
+ * quote and a justification, is roughly two thousand words rendered at once. All
+ * of it is true and some of it is essential, but presenting it as one
+ * undifferentiated column meant nobody read any of it. The scores stay visible;
+ * the evidence is one click away, and opens where you are looking.
+ *
+ * A parameter WE failed to assess opens automatically — it is the one case where
+ * the detail changes what the reader should conclude about the number above it.
+ */
+export const ParameterCard: React.FC<{
+  parameter: ParameterResult;
+  defaultOpen?: boolean;
+}> = ({ parameter, defaultOpen }) => {
   const failed = parameter.status === 'failed';
   const unevidenced = parameter.status === 'unevidenced';
+  const [open, setOpen] = React.useState(defaultOpen ?? failed);
+
+  const evidenced = parameter.sub_questions.filter((sq) => sq.evidence_found).length;
 
   return (
     <div
       className={cn(
-        'rounded-xl border bg-white/70 p-4',
+        'overflow-hidden rounded-xl border bg-surface',
         failed ? 'border-red-200' : 'border-border',
       )}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h4 className="text-sm font-semibold text-text">{parameter.parameter_name}</h4>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+      >
+        <ChevronRight
+          className={cn(
+            'h-4 w-4 flex-shrink-0 text-text-muted transition-transform',
+            open && 'rotate-90',
+          )}
+        />
+
+        <div className="min-w-0 flex-1">
+          <h4 className="text-[13px] font-semibold text-text">
+            {parameter.parameter_name}
+          </h4>
           <p className="mt-0.5 text-xs text-text-muted">
-            weight {(parameter.weight * 100).toFixed(0)}%
+            {(parameter.weight * 100).toFixed(0)}% of the score
             {!failed && (
-              <> · evidence {(parameter.evidence_coverage * 100).toFixed(0)}%</>
+              <>
+                {' · '}
+                {evidenced}/{parameter.sub_questions.length} sub-questions evidenced
+              </>
             )}
-            {parameter.sections_seen.length > 0 && (
-              <> · read {parameter.sections_seen.join(', ')}</>
+            {parameter.red_flags.length > 0 && (
+              <span className="text-red-600">
+                {' · '}
+                {parameter.red_flags.length} red flag
+                {parameter.red_flags.length === 1 ? '' : 's'}
+              </span>
             )}
           </p>
         </div>
-        <div className="text-right">
-          <ScoreValue
-            score={parameter.parameter_score}
-            status={parameter.status}
-            className="text-lg"
-          />
-        </div>
-      </div>
 
-      {!failed && <ScoreBar score={parameter.parameter_score} className="mt-3" />}
+        {/* The bar is the scannable part: seven of these stacked shows the shape
+            of the assessment without reading a single number. */}
+        {!failed && (
+          <div className="hidden w-28 flex-shrink-0 sm:block">
+            <ScoreBar score={parameter.parameter_score} />
+          </div>
+        )}
+
+        {/* Wide enough for "Not addressed" on one line. Wrapped onto two, it
+            broke the row height and made the list of parameters look ragged. */}
+        <ScoreValue
+          score={parameter.parameter_score}
+          status={parameter.status}
+          className="w-28 flex-shrink-0 whitespace-nowrap text-right text-base"
+        />
+      </button>
+
+      {!open ? null : (
+      <div className="border-t border-border px-4 py-3">
+      {parameter.sections_seen.length > 0 && (
+        <p className="mb-3 text-xs text-text-muted">
+          {/* Which sections the agent was shown. Makes the routing auditable —
+              a finance agent that never saw the budget explains a lot. */}
+          Read from: {parameter.sections_seen.join(', ')}
+          {!failed && ` · evidence coverage ${(parameter.evidence_coverage * 100).toFixed(0)}%`}
+        </p>
+      )}
 
       {/* Our failure — emphatically not the applicant's. */}
       {failed && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2">
+        <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-red-500" />
           <div>
             <p className="text-xs font-medium text-red-800">
@@ -335,7 +393,7 @@ export const ParameterCard: React.FC<{ parameter: ParameterResult }> = ({ parame
       )}
 
       {unevidenced && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+        <div className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
           <p className="text-xs text-text-muted">
             The proposal does not address this at all. It is excluded from the weighted
@@ -344,9 +402,12 @@ export const ParameterCard: React.FC<{ parameter: ParameterResult }> = ({ parame
         </div>
       )}
 
-      <div className="mt-3 space-y-3">
-        {parameter.sub_questions.map((sq) => (
-          <div key={sq.question_id} className="border-t border-border/60 pt-3">
+      <div className="space-y-3">
+        {parameter.sub_questions.map((sq, index) => (
+          <div
+            key={sq.question_id}
+            className={cn(index > 0 && 'border-t border-border/60 pt-3')}
+          >
             <div className="flex items-start gap-2">
               <span
                 className={cn(
@@ -395,6 +456,8 @@ export const ParameterCard: React.FC<{ parameter: ParameterResult }> = ({ parame
             ))}
           </ul>
         </div>
+      )}
+      </div>
       )}
     </div>
   );
