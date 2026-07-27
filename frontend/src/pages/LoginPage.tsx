@@ -1,22 +1,31 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Leaf, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Leaf, ShieldCheck } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import { authApi } from '@/services/auth.service';
 import { useAuthStore } from '@/store/authStore';
-import { proposalApi } from '@/services/proposal.service';
-import { Home } from 'lucide-react';
+import { apiErrorMessage } from '@/utils';
 
+/**
+ * The only unauthenticated page in the system.
+ *
+ * There is no sign-up: this is an internal evaluation console with seeded operator
+ * accounts, and anyone who could register would be able to read every proposal and see
+ * every funding decision. New accounts are created by an administrator.
+ */
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const claimId = searchParams.get('claimId');
-  const { setAuth } = useAuthStore();
+  const location = useLocation();
+  const setAuth = useAuthStore((s) => s.setAuth);
+
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // ProtectedRoute remembers where the user was headed before being bounced here.
+  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,133 +35,101 @@ export default function LoginPage() {
     try {
       const result = await authApi.login(form);
       setAuth(result.user, result.token);
-
-      if (claimId) {
-        try {
-          await proposalApi.claim(claimId);
-          navigate(`/proposals/${claimId}`);
-          return;
-        } catch (claimErr) {
-          console.error('Failed to claim proposal:', claimErr);
-        }
-      }
-      
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Sign-in failed. Please try again.')!);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex gradient-hero">
-      {/* Left Panel */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
+    <div className="flex min-h-screen gradient-hero">
+      <div className="hidden items-center justify-center p-12 lg:flex lg:w-1/2">
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.7 }}
+          transition={{ duration: 0.6 }}
           className="max-w-md"
         >
-          <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mb-8">
-            <Leaf className="w-8 h-8 text-white" />
+          <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl gradient-primary">
+            <Leaf className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-text leading-tight">
-            Welcome back to
-            <br />
-            <span className="text-gradient">AgriEval</span>
-          </h1>
-          <p className="mt-4 text-text-secondary text-lg leading-relaxed">
-            Continue evaluating agriculture startup proposals with our AI-powered platform.
+          <h1 className="text-3xl font-bold text-text">AgriEval</h1>
+          <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+            Evidence-based evaluation of agricultural innovation proposals. Every score is
+            traceable to the words in the document that produced it.
           </p>
-          <div className="mt-8 grid grid-cols-2 gap-4">
+
+          <ul className="mt-8 space-y-3 text-sm text-text-secondary">
             {[
-              { value: '7', label: 'AI Agents' },
-              { value: '98%', label: 'Accuracy' },
-              { value: '<5min', label: 'Avg Time' },
-              { value: '24/7', label: 'Available' },
-            ].map((stat) => (
-              <div key={stat.label} className="glass-card-static p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stat.value}</p>
-                <p className="text-xs text-text-muted mt-1">{stat.label}</p>
-              </div>
+              'Duplicate ideas are caught before they cost an evaluation',
+              'Every score cites the text it came from',
+              'Approvals are balanced across categories and companies',
+            ].map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                {line}
+              </li>
             ))}
-          </div>
+          </ul>
         </motion.div>
       </div>
 
-      {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6">
+      <div className="flex w-full items-center justify-center p-6 lg:w-1/2">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="w-full max-w-md"
+          className="glass-card-static w-full max-w-sm rounded-2xl p-8"
         >
-          <div className="glass-card-static p-8 rounded-2xl relative">
-            <Link to="/" className="absolute top-4 left-4 p-2 text-text-muted hover:text-primary transition-colors flex items-center gap-1 text-sm">
-              <Home className="w-4 h-4" /> Home
-            </Link>
-            <div className="text-center mb-8">
-              <div className="lg:hidden w-12 h-12 mx-auto rounded-xl gradient-primary flex items-center justify-center mb-4">
-                <Leaf className="w-6 h-6 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-text">Sign in</h2>
-              <p className="text-sm text-text-muted mt-1">Enter your credentials to continue</p>
+          <h2 className="text-xl font-bold text-text">Sign in</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Internal evaluation console.
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <Input
+              id="email"
+              type="email"
+              label="Email"
+              autoComplete="username"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                label="Password"
+                autoComplete="current-password"
+                required
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-9 text-text-muted hover:text-text"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
 
             {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-6 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600"
-              >
-                {error}
-              </motion.div>
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <Input
-                id="email"
-                label="Email"
-                type="email"
-                placeholder="you@company.com"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                required
-              />
-              <div className="relative">
-                <Input
-                  id="password"
-                  label="Password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-9 text-text-muted hover:text-text"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+            <Button type="submit" loading={loading} className="w-full">
+              Sign in
+            </Button>
+          </form>
 
-              <Button type="submit" loading={loading} className="w-full" size="lg">
-                Sign In
-              </Button>
-            </form>
-
-            <p className="mt-6 text-center text-sm text-text-muted">
-              Don't have an account?{' '}
-              <Link to={`/register${claimId ? `?claimId=${claimId}` : ''}`} className="text-primary font-medium hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </div>
+          <p className="mt-6 text-center text-xs text-text-muted">
+            Accounts are created by an administrator. There is no public sign-up.
+          </p>
         </motion.div>
       </div>
     </div>

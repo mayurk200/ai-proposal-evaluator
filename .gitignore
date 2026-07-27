@@ -64,4 +64,4 @@ others
 coverage/
 .coverage
 
-documents
+documentspostgres-backup-*.tgz

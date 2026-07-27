@@ -1,228 +1,382 @@
 <p align="center">
   <h1 align="center">AgriEval</h1>
-  <p align="center">AI-Powered Agriculture Startup Proposal Evaluation Platform</p>
+  <p align="center">Evidence-based evaluation of agricultural innovation proposals</p>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React 19" />
-  <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/TailwindCSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="TailwindCSS" />
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
-  <img src="https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/FastAPI-Python_3.11+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Postgres-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="Postgres + pgvector" />
   <img src="https://img.shields.io/badge/LLM-Groq_LLaMA_3.3_70B-F55036?style=flat-square&logo=meta&logoColor=white" alt="Groq" />
-  <img src="https://img.shields.io/badge/Tests-319_passing-brightgreen?style=flat-square" alt="Tests" />
-  <img src="https://img.shields.io/badge/Coverage-92%25-brightgreen?style=flat-square" alt="Coverage" />
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/Tests-201_passing-brightgreen?style=flat-square" alt="201 tests" />
 </p>
 
 ---
 
-A production-grade platform that evaluates agriculture startup proposals using **9 specialized AI agents** powered by Groq (LLaMA 3.3 70B). Upload a PDF, PPTX, DOCX, or image — the system extracts text (with OCR for scanned documents), chunks it intelligently, and runs a multi-agent evaluation pipeline that scores the proposal across innovation, financials, risk, sustainability, and more.
+AgriEval scores agricultural startup proposals against the seven AIAIC parameters, and
+**every score it gives cites the words in the document that produced it**.
 
-## How It Works
+It is an internal evaluation console, not a public tool. Two operators sign in — an
+administrator who decides, and a desk user who processes — and the system is built to
+hold a growing archive of ideas for years, tracking not just what each proposal scored
+but who was approved, in which category, from which company, and when.
 
+## What makes it different
+
+**Every score is traceable.** A parameter score is the mean of sub-scores, and each
+sub-score carries a verbatim quote from the proposal. Those quotes are then *checked
+against the source document* — a quote the model invented is discarded, and if that
+leaves a sub-question with no evidence, it loses its score. (On real proposals this
+catches the model fabricating roughly 18% of its citations: plausible sentences,
+reconstructed from tables, that the document never actually contained.)
+
+> **9.0/10** — *Is the scale and severity of the problem evidenced with concrete data?*
+> “Claims under traditional schemes take 90–120 days” — *section: problem*
+
+**Silence is not a bad answer.** A parameter the proposal never addresses scores `null`,
+not zero, and is excluded from the weighted mean rather than counted against the
+applicant. Zero would mean "they answered, and it was terrible" — a different and far
+more damaging claim. And a parameter *we* failed to assess (a rate limit, a timeout) is
+reported separately again, as our failure, never as theirs.
+
+**Duplicate ideas are caught before they cost anything.** A new submission is compared
+against the whole archive on the *substance of the idea* — its problem and its solution,
+not its wording — so a reworded resubmission under a different company name is still
+caught. The admin sees both side by side and decides whether to evaluate. Ingestion costs
+one cheap LLM call; an evaluation costs ~35,000 tokens.
+
+**Approvals are balanced, and the system enforces it.** Approving a second idea into a
+category that already has one, or a company that has already won elsewhere, is **refused**
+— with the specific conflict shown. An evaluator can override deliberately, and the
+override is recorded against their name.
+
+**The final score is blind.** The synthesising agent never sees the company name, never
+sees the raw document, and does not do the arithmetic. It reasons over the specialists'
+findings and their quotes; the weighted score is computed in Python before it is called,
+and the model may nudge it by at most ±8 points with a stated reason.
+
+## Quick start
+
+```bash
+cp .env.example .env      # set GROQ_API_KEY — the only value you must supply
+./run.sh                  # Linux / macOS
 ```
-User uploads file → Node.js Backend → Python AI Service
-                                           │
-                    ┌──────────────────────┘
-                    ▼
-          1. Text Extraction (PDF / DOCX / PPTX / TXT / Image)
-          2. OCR for scanned pages & images (Tesseract / EasyOCR)
-          3. Table & image extraction
-          4. Section-aware strategic chunking
-          5. Executive summary generation (LLM)
-          6. 9 AI agents evaluate sequentially
-          7. Weighted final score + SWOT analysis
-                    │
-                    ▼
-          Results rendered: scores, charts, recommendations
+```powershell
+copy .env.example .env    # set GROQ_API_KEY
+.\run.ps1                 # Windows
 ```
 
-## Features
+That is the whole setup. The script checks your prerequisites, starts Postgres, creates
+the Python virtualenv, installs both npm trees, pre-warms the tokenizer and the embedding
+model, starts all three services in dependency order, seeds the two operator accounts,
+health-checks each one, and tells you where to go. Ctrl+C stops everything.
 
-- **Multi-format support** — PDF, DOCX, DOC, PPTX, PPT, TXT, PNG, JPG, JPEG, TIFF, BMP
-- **Intelligent OCR** — Detects scanned PDFs and images, applies Tesseract with EasyOCR fallback
-- **9-agent AI pipeline** — Extraction, Technical, Financial, Risk, Innovation, Feasibility, Compliance, Sustainability, Final Scoring
-- **Section-aware chunking** — Splits on headings, not arbitrary token counts
-- **SWOT analysis** — Auto-generated strengths, weaknesses, opportunities, threats
-- **Radar & bar charts** — Visual score breakdowns with Recharts
-- **JWT authentication** — Register, login, claim proposals
-<!-- - **Comparison view** — Side-by-side evaluation of multiple proposals -->
-- **Resilient fallback** — If Python service is down, Node.js runs a 4-agent fallback pipeline (will be removed soon and only python service will be used by making it fault tolerant)
+Open **http://localhost:5173** and sign in.
 
-## Tech Stack
-
-| Layer | Technology |
+| | |
 |---|---|
-| **Frontend** | React 19, Vite 8, TypeScript, TailwindCSS v4, Framer Motion |
-| **State** | Zustand, TanStack Query |
-| **Charts** | Recharts |
-| **Backend** | Node.js, Express, TypeScript |
-| **AI Service** | Python 3.11, FastAPI, Pydantic |
-| **LLM** | Groq API — LLaMA 3.3 70B Versatile |
-| **OCR** | Tesseract + EasyOCR (auto-fallback) |
-| **Document Processing** | PyMuPDF, python-docx, python-pptx |
-| **Database** | Firebase Firestore (or local JSON fallback) |
-| **Auth** | JWT + bcrypt |
-| **Testing** | pytest (Python), Vitest (Node.js) — 319 tests |
+| `./run.sh` | start everything (installs whatever is missing) |
+| `./run.sh --stop` | stop the services *and* the containers |
+| `./run.sh --clean` | stop, and **destroy** the database and stored files |
+| `./run.sh --setup` | install and prepare, but do not start |
+| `./run.sh --no-docker` | use a Postgres you are running yourself |
 
-## Quick Setup
+Windows takes the same flags as `-Stop`, `-Clean`, `-Setup`, `-NoDocker`.
+
+Cold start is a few minutes (pip, and a 130MB embedding model). **Warm start is ~10
+seconds** — dependencies are reinstalled only when `requirements.txt` or `package.json`
+actually change, and the seed is idempotent.
 
 ### Prerequisites
 
-| Requirement | Version | Check |
+| | | |
 |---|---|---|
 | Node.js | ≥ 18 | `node --version` |
-| Python | ≥ 3.10 | `python3 --version` |
-| Tesseract OCR | ≥ 4.0 | `tesseract --version` |
-| Groq API Key | — | [console.groq.com/keys](https://console.groq.com/keys) |
+| Python | ≥ 3.11 | `python3 --version` |
+| Docker | any recent | `docker info` |
+| Tesseract | optional | `tesseract --version` — without it, scanned PDFs and images are not OCR'd |
+| Groq API key | — | [console.groq.com/keys](https://console.groq.com/keys) |
 
 ```bash
-# Install Tesseract (Ubuntu/Debian)
-sudo apt update && sudo apt install -y tesseract-ocr tesseract-ocr-eng poppler-utils
+sudo apt install tesseract-ocr        # Debian/Ubuntu
+brew install tesseract                # macOS
+```
+Windows: [UB-Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki), then set
+`TESSERACT_CMD` in `.env` if it is not on PATH.
 
-# macOS
-brew install tesseract poppler
+### Configuration
+
+`.env` at the repo root is **the only file you edit**. `backend/.env` and
+`python-service/.env` are generated from it on every run — do not edit those.
+
+## How it works
+
+```
+upload ──> store original ──> extract ──> sectionise ──> metadata (1 cheap LLM call)
+                                                              │
+                                                    embed + similarity search
+                                                              │
+                                             ┌────────────────┴────────────────┐
+                                     looks like an existing idea         nothing similar
+                                             │                                 │
+                                     ADMIN sees both,                       queued
+                                     decides: evaluate / skip                  │
+                                             └────────────────┬────────────────┘
+                                                              ▼
+                              7 parameter agents (PARALLEL, section-routed, cited)
+                                                              │
+                                              debate (only on real contradictions)
+                                                              │
+                                        blind synthesis ──> score + SWOT + recommendation
+                                                              │
+                                              ADMIN approves / rejects / funds
+                                                    (guardrails apply)
 ```
 
-### 1. Python AI Service (Port 8000)
+**Extraction** reads PDFs in true reading order and detects headings from *font size*, not
+an ALL-CAPS regex. Tables come out via pdfplumber; scanned pages are deskewed, denoised and
+binarized before OCR, and OCR'd in parallel.
 
-```bash
-cd python-service
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+**Sectioning** cuts the document on its real headings and labels each block — `problem`,
+`solution`, `financial`, `team`, `compliance`, … Each agent then receives only the sections
+it is meant to judge. Contact details go to an `identity` bucket that no scoring agent ever
+sees: an applicant's email address is not evidence about their pilot design.
 
-# Configure
-cp .env.example .env
-# Edit .env → set GROQ_API_KEY=gsk_your_key_here
+**Metadata** is generated for every idea, whether or not it is ever evaluated — so an idea
+ingested today can be evaluated a year from now straight from the database, with no
+re-upload and no re-extraction.
 
-# Start
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+**None of this runs inside a request.** Uploading a document enqueues a job in Postgres,
+and a worker pool inside the AI service drains it. Upload twenty proposals, close your
+laptop, come back tomorrow: the metadata is there and the ideas are waiting to be
+evaluated. Ask for an evaluation and the call returns in ~100ms with a job id; the several
+minutes of rate-limited agent work happen server-side whether or not the browser is still
+open. A job whose worker died mid-run keeps a stale lease and is reclaimed on the next
+sweep, so a restart delays work rather than losing it.
+
+Ingest jobs outrank evaluations and the pool reserves slots for them, so a queue of
+ten-minute evaluations never delays the cheap work that turns a fresh upload into
+something an admin can make a decision about.
+
+### The seven parameters
+
+| Parameter | Weight | Reads |
+|---|---|---|
+| Problem & Relevance | 15% | problem, vision, adoption |
+| Solution & Technology Readiness | 20% | solution, pilot, compliance |
+| Pilot Design & Feasibility | 20% | pilot, financial, adoption |
+| Farmer Adoption & Inclusion | 15% | adoption, business model, problem |
+| Business Model & Scale-up | 15% | business model, financial, solution |
+| Team & Capacity | 10% | team, identity |
+| Compliance & Governance | 5% | compliance, solution |
+
+Plus a **metadata agent** (runs once at ingest, on the small model), a **debate agent**
+(runs only when the parameter scores actually contradict each other), and the **blind
+synthesis agent**.
+
+## The console
+
+Six screens, built for an archive that grows for years rather than for a demo with four
+rows in it.
+
+**Proposals** is the working surface. A dense table, sortable by name, score or date, with
+page numbers and a page size — all of it server-side, because sorting the current page in
+the browser would mean page 2 of "highest score first" is the wrong twenty rows. Search
+covers the problem statement as well as the title, so an idea is findable by what it is
+about. Every filter, sort and page lives in the URL, which makes a view a link you can send
+and means opening a proposal and pressing **Back** returns you to the list you left.
+
+Rows are selectable. *Evaluate* queues the whole selection; *Mark duplicate* rules the
+whole selection. Both report per item and name the reason anything was skipped — "6
+skipped" is not actionable, "already evaluated" is.
+
+**A proposal** leads with the verdict: score, recommendation, risk, red flags, and the
+numbers that matter. The seven parameters are one scannable row each; expanding one shows
+every sub-score with the verbatim quote behind it. Nothing was removed in getting there —
+an evaluation is around two thousand words of generated prose, and presenting it as one
+undifferentiated column meant none of it got read.
+
+**Activity** shows the work queue: what is running, what is waiting, what failed and why.
+It exists because processing moved to the server — without somewhere to look, a busy
+system and a broken one are indistinguishable.
+
+**Dashboard** is ordered by urgency: what is blocked on a human, then what the server is
+working through, then the portfolio. **Analytics** splits into approvals (the ledger),
+scoring (distribution, medians, per-category averages, the strongest ideas nobody has
+ruled on) and pipeline (the funnel, received-vs-scored, tokens, failures by stage, what the
+duplicate gate saved). **System** reports the running configuration — the actual model, the
+token budget, the similarity threshold — read from the service rather than hardcoded.
+
+## Architecture
+
+```
+React ──> Node gateway ──> Python AI service ──> Postgres (+ pgvector)
+          auth, upload,      extraction, OCR,      MinIO / local storage
+          proxy              agents, decisions     Groq
 ```
 
-Verify: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) — should show `"status": "ok"`
+The Node tier is a **pure gateway**: JWT auth, upload forwarding, and a proxy that stamps
+the caller's identity onto every request so Python can attribute a decision. It holds no
+LLM credentials and runs no AI. **When the AI service is down, you get a 503 that says so**
+— there is no fallback pipeline quietly scoring against a different rubric.
 
-### 2. Node.js Backend (Port 3001)
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, Vite, TypeScript, TailwindCSS v4, TanStack Query, Zustand, Recharts |
+| Gateway | Node.js, Express, TypeScript |
+| AI service | Python 3.11+, FastAPI, Pydantic |
+| Database | PostgreSQL 16 + **pgvector** (HNSW index for similarity) |
+| Storage | MinIO / S3 / local filesystem |
+| LLM | Groq — LLaMA 3.3 70B (judgment), LLaMA 3.1 8B (metadata) |
+| Embeddings | fastembed / BAAI bge-small — local, CPU, no API cost |
+| OCR | Tesseract → EasyOCR fallback, with OpenCV preprocessing |
+| Documents | PyMuPDF, pdfplumber, python-docx, python-pptx |
+| Auth | JWT + bcrypt, two roles |
 
-```bash
-cd backend
-npm install
+### Roles
 
-# Configure
-cp .env.example .env
-# Edit .env → set GROQ_API_KEY and JWT_SECRET
+| | |
+|---|---|
+| **ADMIN** | Decides: resolves the duplicate gate, approves/rejects, marks funding, manages users |
+| **DESK2** | Uploads, processes, retries, reads everything — but cannot decide |
 
-# Start
-npm run dev
-```
+There is no public sign-up. Accounts are seeded, and only an admin can create more.
 
-### 3. React Frontend (Port 5173)
+### The database
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Nine tables. Two carry most of the weight:
 
-Open [http://localhost:5173](http://localhost:5173) → Register → Upload a proposal → Click **Evaluate**.
+- **`companies`** — interned on a *normalized* name, so `Acme Agri Pvt. Ltd.`, `ACME AGRI`
+  and `Acme Agri Private Limited` are **one** company. Without this, the same firm submits
+  under three spellings and wins three slots.
+- **`decisions`** — an append-only ledger. The category and company are *frozen onto the
+  row at decision time*: if an idea is recategorised next year, last March's approval must
+  not silently move to a different category.
 
-### Environment Variables
+- **`jobs`** — the work queue. Not a library, a table: workers claim rows with
+  `FOR UPDATE SKIP LOCKED` and heartbeat while they work, which is what makes processing
+  survive a closed laptop *and* a restarted server. A queue held in a process dies with it.
 
-**Backend** (`backend/.env`)
-```env
-JWT_SECRET=your-secret-key-min-10-chars
-GROQ_API_KEY=gsk_your_groq_api_key
-PYTHON_SERVICE_URL=http://localhost:8000
-PORT=3001
-```
+Plus `users`, `proposals` (with a `vector(384)` column), `categories` (**minted on first
+sight — not predefined**), `evaluations`, `similarity_matches`, and `audit_log`.
 
-**Python Service** (`python-service/.env`)
-```env
-GROQ_API_KEY=gsk_your_groq_api_key
-LLM_MODEL=llama-3.3-70b-versatile
-```
+## Rate limits — read this
 
-**Frontend** (`frontend/.env`)
-```env
-VITE_API_URL=http://localhost:3001/api
-```
+Groq meters `input + max_tokens` against a **rolling per-minute budget**, and this is the
+single biggest lever on how fast the system runs.
 
-## Running Tests
+| model | free-tier TPM | free-tier daily |
+|---|---|---|
+| `llama-3.3-70b-versatile` (agents) | 12,000 | ~100,000 |
+| `llama-3.1-8b-instant` (metadata) | 6,000 | — |
 
-```bash
-# Python service — 271 tests, 92% coverage
-cd python-service
-source venv/bin/activate
-pytest tests/ --cov=app --cov-report=term-missing
+An evaluation costs **~35,000 tokens** and, on the free tier, takes **about 4 minutes** —
+almost all of it *waiting on the token budget*, not on inference. That also means roughly
+**three evaluations per day** before the daily cap stops you.
 
-# Node.js backend — 49 tests
-cd backend
-npm test
-```
+A TPM-aware rate limiter handles the pacing (rolling window, reserve-then-reconcile,
+oversized requests rejected up front rather than retried into a wall), so you will not see
+413s or 429 storms. But it cannot conjure budget that is not there.
 
-## Supported File Formats
+> **Raise your Groq tier and raise `LLM_TPM` / `LLM_TPM_FAST` in `.env`.** No code changes.
+> It is the highest-leverage change available.
+
+## Supported formats
 
 | Format | Extension | Processing |
 |---|---|---|
-| PDF | `.pdf` | PyMuPDF text extraction + OCR for scanned pages |
-| Word | `.docx`, `.doc` | python-docx with heading/table detection |
-| PowerPoint | `.pptx`, `.ppt` | python-pptx with slide-by-slide extraction |
-| Plain Text | `.txt` | Direct read |
-| Images | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp` | Full OCR via Tesseract/EasyOCR |
+| PDF | `.pdf` | Layout-aware extraction, font-size heading detection, pdfplumber tables, OCR for scanned pages |
+| Word | `.docx`, `.doc` | python-docx, using Word's own heading styles |
+| PowerPoint | `.pptx`, `.ppt` | python-pptx, slide titles as headings |
+| Text | `.txt` | Direct |
+| Images | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp` | Full OCR, with deskew/denoise/binarize |
 
-## AI Agents*
+Up to 50 MB per file, 25 files per batch upload.
 
-| # | Agent | What It Evaluates |
+## API
+
+All application routes sit behind the gateway at `/api`, authenticated with a Bearer token.
+
+| Method | Endpoint | |
 |---|---|---|
-| 1 | **Extraction** | Structured data: team, funding, timeline, market |
-| 2 | **Technical** | Architecture, tech stack, scalability |
-| 3 | **Financial** | Revenue model, unit economics, ROI |
-| 4 | **Risk** | 9-dimensional risk assessment |
-| 5 | **Innovation** | Novelty, IP potential, disruption score |
-| 6 | **Feasibility** | Team capability, timeline realism, market fit |
-| 7 | **Compliance** | Governance, data privacy, regulatory readiness |
-| 8 | **Sustainability** | Environmental, social, economic sustainability |
-| 9 | **Final Scoring** | Cross-agent synthesis, weighted score, SWOT |
+| `POST` | `/api/auth/login` | The only unauthenticated route |
+| `POST` | `/api/proposals/upload` | Upload 1–25 documents. Queues processing, returns at once |
+| `GET` | `/api/proposals` | List, filter, **sort** (`sort_by=score&sort_order=desc`, `exclude_duplicates`) |
+| `GET` | `/api/proposals/:id` | Detail, with evidence, similar ideas and company track record |
+| `GET` | `/api/proposals/:id/file` | Stream the original document |
+| `POST` | `/api/proposals/:id/evaluate` | **Queues** the agent pipeline; returns a job id |
+| `POST` | `/api/proposals/bulk/evaluate` | Queue many at once; reports which were skipped and why |
+| `POST` | `/api/proposals/:id/duplicate` | Rule an idea a duplicate, or undo it — **ADMIN** |
+| `POST` | `/api/proposals/bulk/duplicate` | The same, in bulk — **ADMIN** |
+| `POST` | `/api/proposals/:id/retry` | Retry a failed proposal |
+| `GET` | `/api/proposals/:id/similar` | The duplicate gate's matches |
+| `POST` | `/api/proposals/:id/review` | Resolve the gate — **ADMIN** |
+| `GET` | `/api/proposals/:id/conflicts` | What approving this would collide with |
+| `POST` | `/api/proposals/:id/decision` | Approve / reject — **ADMIN** |
+| `POST` | `/api/proposals/:id/funding` | Mark selected for funding — **ADMIN** |
+| `GET` | `/api/evaluations/:id/export` | PDF report, with the cited evidence |
+| `GET` | `/api/jobs`, `/api/jobs/stats` | What the server is working on |
+| `GET` | `/api/analytics/overview` | Everything the dashboard needs |
+| `GET` | `/api/analytics/{categories,companies,timeline}` | Approvals by category, company, month |
+| `GET` | `/api/analytics/{pipeline,scores,throughput,operations}` | Where ideas are stuck, how scoring came out, what it cost |
+| `GET` | `/api/system` | Live dependency status and the running configuration |
+| `POST` | `/api/batches/:id/evaluate` | Queue a whole batch |
+| `GET` | `/api/health` | Public |
 
-## API Endpoints
+Full detail, including every query parameter and the role rules:
+**[docs/API_REFERENCE.md](docs/API_REFERENCE.md)**. Interactive docs for the AI service:
+**http://localhost:8000/docs**
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/v1/health` | Python service health check |
-| `GET` | `/api/v1/supported-formats` | List supported file formats |
-| `POST` | `/api/v1/process-document` | Extract & chunk a document |
-| `POST` | `/api/v1/evaluate` | Full evaluation pipeline |
-| `POST` | `/api/proposals/evaluate-file` | Upload + evaluate (via backend) |
-| `POST` | `/api/auth/register` | Register user |
-| `POST` | `/api/auth/login` | Login user |
-| `GET` | `/api/proposals` | List proposals |
-| `GET` | `/api/proposals/:id` | Get proposal detail |
-
-## Docker
+## Tests
 
 ```bash
-docker-compose up --build
+cd python-service && ./venv/bin/python -m pytest tests/ -q     # 175
+cd backend        && npm test                                  # 26
 ```
 
-> Set `GROQ_API_KEY` in a root `.env` file or pass via environment variables.
+The Python suite pins the invariants that matter: fabricated quotes are dropped; a score
+without a citation is downgraded; unanswered is `null` and never `0`; a failed agent is
+never reported as an applicant's gap; the blind prompt contains no identity; the ±8
+adjustment band is clamped; the company-name collapsing works; the rate limiter rejects a
+request that cannot fit.
 
 ## Documentation
 
-| Document | Description |
+| | |
 |---|---|
-| [QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup with screenshots and troubleshooting |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow diagrams, scoring weights, file structure |
+| **[REPORT.md](REPORT.md)** | **The rebuild in full** — what changed, why, every bug found, all the optimisations, and what I would do next |
+| [docs/](docs/) | Older design notes. Predate the rebuild; treat REPORT.md as authoritative. |
 
-## Project Structure
+## Project structure
 
 ```
 ai-proposal-evaluator/
-├── frontend/              React + Vite + TailwindCSS v4
-├── backend/               Node.js + Express + TypeScript
-├── python-service/        FastAPI + 9 AI agents + OCR
-├── docs/                  Architecture & quickstart guides
-├── scripts/               Utility scripts
-└── docker-compose.yml     Full-stack containerization
+├── run.sh / run.ps1       one-command startup (Linux/macOS, Windows)
+├── .env.example           the only file you edit
+├── docker-compose.yml     Postgres (pgvector) + MinIO
+├── frontend/              React 19 + Vite + Tailwind
+├── backend/               Node gateway — auth, upload, proxy
+└── python-service/
+    ├── app/agents/        7 parameter agents + metadata, debate, blind scoring
+    ├── app/services/
+    │   ├── extraction/    layout-aware text, pdfplumber tables, form fields
+    │   ├── ocr/           Tesseract → EasyOCR, with OpenCV preprocessing
+    │   ├── processing/    sectioniser, ingestion, evaluation, decisions, batch
+    │   ├── embeddings/    local embeddings for the duplicate gate
+    │   ├── database/      proposals, evaluations, registry (companies/categories/decisions)
+    │   └── reporting/     PDF export
+    └── tests/
 ```
+
+## Known limits
+
+- **`/evaluate` is synchronous** and holds a connection for ~4 minutes on the free tier.
+  The evaluation row opens *before* the agents run, so a crash is recoverable — but it
+  wants a background task and a poll.
+- **Schema is created with `create_all`**, not migrations. Fine now; add Alembic before
+  altering a table that holds real funding decisions.
+- **`BackgroundTasks`, not a job queue.** A process restart mid-ingest leaves a retryable
+  row, but nothing picks it up automatically.
+- **`run.ps1` is unverified on Windows** — written and reviewed carefully, but not executed
+  on a Windows machine.

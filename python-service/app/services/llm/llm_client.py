@@ -1,26 +1,75 @@
 """
-Unified LLM client supporting Groq (primary) with abstraction for future providers.
-Handles retries, rate limiting, and JSON response parsing.
+Async LLM client for Groq.
+
+Two bugs in the previous version are fixed here, and both mattered a lot:
+
+1. It used the *synchronous* `Groq` client and called it straight from `async`
+   agent methods. Every LLM call — ten or more per evaluation, minutes in total —
+   blocked the entire FastAPI event loop. Health checks stalled, the proposals
+   list stalled, and concurrent background tasks serialised behind whichever one
+   happened to be talking to Groq. `AsyncGroq` makes the service actually
+   concurrent, which is the prerequisite for running the parameter agents in
+   parallel at all.
+
+2. `RETRYABLE_ERRORS = (Exception,)` meant *everything* was retried five times
+   with up to 60s of backoff — including a bad API key, a malformed request, or a
+   context-length overflow, none of which will ever succeed on a retry. A single
+   deterministic failure could burn minutes per agent. We now retry only what is
+   actually transient.
 """
 
+from __future__ import annotations
+
+import asyncio
 import json
 import time
 from typing import Any, Optional
 
-from groq import Groq
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from groq import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncGroq,
+    InternalServerError,
+    RateLimitError,
+)
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.config import settings
+from app.services.llm.rate_limiter import TokenBudgetExceeded, get_rate_limiter
 from app.utils.logging import get_logger
+from app.utils.tokens import count_tokens
 
 logger = get_logger(__name__)
 
-# Exceptions that should trigger retry
-RETRYABLE_ERRORS = (Exception,)
+# Transient by nature: rate limits, upstream 5xx, connection blips, timeouts.
+# Everything else (401 bad key, 400 bad request, 413 context overflow) is
+# deterministic and fails immediately.
+RETRYABLE_ERRORS = (
+    RateLimitError,
+    InternalServerError,
+    APIConnectionError,
+    APITimeoutError,
+)
+
+
+class LLMError(RuntimeError):
+    """Raised when the LLM cannot produce a usable response."""
+
+
+# A request too big for the account's per-minute budget is a configuration problem,
+# not a transient one — surface it as an LLMError so agents fail cleanly with a
+# message that says what to change, instead of retrying into a wall.
+__all__ = ["LLMClient", "LLMError", "TokenBudgetExceeded", "get_llm_client", "reset_llm_client"]
 
 
 class LLMClient:
-    """Unified LLM client with retry logic and JSON response parsing."""
+    """Async Groq client with bounded concurrency and JSON-mode parsing."""
 
     def __init__(
         self,
@@ -31,25 +80,27 @@ class LLMClient:
     ):
         self.api_key = api_key or settings.GROQ_API_KEY
         self.model = model or settings.LLM_MODEL
-        self.temperature = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        self.temperature = (
+            temperature if temperature is not None else settings.LLM_TEMPERATURE
+        )
         self.max_tokens = max_tokens or settings.LLM_MAX_TOKENS
 
         if not self.api_key:
-            raise ValueError("GROQ_API_KEY is required. Set it in .env or pass it directly.")
+            raise ValueError("GROQ_API_KEY is required. Set it in .env.")
 
-        self._client = Groq(api_key=self.api_key)
+        self._client = AsyncGroq(api_key=self.api_key)
 
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
-        retry=retry_if_exception_type(RETRYABLE_ERRORS),
-        before_sleep=lambda retry_state: get_logger(__name__).warning(
-            "llm_retry",
-            attempt=retry_state.attempt_number,
-            wait=retry_state.next_action.sleep,
-        ),
-    )
-    def chat(
+        # Groq bills per tokens-per-minute. Running all seven parameter agents at
+        # once would blow the TPM ceiling and trigger a cascade of 429s that the
+        # backoff then serialises anyway — so we cap in-flight calls instead of
+        # discovering the limit the expensive way.
+        self._semaphore = asyncio.Semaphore(settings.LLM_MAX_CONCURRENCY)
+
+        # Rolling totals, surfaced per-evaluation so the cost of each optimisation
+        # is measurable rather than assumed.
+        self.total_tokens = 0
+
+    async def chat(
         self,
         system_prompt: str,
         user_content: str,
@@ -58,128 +109,163 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         json_mode: bool = True,
+        fast: bool = False,
     ) -> dict[str, Any]:
         """
-        Send a chat completion request and return parsed response.
+        One chat completion.
 
-        Args:
-            system_prompt: The system instruction.
-            user_content: The user message content.
-            model: Override model for this call.
-            temperature: Override temperature.
-            max_tokens: Override max tokens.
-            json_mode: If True, request JSON response format.
-
-        Returns:
-            Dict with keys: result (parsed JSON), tokens (int), duration_ms (int)
+        `fast=True` routes to the small model. Metadata extraction, sectioning and
+        summarisation are structurally simple next to parameter judgment, and
+        running them on the 70B model was paying a premium for no benefit — and
+        eating the TPM budget the judgment agents need.
         """
-        start_time = time.time()
-
-        use_model = model or self.model
+        use_model = model or (settings.LLM_MODEL_FAST if fast else self.model)
         use_temp = temperature if temperature is not None else self.temperature
         use_max_tokens = max_tokens or self.max_tokens
 
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_content,
-            },
-        ]
+        # Groq charges the RESERVATION — input plus the max_tokens you allow yourself —
+        # against the per-minute budget, not what the response actually costs. So the
+        # reservation is what we must budget for.
+        reserved = (
+            count_tokens(system_prompt) + count_tokens(user_content) + use_max_tokens
+        )
+        tpm = settings.LLM_TPM_FAST if fast else settings.LLM_TPM
+        limiter = get_rate_limiter(use_model, tpm)
+
+        await limiter.acquire(reserved)
+
+        async with self._semaphore:
+            response = await self._chat_with_retry(
+                system_prompt=system_prompt,
+                user_content=user_content,
+                model=use_model,
+                temperature=use_temp,
+                max_tokens=use_max_tokens,
+                json_mode=json_mode,
+            )
+
+        # Hand back what we reserved but did not spend, so the next caller is not
+        # throttled against tokens nobody used.
+        await limiter.reconcile(reserved, response["tokens"])
+        return response
+
+    @retry(
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(RETRYABLE_ERRORS),
+        reraise=True,
+        before_sleep=lambda state: get_logger(__name__).warning(
+            "llm_retry",
+            attempt=state.attempt_number,
+            wait=round(state.next_action.sleep, 1),
+            error=str(state.outcome.exception())[:120],
+        ),
+    )
+    async def _chat_with_retry(
+        self,
+        *,
+        system_prompt: str,
+        user_content: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> dict[str, Any]:
+        start = time.time()
 
         kwargs: dict[str, Any] = {
-            "messages": messages,
-            "model": use_model,
-            "temperature": use_temp,
-            "max_tokens": use_max_tokens,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
-
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
         try:
-            completion = self._client.chat.completions.create(**kwargs)
-        except Exception as e:
-            error_msg = str(e)
-            # Check for rate limit errors specifically
-            if "rate_limit" in error_msg.lower() or "429" in error_msg:
-                logger.warning("rate_limited", model=use_model, error=error_msg)
-                raise  # Will be retried by tenacity
-            logger.error("llm_error", model=use_model, error=error_msg)
+            completion = await self._client.chat.completions.create(**kwargs)
+        except RETRYABLE_ERRORS as exc:
+            logger.warning("llm_transient_error", model=model, error=str(exc)[:200])
             raise
+        except APIStatusError as exc:
+            # Deterministic: a retry would fail identically. Fail now and say why.
+            logger.error(
+                "llm_permanent_error",
+                model=model,
+                status=exc.status_code,
+                error=str(exc)[:200],
+            )
+            raise LLMError(f"LLM rejected the request ({exc.status_code}): {exc}") from exc
 
-        duration_ms = int((time.time() - start_time) * 1000)
-        response_text = completion.choices[0].message.content or "{}"
+        duration_ms = int((time.time() - start) * 1000)
+        text = completion.choices[0].message.content or "{}"
         tokens = completion.usage.total_tokens if completion.usage else 0
+        self.total_tokens += tokens
 
-        # Parse JSON response
-        result = self._parse_json_response(response_text)
-
-        logger.info(
-            "llm_call",
-            model=use_model,
-            tokens=tokens,
-            duration_ms=duration_ms,
-        )
+        logger.info("llm_call", model=model, tokens=tokens, duration_ms=duration_ms)
 
         return {
-            "result": result,
+            "result": self._parse_json(text) if json_mode else {"text": text},
             "tokens": tokens,
             "duration_ms": duration_ms,
-            "raw_text": response_text,
+            "model": model,
+            "raw_text": text,
         }
 
-    def _parse_json_response(self, text: str) -> dict[str, Any]:
-        """Parse JSON from LLM response, handling common formatting issues."""
+    def _parse_json(self, text: str) -> dict[str, Any]:
+        """
+        Parse a JSON body out of an LLM response.
+
+        Even in JSON mode a model will occasionally wrap the object in a fence or
+        prepend a sentence, so we strip fences and then, as a last resort, scan
+        for the first balanced brace group.
+        """
         text = text.strip()
 
-        # Remove markdown code block wrappers if present
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
+            if text.rstrip().endswith("```"):
+                text = text.rstrip()[:-3]
+            text = text.strip()
 
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            # Try to extract JSON from the text
-            json_match = None
-            brace_depth = 0
-            start_idx = None
-            for i, ch in enumerate(text):
-                if ch == "{":
-                    if brace_depth == 0:
-                        start_idx = i
-                    brace_depth += 1
-                elif ch == "}":
-                    brace_depth -= 1
-                    if brace_depth == 0 and start_idx is not None:
-                        json_match = text[start_idx : i + 1]
+            pass
+
+        depth = 0
+        start_idx: Optional[int] = None
+        for i, ch in enumerate(text):
+            if ch == "{":
+                if depth == 0:
+                    start_idx = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and start_idx is not None:
+                    try:
+                        return json.loads(text[start_idx : i + 1])
+                    except json.JSONDecodeError:
                         break
 
-            if json_match:
-                try:
-                    return json.loads(json_match)
-                except json.JSONDecodeError:
-                    pass
-
-            logger.warning("json_parse_failed", raw_text=text[:200])
-            return {"error": "Failed to parse LLM response as JSON", "raw": text}
+        logger.warning("json_parse_failed", raw=text[:200])
+        raise LLMError("The model did not return parseable JSON.")
 
 
-# Module-level singleton
-_llm_client: Optional[LLMClient] = None
+_client: Optional[LLMClient] = None
 
 
 def get_llm_client() -> LLMClient:
-    """Get or create the module-level LLM client singleton."""
-    global _llm_client
-    if _llm_client is None:
-        _llm_client = LLMClient()
-    return _llm_client
+    global _client
+    if _client is None:
+        _client = LLMClient()
+    return _client
+
+
+def reset_llm_client() -> None:
+    """Used by tests."""
+    global _client
+    _client = None

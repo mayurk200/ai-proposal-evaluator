@@ -1,248 +1,174 @@
 """
-Agent orchestrator — coordinates the AIAIC evaluation pipeline.
+Evaluation orchestrator.
 
 Pipeline:
-1. ExtractionAgent — Structured data extraction from proposal
-2. 7 Parameter Agents — Sequential evaluation of AIAIC parameters
-3. DebateAgent — Cross-agent conflict detection and resolution
-4. FinalScoringAgent — Weighted synthesis with debate adjustments
+    route sections -> 7 parameter agents (PARALLEL) -> debate (conditional) -> blind synthesis
+
+The seven parameter agents are fully independent — none reads another's output — yet the
+previous orchestrator ran them strictly one after another, because the LLM client was
+synchronous and would have blocked the event loop anyway. With the async client in place
+they run concurrently under a semaphore, which is the difference between an evaluation
+taking ~7 sequential LLM calls of wall time and ~3.
+
+Concurrency is bounded rather than unlimited: Groq bills per tokens-per-minute, and firing
+all seven at once would trip the TPM ceiling and produce a cascade of 429s that the backoff
+would then serialise anyway — slower than just pacing them in the first place.
+
+The extraction agent is gone. It existed to pull ~30 structured fields out of the document
+with a full LLM call, and its output was merged into the regex form fields to enrich the
+context every later agent saw. That work is now done by the metadata agent at ingestion
+(once, on the cheap model, persisted) and by section routing, so paying for it again on
+every evaluation bought nothing.
 """
 
-import time
-from typing import Any, Optional
+from __future__ import annotations
 
-from app.models.schemas import (
-    AgentResult,
-    DocumentChunk,
-    DocumentMetadata,
-    EvaluationResponse,
-    ExtractedFormFields,
-    FinalEvaluation,
-    ProcessedDocument,
-)
+import asyncio
+import time
+from typing import Optional
+
+from app.agents.debate_agent import debate_agent
+from app.agents.parameters import PARAMETER_AGENTS
+from app.agents.scoring_agent import scoring_agent
+from app.config import settings
 from app.models.enums import ProcessingStatus
-from app.agents.extraction.extraction_agent import ExtractionAgent
-from app.agents.problem_relevance.problem_relevance_agent import ProblemRelevanceAgent
-from app.agents.solution_readiness.solution_readiness_agent import SolutionReadinessAgent
-from app.agents.pilot_design.pilot_design_agent import PilotDesignAgent
-from app.agents.farmer_adoption.farmer_adoption_agent import FarmerAdoptionAgent
-from app.agents.scaleup.scaleup_agent import ScaleUpAgent
-from app.agents.team_capacity.team_capacity_agent import TeamCapacityAgent
-from app.agents.compliance.compliance_agent import ComplianceAgent
-from app.agents.debate.debate_agent import DebateAgent
-from app.agents.scoring.scoring_agent import ScoringAgent
+from app.models.schemas import AgentResult, DebateResult, EvaluationResponse
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class AgentOrchestrator:
-    """
-    Orchestrates the multi-agent AIAIC evaluation pipeline.
+    """Runs the evaluation pipeline over a sectioned document."""
 
-    Coordinates extraction, 7 parameter evaluations, debate analysis,
-    and final scoring in a sequential pipeline with form field awareness.
-    """
-
-    def __init__(self):
-        # Extraction
-        self.extraction_agent = ExtractionAgent()
-
-        # Parameter agents (ordered by evaluation parameter number)
-        self.parameter_agents = [
-            ProblemRelevanceAgent(),
-            SolutionReadinessAgent(),
-            PilotDesignAgent(),
-            FarmerAdoptionAgent(),
-            ScaleUpAgent(),
-            TeamCapacityAgent(),
-            ComplianceAgent(),
-        ]
-
-        # Meta-agents
-        self.debate_agent = DebateAgent()
-        self.scoring_agent = ScoringAgent()
+    def __init__(self) -> None:
+        self.agents = [agent_cls() for agent_cls in PARAMETER_AGENTS]
 
     async def evaluate(
         self,
-        document: ProcessedDocument,
+        *,
+        sections: dict[str, str],
+        proposal_id: Optional[str] = None,
+        document_metadata=None,
     ) -> EvaluationResponse:
         """
-        Run the full AIAIC evaluation pipeline on a processed document.
+        Score a proposal from its sections.
 
-        Args:
-            document: Processed document with text, chunks, and form fields.
-
-        Returns:
-            EvaluationResponse with all agent results and final evaluation.
+        `sections` is {section_key: text} — the output of the sectioniser, loaded either
+        from the freshly-processed document or straight from the database. Loading from
+        the database is what lets an admin evaluate a stored idea later with no re-upload
+        and no re-extraction.
         """
-        start_time = time.time()
+        start = time.time()
 
+        available = sorted(k for k, v in sections.items() if v and v.strip())
         logger.info(
             "evaluation_started",
-            filename=document.metadata.filename,
-            chunks=len(document.chunks),
-            form_fields=document.form_fields.qa_pairs_count if document.form_fields else 0,
+            proposal_id=proposal_id,
+            sections=available,
+            agents=len(self.agents),
         )
 
-        # Prepare content for agents
-        content = self._prepare_content(document)
-        metadata_dict = self._metadata_to_dict(document.metadata)
-        form_fields_dict = (
-            document.form_fields.model_dump() if document.form_fields else None
+        # --- 1. Parameter agents, in parallel -----------------------------
+        semaphore = asyncio.Semaphore(settings.LLM_MAX_CONCURRENCY)
+
+        async def run(agent) -> AgentResult:
+            async with semaphore:
+                return await agent.analyze(sections)
+
+        # `analyze` already converts its own failures into a failed AgentResult, so a
+        # raised exception here would be a bug in our code rather than an agent failure.
+        # return_exceptions keeps one such bug from destroying the other six results.
+        settled = await asyncio.gather(
+            *(run(agent) for agent in self.agents), return_exceptions=True
         )
 
-        agent_results: dict[str, AgentResult] = {}
-
-        # =================================================================
-        # Step 1: Extraction Agent
-        # =================================================================
-        logger.info("running_agent", agent="ExtractionAgent", step="1/10")
-        extraction_result = await self.extraction_agent.analyze(
-            content=content,
-            metadata=metadata_dict,
-            form_fields=form_fields_dict,
-            chunks=document.chunks,
-        )
-        agent_results["ExtractionAgent"] = extraction_result
-
-        # Merge extraction agent's structured data with form fields
-        extracted_data = extraction_result.raw_output.get("extracted_data", {})
-        if form_fields_dict and extracted_data:
-            # Enrich form fields with LLM-extracted data
-            enriched_fields = {**(form_fields_dict.get("fields", {})), **extracted_data}
-            form_fields_dict = {**form_fields_dict, "fields": enriched_fields}
-
-        # =================================================================
-        # Step 2: Parameter Agents (sequential)
-        # =================================================================
-        parameter_results: dict[str, AgentResult] = {}
-
-        for i, agent in enumerate(self.parameter_agents, 2):
-            logger.info("running_agent", agent=agent.name, step=f"{i}/10")
-            try:
-                result = await agent.analyze(
-                    content=content,
-                    metadata=metadata_dict,
-                    form_fields=form_fields_dict,
-                    chunks=document.chunks,
+        results: dict[str, AgentResult] = {}
+        for agent, outcome in zip(self.agents, settled):
+            if isinstance(outcome, BaseException):
+                logger.error(
+                    "agent_crashed", agent=agent.name, error=str(outcome)
                 )
-                parameter_results[agent.name] = result
-                agent_results[agent.name] = result
-
-                logger.info(
-                    "agent_result",
-                    agent=agent.name,
-                    score=result.score,
-                    sub_questions=len(result.sub_questions),
-                    status=result.status,
-                )
-
-            except Exception as e:
-                logger.error("agent_error", agent=agent.name, error=str(e))
-                error_result = AgentResult(
+                results[agent.parameter_key] = AgentResult(
                     agent_name=agent.name,
-                    score=0.0,
-                    analysis=f"Agent failed: {str(e)}",
+                    parameter_key=agent.parameter_key,
+                    score=None,
                     status="failed",
-                    error=str(e),
+                    error=str(outcome),
+                    analysis=f"This parameter could not be evaluated: {outcome}",
                 )
-                parameter_results[agent.name] = error_result
-                agent_results[agent.name] = error_result
+            else:
+                results[agent.parameter_key] = outcome
 
-        # =================================================================
-        # Step 3: Debate Agent
-        # =================================================================
-        debate_result = None
-        if self.debate_agent.should_trigger(parameter_results):
-            logger.info("running_agent", agent="DebateAgent", step="9/10")
-            try:
-                debate_result = await self.debate_agent.analyze(
-                    agent_results=parameter_results,
-                    proposal_summary=document.summary,
-                )
-                agent_results["DebateAgent"] = debate_result
-                logger.info(
-                    "debate_result",
-                    conflicts=len(debate_result.raw_output.get("conflicts_found", [])),
-                    adjustments=len(debate_result.raw_output.get("debates", [])),
-                )
-            except Exception as e:
-                logger.error("debate_error", error=str(e))
-        else:
-            logger.info("debate_skipped", reason="trigger conditions not met")
+        total_tokens = sum(r.tokens_used for r in results.values())
 
-        # =================================================================
-        # Step 4: Final Scoring
-        # =================================================================
-        logger.info("running_agent", agent="FinalScoringAgent", step="10/10")
-        try:
-            final_evaluation = await self.scoring_agent.synthesize(
-                agent_results=parameter_results,
-                debate_result=debate_result,
-                proposal_summary=document.summary,
-            )
-        except Exception as e:
-            logger.error("scoring_error", error=str(e))
-            final_evaluation = FinalEvaluation(
-                overall_score=0.0,
-                summary=f"Scoring failed: {str(e)}",
-                recommendation="Not Recommended",
-            )
+        # --- 2. Debate, only if the assessment contradicts itself ----------
+        debate_result, debate_tokens = await debate_agent.analyze(results)
+        total_tokens += debate_tokens
 
-        processing_time = time.time() - start_time
+        if debate_result and debate_result.adjusted_scores:
+            self._apply_debate_adjustments(results, debate_result)
+
+        # --- 3. Blind synthesis --------------------------------------------
+        evaluation, scoring_tokens = await scoring_agent.synthesize(
+            agent_results=results, debate_result=debate_result
+        )
+        total_tokens += scoring_tokens
+
+        elapsed = round(time.time() - start, 2)
 
         logger.info(
             "evaluation_completed",
-            overall_score=final_evaluation.overall_score,
-            recommendation=final_evaluation.recommendation,
-            agents_completed=sum(1 for r in agent_results.values() if r.status == "success"),
-            processing_seconds=round(processing_time, 2),
+            proposal_id=proposal_id,
+            score=evaluation.overall_score,
+            recommendation=evaluation.recommendation,
+            coverage=evaluation.evidence_coverage,
+            starved=[k for k, r in results.items() if r.starved],
+            failed=[k for k, r in results.items() if r.status == "failed"],
+            tokens=total_tokens,
+            seconds=elapsed,
         )
 
         return EvaluationResponse(
             status="success",
             processing_status=ProcessingStatus.COMPLETED,
-            document_metadata=document.metadata,
-            evaluation=final_evaluation,
-            agent_results=agent_results,
-            processing_time_seconds=round(processing_time, 2),
+            evaluation=evaluation,
+            agent_results={r.agent_name: r for r in results.values()},
+            processing_time_seconds=elapsed,
+            proposal_id=proposal_id,
+            document_metadata=document_metadata,
+            total_tokens=total_tokens,
+            model_used=settings.LLM_MODEL,
         )
 
-    def _prepare_content(self, document: ProcessedDocument) -> str:
-        """Prepare the content string from document chunks and summary."""
-        parts = []
+    def _apply_debate_adjustments(
+        self, results: dict[str, AgentResult], debate: DebateResult
+    ) -> None:
+        """
+        Apply the debate's score changes to the parameter results.
 
-        # Add executive summary if available
-        if document.summary:
-            parts.append(f"=== EXECUTIVE SUMMARY ===\n{document.summary}\n")
+        The adjustment is recorded on the agent result itself so it flows into the final
+        breakdown and the report — an evaluator reading the score can see that it was
+        moved, by how much, and (via the debate summary) why. Silently rewriting a
+        specialist's score with no trace would be worse than not adjusting at all.
+        """
+        for key, new_score in debate.adjusted_scores.items():
+            result = results.get(key)
+            if result is None or result.score is None:
+                continue
 
-        # Add chunk content
-        if document.chunks:
-            parts.append("=== DOCUMENT CONTENT ===\n")
-            for chunk in document.chunks:
-                header = f"[Section: {chunk.section_title}]"
-                if chunk.page_numbers:
-                    header += f" [Pages: {', '.join(str(p) for p in chunk.page_numbers)}]"
-                parts.append(f"{header}\n{chunk.text}\n")
-        elif document.full_text:
-            parts.append(f"=== FULL TEXT ===\n{document.full_text[:15000]}\n")
+            old = result.score
+            if abs(old - new_score) < 0.5:
+                continue
 
-        return "\n".join(parts)
-
-    def _metadata_to_dict(self, metadata: DocumentMetadata) -> dict:
-        """Convert metadata to dict for agent consumption."""
-        return {
-            "filename": metadata.filename,
-            "format": metadata.format,
-            "total_pages": metadata.total_pages,
-            "total_words": metadata.total_words,
-            "total_chunks": metadata.total_chunks,
-            "total_tables": metadata.total_tables,
-            "total_images": metadata.total_images,
-            "detected_sections": metadata.detected_sections,
-        }
+            result.score = new_score
+            result.raw_output = {
+                **result.raw_output,
+                "debate_adjustment": {"from": old, "to": new_score},
+            }
+            logger.info(
+                "debate_adjusted_score", parameter=key, before=old, after=new_score
+            )
 
 
-# Singleton for use in routes
 orchestrator = AgentOrchestrator()

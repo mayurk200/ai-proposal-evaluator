@@ -1,27 +1,42 @@
+# Infrastructure only. The three application services are run by ./run.sh (Linux/macOS)
+# or .\run.ps1 (Windows), which read the same root .env this file does.
+#
+# Host ports come from .env so a machine that already has something on 5432 can move it
+# in one place rather than in four.
 services:
-  # MinIO (S3-compatible storage)
+  # MinIO (S3-compatible object storage). Only started when STORAGE_PROVIDER=minio.
   minio:
     image: minio/minio:latest
     container_name: agrieval-minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
     networks:
       - agrieval-network
 
-  # PostgreSQL Database
+  # PostgreSQL.
+  #
+  # pgvector/pgvector ships the `vector` extension preinstalled. The stock postgres
+  # image does NOT, and `CREATE EXTENSION vector` fails against it — which would take
+  # out the duplicate-idea gate, since the similarity search is an HNSW index over a
+  # vector column. Do not swap this image for postgres:*-alpine.
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     container_name: agrieval-postgres
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-agrieval}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-agrieval123}
@@ -32,7 +47,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agrieval} -d ${POSTGRES_DB:-agrieval}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     restart: unless-stopped
     networks:
       - agrieval-network

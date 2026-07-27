@@ -84,10 +84,19 @@ class ExtractedFormFields(BaseModel):
 
 
 class ProcessedDocument(BaseModel):
-    """Complete result of document processing."""
+    """
+    Complete result of document processing.
+
+    `sections` replaces the old `chunks` list. Chunking cut the document into
+    fixed-size overlapping windows and left every agent to keyword-scan all of
+    them; sections cut it on its actual headings and label each part, so an agent
+    can be handed exactly the parts it is meant to judge. Shape:
+
+        {section_key: {label, char_count, block_count, headings[], text}}
+    """
     metadata: DocumentMetadata
     full_text: str = ""
-    chunks: list[DocumentChunk] = Field(default_factory=list)
+    sections: dict[str, dict] = Field(default_factory=dict)
     images: list[ExtractedImage] = Field(default_factory=list)
     tables: list[ExtractedTable] = Field(default_factory=list)
     summary: str = ""
@@ -99,45 +108,100 @@ class ProcessedDocument(BaseModel):
 # =============================================================================
 
 
+class Citation(BaseModel):
+    """
+    A verbatim quote from the proposal, with where it came from.
+
+    Requirement (b): "as the application evaluates and gives a score to each point,
+    it should cite on what basis it has given those scores." A score with no
+    citation is an assertion, not an evaluation — and an evaluator cannot audit it,
+    challenge it, or defend it to the applicant.
+    """
+    quote: str                      # Verbatim text from the document. Not paraphrased.
+    section: str = ""               # Which section it was found in.
+    page: Optional[int] = None      # Page number, when known.
+
+
 class SubQuestionResult(BaseModel):
-    """Result for a single sub-question within a parameter evaluation."""
+    """
+    One sub-question within a parameter.
+
+    `score` is deliberately Optional. When the proposal simply does not address a
+    question, the honest answer is "no evidence", NOT zero — zero means "they
+    addressed it and it was terrible", which is a different and much more damaging
+    claim. The old schema could not express the difference, so a silent document
+    scored the same as a bad one. `evidence_found=False` carries that distinction
+    all the way to the final score, which skips these rather than averaging them in.
+    """
     question_id: str = ""
     question: str = ""
-    score: float = 0.0  # 0-10 scale
-    evidence: str = ""  # Text from proposal supporting score
-    justification: str = ""  # Why this score was given
-    mapped_fields_found: list[str] = Field(default_factory=list)
+    score: Optional[float] = None           # 0-10, or None when unevidenced.
+    evidence_found: bool = False
+    citations: list[Citation] = Field(default_factory=list)
+    justification: str = ""                 # Why this score, given those citations.
 
 
 class AgentResult(BaseModel):
     """Result from a single evaluation agent."""
     agent_name: str
-    score: float = 0.0
+    parameter_key: str = ""
+    score: Optional[float] = None           # 0-100, or None when nothing was evidenced.
     confidence: float = 0.0
     analysis: str = ""
     key_findings: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
     sub_questions: list[SubQuestionResult] = Field(default_factory=list)
+
+    # Which sections this agent was actually shown. Makes the routing auditable:
+    # if an agent scored badly, we can see whether it was ever given the relevant
+    # part of the document.
+    sections_seen: list[str] = Field(default_factory=list)
+    # True when the router had nothing to give it — the document contains no
+    # section covering this parameter at all.
+    starved: bool = False
+
     raw_output: dict[str, Any] = Field(default_factory=dict)
     tokens_used: int = 0
     duration_ms: int = 0
-    status: str = "success"
+    status: str = "success"                 # success | failed
     error: Optional[str] = None
+
+    @property
+    def evidenced_count(self) -> int:
+        return sum(1 for sq in self.sub_questions if sq.evidence_found)
 
 
 class ParameterResult(BaseModel):
-    """Parameter-level result containing sub-question results."""
+    """Parameter-level result, as surfaced in the final report."""
     parameter_name: str
-    parameter_score: float = 0.0  # 0-100 (avg of sub_questions * 10)
+    parameter_key: str = ""
+    parameter_score: Optional[float] = None     # 0-100
+    weight: float = 0.0
+
+    # Why there is no score, when there is no score. `parameter_score is None` has two
+    # completely different causes and they must never be conflated:
+    #
+    #   "unevidenced" — the proposal genuinely does not address this. A finding about
+    #                   the APPLICANT, and a fair one.
+    #   "failed"      — our agent errored (rate limit, timeout, bad response). A fact
+    #                   about US. Reporting it as "the proposal did not address this"
+    #                   would blame the applicant for our outage.
+    status: str = "scored"                      # scored | unevidenced | failed
+    error: Optional[str] = None
     sub_questions: list[SubQuestionResult] = Field(default_factory=list)
     key_findings: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    sections_seen: list[str] = Field(default_factory=list)
+    # How much of this parameter the document actually addressed, 0..1.
+    evidence_coverage: float = 0.0
 
 
 class DebateResult(BaseModel):
     """Result from the debate agent's cross-agent analysis."""
+    triggered: bool = False
+    trigger_reasons: list[str] = Field(default_factory=list)
     conflicts: list[dict] = Field(default_factory=list)
     debates: list[dict] = Field(default_factory=list)
     adjusted_scores: dict[str, float] = Field(default_factory=dict)
@@ -146,49 +210,75 @@ class DebateResult(BaseModel):
 
 
 class SWOTAnalysis(BaseModel):
-    """SWOT analysis structure."""
+    """
+    SWOT analysis.
+
+    Requirement (c): "as it generates the SWOT summary it should be continued" —
+    the old SWOT was four lists of disconnected fragments that stopped mid-thought.
+    `narrative` is the continuous prose version: a single readable assessment that
+    joins the four quadrants into one argument, which is what an evaluator actually
+    reads. The lists remain for the dashboard's quadrant view.
+    """
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     opportunities: list[str] = Field(default_factory=list)
     threats: list[str] = Field(default_factory=list)
+    narrative: str = ""
 
 
 class FinalEvaluation(BaseModel):
-    """Final evaluation result combining all agent analyses."""
+    """
+    The final verdict.
+
+    The nine legacy score fields (innovation/market/agriculture/financial/
+    scalability/sustainability/risk/technical/feasibility) are gone. They were a
+    lossy projection of the seven real AIAIC parameters, produced only so the old
+    Node fallback and the frontend could keep reading their original field names.
+    Nothing computed them any more; they were being written as zeros and displayed
+    as if meaningful.
+    """
     overall_score: float = 0.0
 
-    # New parameter-aligned scores (0-100)
-    problem_relevance_score: float = 0.0
-    solution_readiness_score: float = 0.0
-    pilot_design_score: float = 0.0
-    farmer_adoption_score: float = 0.0
-    scaleup_score: float = 0.0
-    team_capacity_score: float = 0.0
-    compliance_score: float = 0.0
-
-    # Legacy scores (kept for backward compatibility)
-    innovation_score: float = 0.0
-    market_score: float = 0.0
-    agriculture_score: float = 0.0
-    financial_score: float = 0.0
-    scalability_score: float = 0.0
-    sustainability_score: float = 0.0
-    risk_score: float = 0.0
-    technical_score: float = 0.0
-    feasibility_score: float = 0.0
+    # The seven AIAIC parameters (0-100). None where the document said nothing at all.
+    problem_relevance_score: Optional[float] = None
+    solution_readiness_score: Optional[float] = None
+    pilot_design_score: Optional[float] = None
+    farmer_adoption_score: Optional[float] = None
+    scaleup_score: Optional[float] = None
+    team_capacity_score: Optional[float] = None
+    compliance_score: Optional[float] = None
 
     recommendation: str = RecommendationLevel.NOT_RECOMMENDED.value
     summary: str = ""
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     swot_analysis: SWOTAnalysis = Field(default_factory=SWOTAnalysis)
-    key_points: list[str] = Field(default_factory=list)
-    invalid_claims: list[str] = Field(default_factory=list)
-    investment_readiness: str = ""
     key_action_items: list[str] = Field(default_factory=list)
     risk_level: str = RiskLevel.MEDIUM.value
+    investment_readiness: str = ""
 
-    # New structured breakdown
+    # Claims the document makes that the evidence does not support.
+    unsupported_claims: list[str] = Field(default_factory=list)
+
+    # What the document never addressed. Surfaced explicitly rather than buried as
+    # a low score, so an evaluator can tell "they didn't answer" apart from
+    # "they answered badly".
+    unevidenced_parameters: list[str] = Field(default_factory=list)
+
+    # Parameters WE failed to assess — a rate limit, a timeout, a bad response. These
+    # are emphatically NOT the applicant's fault and must never be presented as though
+    # the proposal was silent on them. An evaluation carrying any of these is partial
+    # and should be retried before anyone is judged on it.
+    failed_parameters: list[str] = Field(default_factory=list)
+
+    @property
+    def is_partial(self) -> bool:
+        """True when at least one parameter could not be assessed by us."""
+        return bool(self.failed_parameters)
+
+    # Share of all sub-questions that the document actually answered, 0..1.
+    evidence_coverage: float = 0.0
+
     parameter_breakdown: dict[str, ParameterResult] = Field(default_factory=dict)
     debate_summary: Optional[DebateResult] = None
 
@@ -206,15 +296,22 @@ class ProcessDocumentResponse(BaseModel):
 
 
 class EvaluationResponse(BaseModel):
-    """Response for full evaluation endpoint."""
+    """Response for the full evaluation endpoint."""
     status: str = "success"
     processing_status: ProcessingStatus = ProcessingStatus.COMPLETED
-    document_metadata: DocumentMetadata
     evaluation: FinalEvaluation
     agent_results: dict[str, AgentResult] = Field(default_factory=dict)
     processing_time_seconds: float = 0.0
-    evaluation_id: Optional[str] = None  # DB record ID (set after persistence)
-    file_url: Optional[str] = None       # Storage URL (set after upload)
+
+    evaluation_id: Optional[str] = None
+    proposal_id: Optional[str] = None
+    document_metadata: Optional[DocumentMetadata] = None
+
+    # Cost/latency roll-up. Every agent already recorded its own tokens and
+    # duration; nothing ever added them up, so there was no way to tell what an
+    # evaluation cost or whether an optimisation helped.
+    total_tokens: int = 0
+    model_used: str = ""
 
 
 class EvaluateChunksRequest(BaseModel):

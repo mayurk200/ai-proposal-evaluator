@@ -4,26 +4,44 @@ uvicorn[standard]==0.34.2
 python-multipart==0.0.20
 
 # Document Processing
+# PyMuPDF stays the workhorse (fast, and the only one here that renders pages for
+# OCR), but text is now pulled with layout/reading-order awareness rather than a
+# raw get_text("text") dump.
 PyMuPDF==1.25.5
 python-docx==1.1.2
 python-pptx==1.0.2
 openpyxl==3.1.5
+# pdfplumber extracts ruled tables far more reliably than PyMuPDF's find_tables.
+# Most AIAIC application forms are exactly that: ruled tables.
+pdfplumber==0.11.4
+# camelot-py was declared but never imported anywhere — dropped.
 
 # OCR
 pytesseract==0.3.13
-Pillow==11.2.1
+Pillow==10.4.0
 easyocr==1.7.2
-
-# Table Extraction
-camelot-py==0.11.0
+# Deskew + denoise + binarize before OCR. On scanned forms this is the single
+# biggest extraction-quality win available.
+opencv-python-headless==4.10.0.84
+numpy==2.1.3
 
 # Text Processing
 nltk==3.9.1
 regex==2024.11.6
+# A real tokenizer. The len(text)//4 heuristic drove chunk sizing, summary
+# batching and the TPM budget, and was wrong often enough to both overshoot rate
+# limits and under-fill chunks.
+tiktoken==0.8.0
+
+# Embeddings for the similarity gate — ONNX runtime, CPU-only, no torch.
+fastembed==0.4.2
 
 # LLM Client
 groq==0.25.0
 httpx==0.28.1
+
+# PDF export of evaluation reports
+reportlab==4.2.5
 
 # Configuration
 pydantic-settings==2.9.1
@@ -43,6 +61,10 @@ asyncpg==0.30.0
 sqlalchemy[asyncio]==2.0.36
 greenlet==3.1.1
 aiosqlite==0.20.0
+pgvector==0.3.6
+
+# Auth (password hashing — the Node gateway and this service share the users table)
+bcrypt==4.2.1
 
 # Utilities
 tenacity==9.1.2
